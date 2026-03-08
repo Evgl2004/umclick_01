@@ -13,6 +13,7 @@ from apps.session.realtime import (
     broadcast_session_event,
     build_answer_reveal_payload,
     build_public_session_state,
+    compute_question_ends_at,
     get_next_question,
     serialize_question_for_participants,
 )
@@ -96,11 +97,13 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
         session.question_started_at = timezone.now()
         session.save(update_fields=["current_question", "question_started_at"])
 
+        question_ends_at = compute_question_ends_at(session, next_question)
         payload = {
             "session_id": session.id,
             "status": session.status,
             "question": serialize_question_for_participants(next_question),
             "question_started_at": session.question_started_at.isoformat() if session.question_started_at else None,
+            "question_ends_at": question_ends_at.isoformat() if question_ends_at else None,
         }
         broadcast_session_event(session.id, "question_started", payload)
         return Response(payload)
@@ -143,9 +146,9 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
         response["Content-Disposition"] = f'attachment; filename="session_{session.pin}_results.csv"'
 
         writer = csv.writer(response)
-        writer.writerow(["participant_name", "phone", "score"])
+        writer.writerow(["participant_name", "phone", "points", "correct_answers"])
         for row in leaderboard:
-            writer.writerow([row["participant_name"], row["phone"], row["score"]])
+            writer.writerow([row["participant_name"], row["phone"], row["points"], row["correct_answers"]])
 
         return response
 
@@ -169,6 +172,7 @@ class JoinSessionAPIView(APIView):
         session_participant = payload["session_participant"]
         participant = payload["participant"]
 
+        session_state = build_public_session_state(session)
         participants_count = session.participants.count()
         broadcast_session_event(
             session.id,
@@ -179,7 +183,7 @@ class JoinSessionAPIView(APIView):
                 "participants_count": participants_count,
             },
         )
-        broadcast_session_event(session.id, "session_state", build_public_session_state(session))
+        broadcast_session_event(session.id, "session_state", session_state)
 
         return Response(
             {
@@ -198,7 +202,9 @@ class JoinSessionAPIView(APIView):
                     "title": session.quiz.title,
                     "description": session.quiz.description,
                 },
-                "current_question": serialize_question_for_participants(session.current_question),
+                "current_question": session_state.get("current_question"),
+                "question_started_at": session_state.get("question_started_at"),
+                "question_ends_at": session_state.get("question_ends_at"),
             },
             status=status.HTTP_200_OK,
         )
@@ -226,6 +232,9 @@ class SubmitAnswerAPIView(APIView):
                 "session_id": session_participant.session_id,
                 "question_id": question.id,
                 "answered_count": answered_count,
+                "score_points": payload["score_points"],
+                "total_points": payload["total_points"],
+                "correct_answers": payload["correct_answers"],
             },
         )
 

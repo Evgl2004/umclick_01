@@ -5,7 +5,7 @@ from apps.session.models import LiveSession, Participant, ParticipantAnswer, Ses
 
 @admin.register(LiveSession)
 class LiveSessionAdmin(admin.ModelAdmin):
-    list_display = ("id", "pin", "quiz", "status", "created_at")
+    list_display = ("id", "pin", "quiz", "status", "current_question", "created_at")
     list_filter = ("status", "created_at")
     search_fields = ("pin", "quiz__title", "host_name")
 
@@ -24,5 +24,5 @@ class SessionParticipantAdmin(admin.ModelAdmin):
 
 @admin.register(ParticipantAnswer)
 class ParticipantAnswerAdmin(admin.ModelAdmin):
-    list_display = ("id", "session_participant", "question", "choice", "is_correct", "answered_at")
+    list_display = ("id", "session_participant", "question", "choice", "is_correct", "score_points", "answered_at")
     list_filter = ("is_correct",)

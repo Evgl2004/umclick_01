@@ -1,12 +1,21 @@
-﻿from asgiref.sync import async_to_sync
+﻿from datetime import timedelta
+
+from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from django.db.models import Count
+from django.db.models import Count, Sum
+from django.db.models.functions import Coalesce
 
 from apps.session.models import LiveSession, ParticipantAnswer
 
 
 def session_group_name(session_id: int) -> str:
     return f"session_{session_id}"
+
+
+def compute_question_ends_at(session: LiveSession, question):
+    if session.question_started_at is None or question is None:
+        return None
+    return session.question_started_at + timedelta(seconds=question.time_limit_sec)
 
 
 def serialize_question_for_participants(question):
@@ -30,6 +39,7 @@ def serialize_question_for_participants(question):
 
 
 def build_public_session_state(session: LiveSession) -> dict:
+    question_ends_at = compute_question_ends_at(session, session.current_question)
     return {
         "session_id": session.id,
         "status": session.status,
@@ -37,6 +47,7 @@ def build_public_session_state(session: LiveSession) -> dict:
         "participants_count": session.participants.count(),
         "current_question": serialize_question_for_participants(session.current_question),
         "question_started_at": session.question_started_at.isoformat() if session.question_started_at else None,
+        "question_ends_at": question_ends_at.isoformat() if question_ends_at else None,
     }
 
 
@@ -65,6 +76,7 @@ def build_answer_reveal_payload(session: LiveSession) -> dict:
             "question": None,
             "choices": [],
             "total_answers": 0,
+            "total_points_awarded": 0,
         }
 
     counts = (
@@ -73,15 +85,23 @@ def build_answer_reveal_payload(session: LiveSession) -> dict:
             question=question,
         )
         .values("choice_id")
-        .annotate(total=Count("id"))
+        .annotate(
+            total=Count("id"),
+            points_awarded=Coalesce(Sum("score_points"), 0),
+        )
     )
-    choice_totals = {item["choice_id"]: item["total"] for item in counts}
+    by_choice = {item["choice_id"]: item for item in counts}
 
     choices_payload = []
     total_answers = 0
+    total_points_awarded = 0
     for choice in question.choices.all().order_by("order", "id"):
-        answers_count = int(choice_totals.get(choice.id, 0))
+        choice_data = by_choice.get(choice.id, {})
+        answers_count = int(choice_data.get("total", 0))
+        awarded_points = int(choice_data.get("points_awarded", 0))
+
         total_answers += answers_count
+        total_points_awarded += awarded_points
         choices_payload.append(
             {
                 "id": choice.id,
@@ -89,6 +109,7 @@ def build_answer_reveal_payload(session: LiveSession) -> dict:
                 "order": choice.order,
                 "is_correct": choice.is_correct,
                 "answers_count": answers_count,
+                "points_awarded": awarded_points,
             }
         )
 
@@ -102,6 +123,7 @@ def build_answer_reveal_payload(session: LiveSession) -> dict:
         },
         "choices": choices_payload,
         "total_answers": total_answers,
+        "total_points_awarded": total_points_awarded,
     }
 
 

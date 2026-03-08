@@ -104,11 +104,9 @@ class ApiClient {
       headers: _headers(jsonBody: true),
       body: jsonEncode(payload),
     );
-
     if (response.statusCode >= 400) {
       throw Exception('Failed to register teacher: ${response.body}');
     }
-
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
@@ -121,11 +119,9 @@ class ApiClient {
       headers: _headers(jsonBody: true),
       body: jsonEncode({'username': username, 'password': password}),
     );
-
     if (response.statusCode >= 400) {
       throw Exception('Failed to login: ${response.body}');
     }
-
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
@@ -134,11 +130,9 @@ class ApiClient {
       _uri('/auth/me/'),
       headers: _headers(auth: true),
     );
-
     if (response.statusCode >= 400) {
       throw Exception('Failed to get profile: ${response.body}');
     }
-
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
@@ -177,11 +171,9 @@ class ApiClient {
       headers: _headers(jsonBody: true, auth: true),
       body: jsonEncode(payload),
     );
-
     if (response.statusCode >= 400) {
       throw Exception('Failed to create quiz: ${response.body}');
     }
-
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
@@ -191,7 +183,6 @@ class ApiClient {
       headers: _headers(jsonBody: true, auth: true),
       body: jsonEncode({'quiz': quizId, 'host_name': 'Teacher'}),
     );
-
     if (response.statusCode >= 400) {
       throw Exception('Failed to create session: ${response.body}');
     }
@@ -206,6 +197,7 @@ class ApiClient {
     }
     return jsonDecode(details.body) as Map<String, dynamic>;
   }
+
   Future<Map<String, dynamic>> startSession(int sessionId) async {
     final response = await http.post(
       _uri('/sessions/$sessionId/start/'),
@@ -277,7 +269,6 @@ class ApiClient {
         'consent': consent,
       }),
     );
-
     if (response.statusCode >= 400) {
       throw Exception('Failed to join session: ${response.body}');
     }
@@ -298,7 +289,6 @@ class ApiClient {
         'choice_id': choiceId,
       }),
     );
-
     if (response.statusCode >= 400) {
       throw Exception('Failed to submit answer: ${response.body}');
     }
@@ -313,6 +303,24 @@ Map<String, dynamic>? mapOrNull(dynamic value) {
   }
   return null;
 }
+
+int asInt(dynamic value, [int fallback = 0]) {
+  if (value is int) return value;
+  return int.tryParse('$value') ?? fallback;
+}
+
+DateTime? parseDateTimeLocal(dynamic rawValue) {
+  if (rawValue is! String || rawValue.isEmpty) return null;
+  return DateTime.tryParse(rawValue)?.toLocal();
+}
+
+String formatRemaining(Duration duration) {
+  final totalSeconds = duration.inSeconds;
+  final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+  final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+  return '$minutes:$seconds';
+}
+
 class TeacherPanel extends StatefulWidget {
   const TeacherPanel({super.key});
 
@@ -345,6 +353,9 @@ class _TeacherPanelState extends State<TeacherPanel> {
   bool _wsConnected = false;
   final List<String> _events = [];
 
+  Timer? _questionTimer;
+  String _questionTimeLeftLabel = '--:--';
+
   ApiClient _client({bool withToken = true}) {
     return ApiClient(
       _apiController.text.trim(),
@@ -356,6 +367,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
   @override
   void dispose() {
+    _questionTimer?.cancel();
     _closeSessionSocket();
     _apiController.dispose();
     _usernameController.dispose();
@@ -374,6 +386,36 @@ class _TeacherPanelState extends State<TeacherPanel> {
         _events.removeRange(25, _events.length);
       }
     });
+  }
+
+  void _startTeacherTimer(DateTime? endsAt) {
+    _questionTimer?.cancel();
+    if (endsAt == null) {
+      setState(() {
+        _questionTimeLeftLabel = '--:--';
+      });
+      return;
+    }
+
+    void tick() {
+      final remaining = endsAt.difference(DateTime.now());
+      if (remaining.inMilliseconds <= 0) {
+        _questionTimer?.cancel();
+        if (!mounted) return;
+        setState(() {
+          _questionTimeLeftLabel = '00:00';
+        });
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _questionTimeLeftLabel = formatRemaining(remaining);
+      });
+    }
+
+    tick();
+    _questionTimer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
   }
 
   Future<void> _connectSessionSocket(int sessionId) async {
@@ -458,6 +500,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
             _activeQuestion = null;
           }
         });
+        _startTeacherTimer(parseDateTimeLocal(payload['question_ends_at']));
         break;
       case 'participant_joined':
         _patchSession({'participants_count': payload['participants_count'] ?? (_session?['participants_count'] ?? 0)});
@@ -468,10 +511,11 @@ class _TeacherPanelState extends State<TeacherPanel> {
           _revealPayload = null;
           _answeredCount = 0;
         });
+        _startTeacherTimer(parseDateTimeLocal(payload['question_ends_at']));
         break;
       case 'answer_submitted':
         setState(() {
-          _answeredCount = int.tryParse('${payload['answered_count']}') ?? _answeredCount;
+          _answeredCount = asInt(payload['answered_count'], _answeredCount);
         });
         break;
       case 'answer_revealed':
@@ -481,8 +525,10 @@ class _TeacherPanelState extends State<TeacherPanel> {
         break;
       case 'session_finished':
         _patchSession({'status': 'finished'});
+        _questionTimer?.cancel();
         setState(() {
           _activeQuestion = null;
+          _questionTimeLeftLabel = '--:--';
         });
         break;
       default:
@@ -640,6 +686,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
         _revealPayload = null;
         _answeredCount = 0;
       });
+      _startTeacherTimer(parseDateTimeLocal(session['question_ends_at']));
       await _connectSessionSocket(session['id'] as int);
     } catch (e) {
       setState(() {
@@ -661,6 +708,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
         _activeQuestion = mapOrNull(started['current_question']);
         _revealPayload = null;
       });
+      _startTeacherTimer(parseDateTimeLocal(started['question_ends_at']));
       await _connectSessionSocket(_session!['id'] as int);
     } catch (e) {
       setState(() {
@@ -681,12 +729,17 @@ class _TeacherPanelState extends State<TeacherPanel> {
             _activeQuestion = null;
           });
         }
+        _questionTimer?.cancel();
+        setState(() {
+          _questionTimeLeftLabel = '--:--';
+        });
       } else {
         setState(() {
           _activeQuestion = mapOrNull(payload['question']);
           _revealPayload = null;
           _answeredCount = 0;
         });
+        _startTeacherTimer(parseDateTimeLocal(payload['question_ends_at']));
       }
       _appendEvent('Teacher moved to next question.');
     } catch (e) {
@@ -715,9 +768,11 @@ class _TeacherPanelState extends State<TeacherPanel> {
     if (_session == null) return;
     try {
       final finished = await _client().finishSession(_session!['id'] as int);
+      _questionTimer?.cancel();
       setState(() {
         _session = finished;
         _activeQuestion = null;
+        _questionTimeLeftLabel = '--:--';
       });
       _appendEvent('Session finished by teacher.');
     } catch (e) {
@@ -726,6 +781,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       });
     }
   }
+
   Future<void> _showLeaderboard() async {
     if (_session == null) return;
     try {
@@ -751,7 +807,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
                           leading: Text('#${index + 1}'),
                           title: Text('${row['participant_name']}'),
                           subtitle: Text('${row['phone']}'),
-                          trailing: Text('Score: ${row['score']}'),
+                          trailing: Text('Pts: ${row['points']} | Correct: ${row['correct_answers']}'),
                         );
                       },
                     ),
@@ -773,6 +829,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   }
 
   Future<void> _logout() async {
+    _questionTimer?.cancel();
     await _closeSessionSocket();
     setState(() {
       _accessToken = null;
@@ -784,6 +841,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       _activeQuestion = null;
       _revealPayload = null;
       _answeredCount = 0;
+      _questionTimeLeftLabel = '--:--';
       _events.clear();
       _error = null;
     });
@@ -938,6 +996,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
                     Text('WebSocket: ${_wsConnected ? 'connected' : 'disconnected'}'),
                     if (_activeQuestion != null)
                       Text('Current question: ${_activeQuestion!['text']}'),
+                    if (_activeQuestion != null)
+                      Text('Time left: $_questionTimeLeftLabel'),
                     if (_answeredCount > 0)
                       Text('Answers received: $_answeredCount'),
                     const SizedBox(height: 8),
@@ -991,6 +1051,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
                       const Divider(),
                       Text('Reveal results', style: Theme.of(context).textTheme.titleMedium),
                       Text('Total answers: ${_revealPayload!['total_answers'] ?? 0}'),
+                      Text('Points awarded: ${_revealPayload!['total_points_awarded'] ?? 0}'),
                       const SizedBox(height: 8),
                       ...((_revealPayload!['choices'] as List<dynamic>? ?? <dynamic>[]).map((rawChoice) {
                         final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
@@ -999,7 +1060,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
                           dense: true,
                           leading: Icon(correct ? Icons.check_circle : Icons.circle_outlined),
                           title: Text('${choice['text']}'),
-                          trailing: Text('Votes: ${choice['answers_count'] ?? 0}'),
+                          trailing: Text('Votes: ${choice['answers_count'] ?? 0} | Pts: ${choice['points_awarded'] ?? 0}'),
                         );
                       })),
                     ],
@@ -1030,6 +1091,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
     );
   }
 }
+
 class ParticipantPanel extends StatefulWidget {
   const ParticipantPanel({super.key});
 
@@ -1048,22 +1110,27 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   Map<String, dynamic>? _revealPayload;
   bool _consent = false;
   bool _loading = false;
-  int _score = 0;
+  int _totalPoints = 0;
+  int _lastAnswerPoints = 0;
   String? _error;
   String _sessionStatus = 'waiting';
   bool _questionAnswered = false;
   int? _selectedChoiceId;
   bool _sessionFinished = false;
+  String _timeLeftLabel = '--:--';
+  bool _isQuestionExpired = false;
 
   WebSocketChannel? _socket;
   StreamSubscription? _socketSubscription;
   bool _socketConnected = false;
+  Timer? _countdownTimer;
   final List<String> _events = [];
 
   ApiClient _client() => ApiClient(_apiController.text.trim());
 
   @override
   void dispose() {
+    _countdownTimer?.cancel();
     _closeSocket();
     _apiController.dispose();
     _pinController.dispose();
@@ -1080,6 +1147,50 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         _events.removeRange(25, _events.length);
       }
     });
+  }
+
+  void _startCountdown(DateTime? endsAt) {
+    _countdownTimer?.cancel();
+    if (endsAt == null) {
+      setState(() {
+        _timeLeftLabel = '--:--';
+        _isQuestionExpired = false;
+      });
+      return;
+    }
+
+    void tick() {
+      final remaining = endsAt.difference(DateTime.now());
+      if (remaining.inMilliseconds <= 0) {
+        _countdownTimer?.cancel();
+        if (!mounted) return;
+        setState(() {
+          _timeLeftLabel = '00:00';
+          _isQuestionExpired = true;
+        });
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _timeLeftLabel = formatRemaining(remaining);
+        _isQuestionExpired = false;
+      });
+    }
+
+    tick();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+  }
+
+  void _applyQuestionState(Map<String, dynamic>? question, dynamic endsAtRaw) {
+    setState(() {
+      _activeQuestion = question;
+      _revealPayload = null;
+      _questionAnswered = false;
+      _selectedChoiceId = null;
+      _isQuestionExpired = false;
+    });
+    _startCountdown(parseDateTimeLocal(endsAtRaw));
   }
 
   Future<void> _connectSocket(int sessionId) async {
@@ -1145,36 +1256,43 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     switch (event) {
       case 'session_state':
       case 'session_started':
+        final incomingQuestion = mapOrNull(payload['current_question']);
+        final incomingQuestionId = asInt(incomingQuestion?['id'], -1);
+        final activeQuestionId = asInt(_activeQuestion?['id'], -2);
+
         setState(() {
           _sessionStatus = payload['status']?.toString() ?? _sessionStatus;
-          _activeQuestion = mapOrNull(payload['current_question']);
           _sessionFinished = _sessionStatus == 'finished';
-          if (_activeQuestion != null) {
-            _questionAnswered = false;
-            _selectedChoiceId = null;
-          }
         });
+
+        if (incomingQuestionId != activeQuestionId || incomingQuestion == null) {
+          _applyQuestionState(incomingQuestion, payload['question_ends_at']);
+        } else {
+          _startCountdown(parseDateTimeLocal(payload['question_ends_at']));
+        }
         break;
       case 'question_started':
         setState(() {
           _sessionStatus = payload['status']?.toString() ?? 'live';
-          _activeQuestion = mapOrNull(payload['question']);
-          _revealPayload = null;
-          _questionAnswered = false;
-          _selectedChoiceId = null;
           _sessionFinished = false;
+          _lastAnswerPoints = 0;
         });
+        _applyQuestionState(mapOrNull(payload['question']), payload['question_ends_at']);
         break;
       case 'answer_revealed':
+        _countdownTimer?.cancel();
         setState(() {
           _revealPayload = payload;
         });
         break;
       case 'session_finished':
+        _countdownTimer?.cancel();
         setState(() {
           _sessionStatus = 'finished';
           _sessionFinished = true;
           _activeQuestion = null;
+          _timeLeftLabel = '--:--';
+          _isQuestionExpired = false;
         });
         break;
       default:
@@ -1202,13 +1320,15 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         _joinPayload = payload;
         _activeQuestion = mapOrNull(payload['current_question']);
         _revealPayload = null;
-        _score = 0;
+        _totalPoints = 0;
+        _lastAnswerPoints = 0;
         _sessionStatus = payload['session_status']?.toString() ?? 'waiting';
         _sessionFinished = _sessionStatus == 'finished';
         _questionAnswered = false;
         _selectedChoiceId = null;
         _events.clear();
       });
+      _startCountdown(parseDateTimeLocal(payload['question_ends_at']));
 
       await _connectSocket(payload['session_id'] as int);
     } catch (e) {
@@ -1223,7 +1343,9 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   }
 
   Future<void> _answer(int choiceId) async {
-    if (_joinPayload == null || _activeQuestion == null || _questionAnswered) return;
+    if (_joinPayload == null || _activeQuestion == null || _questionAnswered || _isQuestionExpired) {
+      return;
+    }
 
     try {
       final response = await _client().submitAnswer(
@@ -1233,12 +1355,13 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
       );
 
       setState(() {
-        _score = response['score'] as int;
+        _totalPoints = asInt(response['total_points'], _totalPoints);
+        _lastAnswerPoints = asInt(response['score_points']);
         _questionAnswered = true;
         _selectedChoiceId = choiceId;
       });
 
-      _appendEvent('Answer submitted.');
+      _appendEvent('Answer submitted (+$_lastAnswerPoints pts).');
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -1293,9 +1416,11 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
           ],
           if (_joinPayload != null) ...[
             const SizedBox(height: 20),
-            Text('Score: $_score', style: Theme.of(context).textTheme.titleLarge),
+            Text('Points: $_totalPoints', style: Theme.of(context).textTheme.titleLarge),
+            Text('Last answer: +$_lastAnswerPoints pts'),
             Text('Status: $_sessionStatus'),
             Text('WebSocket: ${_socketConnected ? 'connected' : 'disconnected'}'),
+            if (_activeQuestion != null) Text('Time left: $_timeLeftLabel'),
             const SizedBox(height: 12),
             if (_sessionFinished)
               const Card(
@@ -1315,8 +1440,13 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
               _QuestionCard(
                 question: _activeQuestion!,
                 onAnswer: _answer,
-                questionAnswered: _questionAnswered,
+                questionLocked: _questionAnswered || _isQuestionExpired,
                 selectedChoiceId: _selectedChoiceId,
+              ),
+            if (_isQuestionExpired && !_questionAnswered && !_sessionFinished)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text('Time is over. Wait for results and the next question.'),
               ),
             if (_revealPayload != null) ...[
               const SizedBox(height: 12),
@@ -1328,6 +1458,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                     children: [
                       Text('Round results', style: Theme.of(context).textTheme.titleMedium),
                       Text('Total answers: ${_revealPayload!['total_answers'] ?? 0}'),
+                      Text('Points awarded: ${_revealPayload!['total_points_awarded'] ?? 0}'),
                       const SizedBox(height: 8),
                       ...((_revealPayload!['choices'] as List<dynamic>? ?? <dynamic>[]).map((rawChoice) {
                         final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
@@ -1336,7 +1467,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                           dense: true,
                           leading: Icon(isCorrect ? Icons.check_circle : Icons.circle_outlined),
                           title: Text('${choice['text']}'),
-                          trailing: Text('Votes: ${choice['answers_count'] ?? 0}'),
+                          trailing: Text('Votes: ${choice['answers_count'] ?? 0} | Pts: ${choice['points_awarded'] ?? 0}'),
                         );
                       })),
                     ],
@@ -1372,13 +1503,13 @@ class _QuestionCard extends StatelessWidget {
   const _QuestionCard({
     required this.question,
     required this.onAnswer,
-    required this.questionAnswered,
+    required this.questionLocked,
     required this.selectedChoiceId,
   });
 
   final Map<String, dynamic> question;
   final ValueChanged<int> onAnswer;
-  final bool questionAnswered;
+  final bool questionLocked;
   final int? selectedChoiceId;
 
   @override
@@ -1387,7 +1518,7 @@ class _QuestionCard extends StatelessWidget {
       ..sort((a, b) {
         final aMap = mapOrNull(a) ?? <String, dynamic>{};
         final bMap = mapOrNull(b) ?? <String, dynamic>{};
-        return (int.tryParse('${aMap['order']}') ?? 0).compareTo(int.tryParse('${bMap['order']}') ?? 0);
+        return asInt(aMap['order']).compareTo(asInt(bMap['order']));
       });
 
     return Card(
@@ -1396,16 +1527,13 @@ class _QuestionCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '${question['text']}',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('${question['text']}', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Text('Time limit: ${question['time_limit_sec'] ?? '-'} sec'),
             const SizedBox(height: 12),
             ...choices.map((rawChoice) {
               final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
-              final choiceId = int.tryParse('${choice['id']}') ?? -1;
+              final choiceId = asInt(choice['id'], -1);
               final isSelected = selectedChoiceId == choiceId;
 
               return Padding(
@@ -1413,7 +1541,7 @@ class _QuestionCard extends StatelessWidget {
                 child: SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
-                    onPressed: questionAnswered ? null : () => onAnswer(choiceId),
+                    onPressed: questionLocked ? null : () => onAnswer(choiceId),
                     style: OutlinedButton.styleFrom(
                       backgroundColor: isSelected ? Theme.of(context).colorScheme.secondaryContainer : null,
                     ),
@@ -1422,11 +1550,14 @@ class _QuestionCard extends StatelessWidget {
                 ),
               );
             }),
-            if (questionAnswered)
-              const Text('Answer received. Waiting for teacher to reveal results.'),
+            if (questionLocked)
+              const Text('Answer locked. Waiting for teacher update.'),
           ],
         ),
       ),
     );
   }
 }
+
+
+

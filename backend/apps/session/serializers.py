@@ -1,14 +1,20 @@
 ﻿import base64
 import io
 import os
+from datetime import timedelta
 
 import qrcode
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
+from django.db.models.functions import Coalesce
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.quiz.models import Choice, Question, Quiz
 from apps.session.models import LiveSession, Participant, ParticipantAnswer, SessionParticipant
 from apps.session.realtime import serialize_question_for_participants
+
+MAX_CORRECT_POINTS = 1000
+MIN_CORRECT_POINTS = 200
 
 
 def build_join_url(session: LiveSession) -> str:
@@ -22,6 +28,23 @@ def build_qr_base64(data: str) -> str:
     image.save(buffer, format="PNG")
     encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
     return f"data:image/png;base64,{encoded}"
+
+
+def compute_question_ends_at(session: LiveSession, question: Question | None):
+    if session.question_started_at is None or question is None:
+        return None
+    return session.question_started_at + timedelta(seconds=question.time_limit_sec)
+
+
+def score_for_answer(question: Question, elapsed_ms: int, is_correct: bool) -> int:
+    if not is_correct:
+        return 0
+
+    time_limit_ms = max(question.time_limit_sec * 1000, 1)
+    bounded_elapsed = max(0, min(elapsed_ms, time_limit_ms))
+    remaining_ratio = max(0.0, 1.0 - (bounded_elapsed / time_limit_ms))
+    raw_points = int(round(MAX_CORRECT_POINTS * remaining_ratio))
+    return max(MIN_CORRECT_POINTS, raw_points)
 
 
 class SessionChoiceSerializer(serializers.ModelSerializer):
@@ -59,6 +82,7 @@ class LiveSessionSerializer(serializers.ModelSerializer):
     qr_code_base64 = serializers.SerializerMethodField()
     participants_count = serializers.SerializerMethodField()
     current_question = serializers.SerializerMethodField()
+    question_ends_at = serializers.SerializerMethodField()
 
     class Meta:
         model = LiveSession
@@ -74,6 +98,7 @@ class LiveSessionSerializer(serializers.ModelSerializer):
             "participants_count",
             "current_question",
             "question_started_at",
+            "question_ends_at",
             "started_at",
             "finished_at",
             "created_at",
@@ -90,6 +115,10 @@ class LiveSessionSerializer(serializers.ModelSerializer):
 
     def get_current_question(self, obj: LiveSession):
         return serialize_question_for_participants(obj.current_question)
+
+    def get_question_ends_at(self, obj: LiveSession):
+        ends_at = compute_question_ends_at(obj, obj.current_question)
+        return ends_at.isoformat() if ends_at else None
 
 
 class ParticipantJoinSerializer(serializers.Serializer):
@@ -168,6 +197,9 @@ class SubmitAnswerSerializer(serializers.Serializer):
         if session.current_question_id != attrs["question_id"]:
             raise serializers.ValidationError("This question is not active right now.")
 
+        if session.question_started_at is None:
+            raise serializers.ValidationError("Question timer is not initialized.")
+
         try:
             question = Question.objects.get(id=attrs["question_id"], quiz_id=session.quiz_id)
         except Question.DoesNotExist as exc:
@@ -178,27 +210,44 @@ class SubmitAnswerSerializer(serializers.Serializer):
         except Choice.DoesNotExist as exc:
             raise serializers.ValidationError("Choice was not found for this question.") from exc
 
+        question_ends_at = compute_question_ends_at(session, question)
+        now = timezone.now()
+        if question_ends_at and now > question_ends_at:
+            raise serializers.ValidationError("Time is over for this question.")
+
         if ParticipantAnswer.objects.filter(session_participant=session_participant, question=question).exists():
             raise serializers.ValidationError("Answer for this question has already been submitted.")
+
+        elapsed_ms = int(max(0, (now - session.question_started_at).total_seconds() * 1000))
 
         attrs["session_participant"] = session_participant
         attrs["question"] = question
         attrs["choice"] = choice
+        attrs["elapsed_ms"] = elapsed_ms
         return attrs
 
     def create(self, validated_data):
         session_participant = validated_data["session_participant"]
         question = validated_data["question"]
         choice = validated_data["choice"]
+        elapsed_ms = validated_data["elapsed_ms"]
+
+        points = score_for_answer(question, elapsed_ms, choice.is_correct)
 
         answer = ParticipantAnswer.objects.create(
             session_participant=session_participant,
             question=question,
             choice=choice,
             is_correct=choice.is_correct,
+            score_points=points,
         )
 
-        score = ParticipantAnswer.objects.filter(
+        total_points = (
+            ParticipantAnswer.objects.filter(session_participant=session_participant)
+            .aggregate(total=Coalesce(Sum("score_points"), 0))
+            .get("total", 0)
+        )
+        correct_answers = ParticipantAnswer.objects.filter(
             session_participant=session_participant,
             is_correct=True,
         ).count()
@@ -206,28 +255,35 @@ class SubmitAnswerSerializer(serializers.Serializer):
         return {
             "answer_id": answer.id,
             "is_correct": answer.is_correct,
-            "score": score,
+            "score_points": answer.score_points,
+            "total_points": int(total_points or 0),
+            "correct_answers": correct_answers,
         }
 
 
 class LeaderboardRowSerializer(serializers.Serializer):
     participant_name = serializers.CharField()
     phone = serializers.CharField()
-    score = serializers.IntegerField()
+    points = serializers.IntegerField()
+    correct_answers = serializers.IntegerField()
 
 
 def build_leaderboard(session: LiveSession):
     rows = (
         SessionParticipant.objects.filter(session=session)
         .select_related("participant")
-        .annotate(score=Count("answers", filter=Q(answers__is_correct=True)))
-        .order_by("-score", "joined_at")
+        .annotate(
+            points=Coalesce(Sum("answers__score_points"), 0),
+            correct_answers=Count("answers", filter=Q(answers__is_correct=True)),
+        )
+        .order_by("-points", "-correct_answers", "joined_at")
     )
     return [
         {
             "participant_name": row.participant.name,
             "phone": row.participant.phone,
-            "score": row.score,
+            "points": int(row.points or 0),
+            "correct_answers": row.correct_answers,
         }
         for row in rows
     ]

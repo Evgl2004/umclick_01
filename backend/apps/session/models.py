@@ -94,6 +94,7 @@ class ParticipantAnswer(models.Model):
     question = models.ForeignKey(Question, related_name="session_answers", on_delete=models.CASCADE)
     choice = models.ForeignKey(Choice, related_name="answers", on_delete=models.SET_NULL, null=True, blank=True)
     is_correct = models.BooleanField(default=False)
+    score_points = models.PositiveIntegerField(default=0)
     answered_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
