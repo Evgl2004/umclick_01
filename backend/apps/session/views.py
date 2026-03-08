@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.permissions import IsTeacher
+from apps.session.autoreveal import cancel_auto_reveal, schedule_auto_reveal
 from apps.session.models import LiveSession, ParticipantAnswer
 from apps.session.realtime import (
     broadcast_session_event,
@@ -49,6 +50,7 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        cancel_auto_reveal(session.id)
         session.status = LiveSession.STATUS_LIVE
         session.current_question = None
         session.question_started_at = None
@@ -60,6 +62,8 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def finish(self, request, pk=None):
         session = self.get_object()
+        cancel_auto_reveal(session.id)
+
         session.status = LiveSession.STATUS_FINISHED
         session.current_question = None
         session.question_started_at = None
@@ -77,6 +81,7 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        cancel_auto_reveal(session.id)
         next_question = get_next_question(session)
         if next_question is None:
             session.status = LiveSession.STATUS_FINISHED
@@ -106,6 +111,8 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
             "question_ends_at": question_ends_at.isoformat() if question_ends_at else None,
         }
         broadcast_session_event(session.id, "question_started", payload)
+
+        schedule_auto_reveal(session.id, next_question.id, next_question.time_limit_sec)
         return Response(payload)
 
     @action(detail=True, methods=["post"], url_path="reveal-answer")
@@ -123,7 +130,10 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        cancel_auto_reveal(session.id)
         payload = build_answer_reveal_payload(session)
+        payload["revealed_by"] = "teacher"
+        payload["auto"] = False
         broadcast_session_event(session.id, "answer_revealed", payload)
         return Response(payload)
 

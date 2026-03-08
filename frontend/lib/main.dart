@@ -519,8 +519,10 @@ class _TeacherPanelState extends State<TeacherPanel> {
         });
         break;
       case 'answer_revealed':
+        _questionTimer?.cancel();
         setState(() {
           _revealPayload = payload;
+          _questionTimeLeftLabel = '00:00';
         });
         break;
       case 'session_finished':
@@ -1052,6 +1054,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
                       Text('Reveal results', style: Theme.of(context).textTheme.titleMedium),
                       Text('Total answers: ${_revealPayload!['total_answers'] ?? 0}'),
                       Text('Points awarded: ${_revealPayload!['total_points_awarded'] ?? 0}'),
+                      Text('Revealed by: ${_revealPayload!['revealed_by'] ?? 'teacher'}'),
                       const SizedBox(height: 8),
                       ...((_revealPayload!['choices'] as List<dynamic>? ?? <dynamic>[]).map((rawChoice) {
                         final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
@@ -1283,6 +1286,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         _countdownTimer?.cancel();
         setState(() {
           _revealPayload = payload;
+          _timeLeftLabel = '00:00';
+          _isQuestionExpired = true;
         });
         break;
       case 'session_finished':
@@ -1459,6 +1464,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                       Text('Round results', style: Theme.of(context).textTheme.titleMedium),
                       Text('Total answers: ${_revealPayload!['total_answers'] ?? 0}'),
                       Text('Points awarded: ${_revealPayload!['total_points_awarded'] ?? 0}'),
+                      Text('Revealed by: ${_revealPayload!['revealed_by'] ?? 'teacher'}'),
                       const SizedBox(height: 8),
                       ...((_revealPayload!['choices'] as List<dynamic>? ?? <dynamic>[]).map((rawChoice) {
                         final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
@@ -1558,6 +1564,11 @@ class _QuestionCard extends StatelessWidget {
     );
   }
 }
+
+
+
+
+
 
 
 
