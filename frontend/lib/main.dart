@@ -1,10 +1,11 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const UmclickApp());
@@ -321,6 +322,10 @@ String formatRemaining(Duration duration) {
   return '$minutes:$seconds';
 }
 
+const _prefsAccessTokenKey = 'umclick_teacher_access_token';
+const _prefsRefreshTokenKey = 'umclick_teacher_refresh_token';
+const _prefsApiBaseUrlKey = 'umclick_api_base_url';
+const _prefsUsernameKey = 'umclick_teacher_username';
 class TeacherPanel extends StatefulWidget {
   const TeacherPanel({super.key});
 
@@ -355,6 +360,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
   Timer? _questionTimer;
   String _questionTimeLeftLabel = '--:--';
+  bool _restoringSession = true;
 
   ApiClient _client({bool withToken = true}) {
     return ApiClient(
@@ -364,6 +370,12 @@ class _TeacherPanelState extends State<TeacherPanel> {
   }
 
   bool get _isLoggedIn => _accessToken != null && _accessToken!.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreAuthSession();
+  }
 
   @override
   void dispose() {
@@ -386,6 +398,98 @@ class _TeacherPanelState extends State<TeacherPanel> {
         _events.removeRange(25, _events.length);
       }
     });
+  }
+
+  Future<void> _persistAuthSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_accessToken != null && _accessToken!.isNotEmpty) {
+      await prefs.setString(_prefsAccessTokenKey, _accessToken!);
+    } else {
+      await prefs.remove(_prefsAccessTokenKey);
+    }
+
+    if (_refreshToken != null && _refreshToken!.isNotEmpty) {
+      await prefs.setString(_prefsRefreshTokenKey, _refreshToken!);
+    } else {
+      await prefs.remove(_prefsRefreshTokenKey);
+    }
+
+    final apiBase = _apiController.text.trim();
+    if (apiBase.isNotEmpty) {
+      await prefs.setString(_prefsApiBaseUrlKey, apiBase);
+    }
+
+    final username = _usernameController.text.trim();
+    if (username.isNotEmpty) {
+      await prefs.setString(_prefsUsernameKey, username);
+    }
+  }
+
+  Future<void> _clearPersistedAuthSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefsAccessTokenKey);
+    await prefs.remove(_prefsRefreshTokenKey);
+  }
+
+  Future<void> _restoreAuthSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedApiBase = prefs.getString(_prefsApiBaseUrlKey);
+      final savedUsername = prefs.getString(_prefsUsernameKey);
+      final savedAccess = prefs.getString(_prefsAccessTokenKey);
+      final savedRefresh = prefs.getString(_prefsRefreshTokenKey);
+
+      if (savedApiBase != null && savedApiBase.isNotEmpty) {
+        _apiController.text = savedApiBase;
+      }
+      if (savedUsername != null && savedUsername.isNotEmpty) {
+        _usernameController.text = savedUsername;
+      }
+
+      if (savedAccess == null || savedAccess.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _restoringSession = false;
+          });
+        }
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _accessToken = savedAccess;
+          _refreshToken = savedRefresh;
+        });
+      }
+
+      final me = await _client().getMe();
+      final quizzes = await _client().getQuizzes();
+
+      if (mounted) {
+        setState(() {
+          _teacher = me;
+          _quizzes = quizzes;
+          if (_quizzes.isNotEmpty) {
+            _selectedQuizId = _selectedQuizId ?? _quizzes.first['id'] as int;
+          }
+          _restoringSession = false;
+        });
+      }
+      _appendEvent('Teacher session restored from local storage.');
+    } catch (e) {
+      await _clearPersistedAuthSession();
+      if (mounted) {
+        setState(() {
+          _accessToken = null;
+          _refreshToken = null;
+          _teacher = null;
+          _quizzes = [];
+          _selectedQuizId = null;
+          _restoringSession = false;
+        });
+      }
+      _appendEvent('Stored session is invalid and was cleared.');
+    }
   }
 
   void _startTeacherTimer(DateTime? endsAt) {
@@ -586,6 +690,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
         _refreshToken = tokenPayload['refresh'] as String?;
       });
 
+      await _persistAuthSession();
       await _loadMe();
       await _refreshQuizzes();
     } catch (e) {
@@ -833,6 +938,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _logout() async {
     _questionTimer?.cancel();
     await _closeSessionSocket();
+    await _clearPersistedAuthSession();
     setState(() {
       _accessToken = null;
       _refreshToken = null;
@@ -916,13 +1022,15 @@ class _TeacherPanelState extends State<TeacherPanel> {
                     ],
                   ),
                   const SizedBox(height: 8),
+                  if (_restoringSession)
+                    const Text('Restoring saved teacher session...'),
                   Text(
                     _isLoggedIn
                         ? 'Logged in${_teacher != null ? ': ${_teacher!['username']}' : ''}'
                         : 'Not authenticated',
                   ),
                   if (_refreshToken != null && _refreshToken!.isNotEmpty)
-                    const Text('Refresh token is kept in memory for this app session.'),
+                    const Text('Refresh token is stored locally for this browser profile.'),
                 ],
               ),
             ),
@@ -1564,11 +1672,3 @@ class _QuestionCard extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
-
-
-
