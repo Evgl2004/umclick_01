@@ -1,4 +1,4 @@
-﻿import csv
+import csv
 
 from django.http import HttpResponse
 from django.utils import timezone
@@ -8,11 +8,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.permissions import IsTeacher
-from apps.session.autoreveal import cancel_auto_reveal, schedule_auto_reveal
+from apps.session.autoreveal import (
+    cancel_auto_reveal,
+    reveal_current_question_once,
+    schedule_auto_reveal,
+)
 from apps.session.models import LiveSession, ParticipantAnswer
 from apps.session.realtime import (
     broadcast_session_event,
-    build_answer_reveal_payload,
     build_public_session_state,
     compute_question_ends_at,
     get_next_question,
@@ -53,8 +56,17 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
         cancel_auto_reveal(session.id)
         session.status = LiveSession.STATUS_LIVE
         session.current_question = None
+        session.revealed_question_id = None
         session.question_started_at = None
-        session.save(update_fields=["status", "started_at", "current_question", "question_started_at"])
+        session.save(
+            update_fields=[
+                "status",
+                "started_at",
+                "current_question",
+                "revealed_question_id",
+                "question_started_at",
+            ]
+        )
 
         broadcast_session_event(session.id, "session_started", build_public_session_state(session))
         return Response(LiveSessionSerializer(session).data)
@@ -66,8 +78,17 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
 
         session.status = LiveSession.STATUS_FINISHED
         session.current_question = None
+        session.revealed_question_id = None
         session.question_started_at = None
-        session.save(update_fields=["status", "finished_at", "current_question", "question_started_at"])
+        session.save(
+            update_fields=[
+                "status",
+                "finished_at",
+                "current_question",
+                "revealed_question_id",
+                "question_started_at",
+            ]
+        )
 
         broadcast_session_event(session.id, "session_finished", build_public_session_state(session))
         return Response(LiveSessionSerializer(session).data)
@@ -86,8 +107,17 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
         if next_question is None:
             session.status = LiveSession.STATUS_FINISHED
             session.current_question = None
+            session.revealed_question_id = None
             session.question_started_at = None
-            session.save(update_fields=["status", "finished_at", "current_question", "question_started_at"])
+            session.save(
+                update_fields=[
+                    "status",
+                    "finished_at",
+                    "current_question",
+                    "revealed_question_id",
+                    "question_started_at",
+                ]
+            )
 
             payload = build_public_session_state(session)
             broadcast_session_event(session.id, "session_finished", payload)
@@ -99,8 +129,9 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
             )
 
         session.current_question = next_question
+        session.revealed_question_id = None
         session.question_started_at = timezone.now()
-        session.save(update_fields=["current_question", "question_started_at"])
+        session.save(update_fields=["current_question", "revealed_question_id", "question_started_at"])
 
         question_ends_at = compute_question_ends_at(session, next_question)
         payload = {
@@ -109,6 +140,7 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
             "question": serialize_question_for_participants(next_question),
             "question_started_at": session.question_started_at.isoformat() if session.question_started_at else None,
             "question_ends_at": question_ends_at.isoformat() if question_ends_at else None,
+            "is_answer_revealed": False,
         }
         broadcast_session_event(session.id, "question_started", payload)
 
@@ -131,10 +163,17 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
             )
 
         cancel_auto_reveal(session.id)
-        payload = build_answer_reveal_payload(session)
-        payload["revealed_by"] = "teacher"
-        payload["auto"] = False
-        broadcast_session_event(session.id, "answer_revealed", payload)
+        payload = reveal_current_question_once(
+            session.id,
+            expected_question_id=session.current_question_id,
+            revealed_by="teacher",
+            auto=False,
+        )
+        if payload is None:
+            return Response(
+                {"detail": "Answers for this question are already revealed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(payload)
 
     @action(
@@ -215,6 +254,7 @@ class JoinSessionAPIView(APIView):
                 "current_question": session_state.get("current_question"),
                 "question_started_at": session_state.get("question_started_at"),
                 "question_ends_at": session_state.get("question_ends_at"),
+                "is_answer_revealed": session_state.get("is_answer_revealed"),
             },
             status=status.HTTP_200_OK,
         )

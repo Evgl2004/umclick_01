@@ -1,4 +1,4 @@
-﻿import base64
+import base64
 import io
 import os
 from datetime import timedelta
@@ -83,6 +83,7 @@ class LiveSessionSerializer(serializers.ModelSerializer):
     participants_count = serializers.SerializerMethodField()
     current_question = serializers.SerializerMethodField()
     question_ends_at = serializers.SerializerMethodField()
+    is_answer_revealed = serializers.SerializerMethodField()
 
     class Meta:
         model = LiveSession
@@ -99,6 +100,7 @@ class LiveSessionSerializer(serializers.ModelSerializer):
             "current_question",
             "question_started_at",
             "question_ends_at",
+            "is_answer_revealed",
             "started_at",
             "finished_at",
             "created_at",
@@ -115,6 +117,11 @@ class LiveSessionSerializer(serializers.ModelSerializer):
 
     def get_current_question(self, obj: LiveSession):
         return serialize_question_for_participants(obj.current_question)
+
+    def get_is_answer_revealed(self, obj: LiveSession) -> bool:
+        if obj.current_question_id is None:
+            return False
+        return obj.revealed_question_id == obj.current_question_id
 
     def get_question_ends_at(self, obj: LiveSession):
         ends_at = compute_question_ends_at(obj, obj.current_question)
@@ -196,6 +203,9 @@ class SubmitAnswerSerializer(serializers.Serializer):
 
         if session.current_question_id != attrs["question_id"]:
             raise serializers.ValidationError("This question is not active right now.")
+
+        if session.revealed_question_id == attrs["question_id"]:
+            raise serializers.ValidationError("Answers for this question are already revealed.")
 
         if session.question_started_at is None:
             raise serializers.ValidationError("Question timer is not initialized.")

@@ -1,18 +1,19 @@
-﻿# umclick
+# umclick
 
 MVP-платформа для интерактивных викторин в стиле Kahoot.
 
 ## Текущий стек
-- Backend: Django + DRF + Channels (WebSocket)
+- Backend: Django + DRF + Channels (WebSocket) + Celery
 - Frontend: Flutter Web
 - Database: PostgreSQL
+- Messaging/Tasks: Redis + Celery (worker + beat)
 - Orchestration: Docker Compose
 
 ## Ветки
 - `main`
 - `develop-cai`
 
-## Что реализовано (MVP-7)
+## Что реализовано (MVP-8)
 - JWT-аутентификация преподавателя.
 - CRUD викторин (teacher-only).
 - Создание live-сессий, PIN и QR для подключения.
@@ -34,6 +35,10 @@ MVP-платформа для интерактивных викторин в с�
   - сервер проверяет дедлайн на отправку ответа
   - клиент показывает обратный отсчёт
   - результаты автоматически раскрываются по истечении таймера
+- Multi-instance таймер с Redis + Celery beat:
+  - in-process `threading.Timer` заменён на периодическую Celery задачу
+  - авто-раскрытие выполняется атомарно и только один раз на вопрос (`revealed_question_id`)
+  - `docker compose` поднимает `redis`, `celery-worker`, `celery-beat`
 - Скоринговая модель (Kahoot-style):
   - очки за правильный ответ зависят от скорости
   - в leaderboard ранжирование по `points`, затем по `correct_answers`
@@ -48,7 +53,7 @@ MVP-платформа для интерактивных викторин в с�
 - Экспорт результатов в CSV (`points`, `correct_answers`).
 
 ## Структура
-- `backend/` - Django API + WebSocket
+- `backend/` - Django API + WebSocket + Celery tasks
 - `frontend/` - Flutter Web клиент
 - `docker-compose.yml` - локальная инфраструктура
 
@@ -104,5 +109,4 @@ Authorization: Bearer <access_token>
 - `GET /api/sessions/{id}/state/`
 
 ## Следующая итерация
-- Стабильный multi-instance таймер (Redis/Celery beat вместо in-process).
 - Privacy/personal data страницы и версионирование согласий.

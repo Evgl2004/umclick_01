@@ -1,63 +1,55 @@
-﻿import threading
-from typing import Dict, Tuple
+from __future__ import annotations
 
-from django.db import close_old_connections
+from django.db import transaction
 
 from apps.session.models import LiveSession
 from apps.session.realtime import broadcast_session_event, build_answer_reveal_payload
 
-# In-process timers are enough for MVP single-instance deployment.
-_TIMER_LOCK = threading.Lock()
-_TIMER_REGISTRY: Dict[int, Tuple[int, threading.Timer]] = {}
-
 
 def cancel_auto_reveal(session_id: int) -> None:
-    with _TIMER_LOCK:
-        entry = _TIMER_REGISTRY.pop(session_id, None)
-    if entry is not None:
-        _, timer = entry
-        timer.cancel()
+    """Compatibility no-op for Celery beat based timer mode."""
+    return None
 
 
 def schedule_auto_reveal(session_id: int, question_id: int, delay_seconds: int) -> None:
-    cancel_auto_reveal(session_id)
-
-    safe_delay = max(int(delay_seconds), 1)
-    timer = threading.Timer(safe_delay, _auto_reveal_callback, args=(session_id, question_id))
-    timer.daemon = True
-
-    with _TIMER_LOCK:
-        _TIMER_REGISTRY[session_id] = (question_id, timer)
-
-    timer.start()
+    """Compatibility no-op for Celery beat based timer mode."""
+    return None
 
 
-def _auto_reveal_callback(session_id: int, question_id: int) -> None:
-    try:
-        close_old_connections()
-
+def reveal_current_question_once(
+    session_id: int,
+    *,
+    expected_question_id: int | None,
+    revealed_by: str,
+    auto: bool,
+) -> dict | None:
+    """Atomically reveal answers only once for the active session question."""
+    with transaction.atomic():
         try:
             session = (
-                LiveSession.objects.select_related("current_question")
+                LiveSession.objects.select_for_update()
+                .select_related("current_question")
                 .prefetch_related("current_question__choices")
                 .get(id=session_id)
             )
         except LiveSession.DoesNotExist:
-            return
+            return None
 
         if session.status != LiveSession.STATUS_LIVE:
-            return
+            return None
+        if session.current_question_id is None:
+            return None
+        if expected_question_id is not None and session.current_question_id != expected_question_id:
+            return None
+        if session.revealed_question_id == session.current_question_id:
+            return None
 
-        if session.current_question_id != question_id:
-            return
+        session.revealed_question_id = session.current_question_id
+        session.save(update_fields=["revealed_question_id"])
 
         payload = build_answer_reveal_payload(session)
-        payload["revealed_by"] = "auto"
-        payload["auto"] = True
-        broadcast_session_event(session_id, "answer_revealed", payload)
-    finally:
-        close_old_connections()
-        with _TIMER_LOCK:
-            existing = _TIMER_REGISTRY.get(session_id)
-            if existing is not None and existing[0] == question_id:
-                _TIMER_REGISTRY.pop(session_id, None)
+
+    payload["revealed_by"] = revealed_by
+    payload["auto"] = auto
+    broadcast_session_event(session_id, "answer_revealed", payload)
+    return payload

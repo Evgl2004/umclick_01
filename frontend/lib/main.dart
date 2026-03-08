@@ -981,6 +981,12 @@ class _TeacherPanelState extends State<TeacherPanel> {
           }
         });
         _startTeacherTimer(parseDateTimeLocal(payload['question_ends_at']));
+        if (payload['is_answer_revealed'] == true) {
+          _questionTimer?.cancel();
+          setState(() {
+            _questionTimeLeftLabel = '00:00';
+          });
+        }
         break;
       case 'participant_joined':
         _patchSession({'participants_count': payload['participants_count'] ?? (_session?['participants_count'] ?? 0)});
@@ -2001,6 +2007,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         final incomingQuestion = mapOrNull(payload['current_question']);
         final incomingQuestionId = asInt(incomingQuestion?['id'], -1);
         final activeQuestionId = asInt(_activeQuestion?['id'], -2);
+        final isAnswerRevealed = payload['is_answer_revealed'] == true;
 
         setState(() {
           _sessionStatus = payload['status']?.toString() ?? _sessionStatus;
@@ -2011,6 +2018,14 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
           _applyQuestionState(incomingQuestion, payload['question_ends_at']);
         } else {
           _startCountdown(parseDateTimeLocal(payload['question_ends_at']));
+        }
+
+        if (isAnswerRevealed && incomingQuestion != null) {
+          _countdownTimer?.cancel();
+          setState(() {
+            _isQuestionExpired = true;
+            _timeLeftLabel = '00:00';
+          });
         }
         break;
       case 'question_started':
@@ -2060,6 +2075,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         consent: _consent,
       );
 
+      final isAnswerRevealed = payload['is_answer_revealed'] == true;
+
       setState(() {
         _joinPayload = payload;
         _activeQuestion = mapOrNull(payload['current_question']);
@@ -2070,9 +2087,16 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         _sessionFinished = _sessionStatus == 'finished';
         _questionAnswered = false;
         _selectedChoiceId = null;
+        _isQuestionExpired = isAnswerRevealed;
+        _timeLeftLabel = isAnswerRevealed ? '00:00' : '--:--';
         _events.clear();
       });
-      _startCountdown(parseDateTimeLocal(payload['question_ends_at']));
+
+      if (isAnswerRevealed) {
+        _countdownTimer?.cancel();
+      } else {
+        _startCountdown(parseDateTimeLocal(payload['question_ends_at']));
+      }
 
       await _connectSocket(payload['session_id'] as int);
     } catch (e) {

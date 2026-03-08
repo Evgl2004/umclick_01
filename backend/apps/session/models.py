@@ -1,4 +1,4 @@
-﻿import random
+import random
 import uuid
 
 from django.db import models
@@ -34,6 +34,7 @@ class LiveSession(models.Model):
         null=True,
         blank=True,
     )
+    revealed_question_id = models.PositiveIntegerField(null=True, blank=True)
     question_started_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)

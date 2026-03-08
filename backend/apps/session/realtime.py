@@ -1,4 +1,4 @@
-﻿from datetime import timedelta
+from datetime import timedelta
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -48,6 +48,8 @@ def build_public_session_state(session: LiveSession) -> dict:
         "current_question": serialize_question_for_participants(session.current_question),
         "question_started_at": session.question_started_at.isoformat() if session.question_started_at else None,
         "question_ends_at": question_ends_at.isoformat() if question_ends_at else None,
+        "is_answer_revealed": session.current_question_id is not None
+        and session.revealed_question_id == session.current_question_id,
     }
 
 
