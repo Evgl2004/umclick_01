@@ -61,6 +61,21 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
+class ApiException implements Exception {
+  ApiException({
+    required this.statusCode,
+    required this.message,
+    required this.body,
+  });
+
+  final int statusCode;
+  final String message;
+  final String body;
+
+  @override
+  String toString() => '$message (status $statusCode): $body';
+}
+
 class ApiClient {
   ApiClient(this.baseUrl, {this.accessToken});
 
@@ -78,6 +93,14 @@ class ApiClient {
       headers['Authorization'] = 'Bearer $accessToken';
     }
     return headers;
+  }
+
+  Never _throwError(http.Response response, String message) {
+    throw ApiException(
+      statusCode: response.statusCode,
+      message: message,
+      body: response.body,
+    );
   }
 
   String sessionWebSocketUrl(int sessionId) {
@@ -106,7 +129,7 @@ class ApiClient {
       body: jsonEncode(payload),
     );
     if (response.statusCode >= 400) {
-      throw Exception('Failed to register teacher: ${response.body}');
+      _throwError(response, 'Failed to register teacher');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -121,7 +144,21 @@ class ApiClient {
       body: jsonEncode({'username': username, 'password': password}),
     );
     if (response.statusCode >= 400) {
-      throw Exception('Failed to login: ${response.body}');
+      _throwError(response, 'Failed to login');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> refreshTeacherToken({
+    required String refreshToken,
+  }) async {
+    final response = await http.post(
+      _uri('/auth/token/refresh/'),
+      headers: _headers(jsonBody: true),
+      body: jsonEncode({'refresh': refreshToken}),
+    );
+    if (response.statusCode >= 400) {
+      _throwError(response, 'Failed to refresh token');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -132,7 +169,7 @@ class ApiClient {
       headers: _headers(auth: true),
     );
     if (response.statusCode >= 400) {
-      throw Exception('Failed to get profile: ${response.body}');
+      _throwError(response, 'Failed to get profile');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -143,7 +180,7 @@ class ApiClient {
       headers: _headers(auth: true),
     );
     if (response.statusCode >= 400) {
-      throw Exception('Failed to load quizzes: ${response.body}');
+      _throwError(response, 'Failed to load quizzes');
     }
     return jsonDecode(response.body) as List<dynamic>;
   }
@@ -173,7 +210,7 @@ class ApiClient {
       body: jsonEncode(payload),
     );
     if (response.statusCode >= 400) {
-      throw Exception('Failed to create quiz: ${response.body}');
+      _throwError(response, 'Failed to create quiz');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -185,7 +222,7 @@ class ApiClient {
       body: jsonEncode({'quiz': quizId, 'host_name': 'Teacher'}),
     );
     if (response.statusCode >= 400) {
-      throw Exception('Failed to create session: ${response.body}');
+      _throwError(response, 'Failed to create session');
     }
 
     final created = jsonDecode(response.body) as Map<String, dynamic>;
@@ -194,7 +231,7 @@ class ApiClient {
       headers: _headers(auth: true),
     );
     if (details.statusCode >= 400) {
-      throw Exception('Failed to fetch session details: ${details.body}');
+      _throwError(details, 'Failed to fetch session details');
     }
     return jsonDecode(details.body) as Map<String, dynamic>;
   }
@@ -205,7 +242,7 @@ class ApiClient {
       headers: _headers(auth: true),
     );
     if (response.statusCode >= 400) {
-      throw Exception('Failed to start session: ${response.body}');
+      _throwError(response, 'Failed to start session');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -216,7 +253,7 @@ class ApiClient {
       headers: _headers(auth: true),
     );
     if (response.statusCode >= 400) {
-      throw Exception('Failed to finish session: ${response.body}');
+      _throwError(response, 'Failed to finish session');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -227,7 +264,7 @@ class ApiClient {
       headers: _headers(auth: true),
     );
     if (response.statusCode >= 400) {
-      throw Exception('Failed to load next question: ${response.body}');
+      _throwError(response, 'Failed to load next question');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -238,7 +275,7 @@ class ApiClient {
       headers: _headers(auth: true),
     );
     if (response.statusCode >= 400) {
-      throw Exception('Failed to reveal answers: ${response.body}');
+      _throwError(response, 'Failed to reveal answers');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -249,7 +286,7 @@ class ApiClient {
       headers: _headers(auth: true),
     );
     if (response.statusCode >= 400) {
-      throw Exception('Failed to load leaderboard: ${response.body}');
+      _throwError(response, 'Failed to load leaderboard');
     }
     return jsonDecode(response.body) as List<dynamic>;
   }
@@ -271,7 +308,7 @@ class ApiClient {
       }),
     );
     if (response.statusCode >= 400) {
-      throw Exception('Failed to join session: ${response.body}');
+      _throwError(response, 'Failed to join session');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -291,7 +328,7 @@ class ApiClient {
       }),
     );
     if (response.statusCode >= 400) {
-      throw Exception('Failed to submit answer: ${response.body}');
+      _throwError(response, 'Failed to submit answer');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -326,6 +363,7 @@ const _prefsAccessTokenKey = 'umclick_teacher_access_token';
 const _prefsRefreshTokenKey = 'umclick_teacher_refresh_token';
 const _prefsApiBaseUrlKey = 'umclick_api_base_url';
 const _prefsUsernameKey = 'umclick_teacher_username';
+
 class TeacherPanel extends StatefulWidget {
   const TeacherPanel({super.key});
 
@@ -391,6 +429,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   }
 
   void _appendEvent(String text) {
+    if (!mounted) return;
     final timestamp = DateTime.now().toIso8601String().substring(11, 19);
     setState(() {
       _events.insert(0, '[$timestamp] $text');
@@ -462,8 +501,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
         });
       }
 
-      final me = await _client().getMe();
-      final quizzes = await _client().getQuizzes();
+      final me = await _runTeacherRequest((client) => client.getMe());
+      final quizzes = await _runTeacherRequest((client) => client.getQuizzes());
 
       if (mounted) {
         setState(() {
@@ -489,6 +528,60 @@ class _TeacherPanelState extends State<TeacherPanel> {
         });
       }
       _appendEvent('Stored session is invalid and was cleared.');
+    }
+  }
+
+  Future<bool> _refreshAccessToken() async {
+    final refreshToken = _refreshToken;
+    if (refreshToken == null || refreshToken.isEmpty) {
+      return false;
+    }
+
+    try {
+      final payload = await _client(withToken: false).refreshTeacherToken(
+        refreshToken: refreshToken,
+      );
+      final newAccessToken = payload['access'] as String?;
+      final rotatedRefresh = payload['refresh'] as String?;
+
+      if (newAccessToken == null || newAccessToken.isEmpty) {
+        return false;
+      }
+
+      if (!mounted) return false;
+      setState(() {
+        _accessToken = newAccessToken;
+        if (rotatedRefresh != null && rotatedRefresh.isNotEmpty) {
+          _refreshToken = rotatedRefresh;
+        }
+      });
+      await _persistAuthSession();
+      _appendEvent('Access token refreshed automatically.');
+      return true;
+    } catch (_) {
+      await _logout();
+      if (!mounted) return false;
+      setState(() {
+        _error = 'Session expired. Please login again.';
+      });
+      _appendEvent('Refresh token expired, teacher logged out.');
+      return false;
+    }
+  }
+
+  Future<T> _runTeacherRequest<T>(Future<T> Function(ApiClient client) request) async {
+    try {
+      return await request(_client());
+    } on ApiException catch (e) {
+      if (e.statusCode != 401) {
+        rethrow;
+      }
+
+      final refreshed = await _refreshAccessToken();
+      if (!refreshed) {
+        rethrow;
+      }
+      return request(_client());
     }
   }
 
@@ -707,7 +800,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _loadMe() async {
     if (!_isLoggedIn) return;
     try {
-      final me = await _client().getMe();
+      final me = await _runTeacherRequest((client) => client.getMe());
       setState(() {
         _teacher = me;
       });
@@ -732,7 +825,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
 
     try {
-      final quizzes = await _client().getQuizzes();
+      final quizzes = await _runTeacherRequest((client) => client.getQuizzes());
       setState(() {
         _quizzes = quizzes;
         if (_quizzes.isNotEmpty) {
@@ -764,7 +857,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
 
     try {
-      await _client().createDemoQuiz(_quizTitleController.text.trim());
+      await _runTeacherRequest((client) => client.createDemoQuiz(_quizTitleController.text.trim()));
       await _refreshQuizzes();
     } catch (e) {
       setState(() {
@@ -786,7 +879,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
 
     try {
-      final session = await _client().createSession(_selectedQuizId!);
+      final session = await _runTeacherRequest((client) => client.createSession(_selectedQuizId!));
       setState(() {
         _session = session;
         _activeQuestion = mapOrNull(session['current_question']);
@@ -809,7 +902,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _startSession() async {
     if (_session == null) return;
     try {
-      final started = await _client().startSession(_session!['id'] as int);
+      final started = await _runTeacherRequest((client) => client.startSession(_session!['id'] as int));
       setState(() {
         _session = started;
         _activeQuestion = mapOrNull(started['current_question']);
@@ -827,7 +920,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _nextQuestion() async {
     if (_session == null) return;
     try {
-      final payload = await _client().nextQuestion(_session!['id'] as int);
+      final payload = await _runTeacherRequest((client) => client.nextQuestion(_session!['id'] as int));
       if (payload.containsKey('session')) {
         final session = mapOrNull(payload['session']);
         if (session != null) {
@@ -859,7 +952,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _revealAnswers() async {
     if (_session == null) return;
     try {
-      final payload = await _client().revealAnswer(_session!['id'] as int);
+      final payload = await _runTeacherRequest((client) => client.revealAnswer(_session!['id'] as int));
       setState(() {
         _revealPayload = payload;
       });
@@ -874,7 +967,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _finishSession() async {
     if (_session == null) return;
     try {
-      final finished = await _client().finishSession(_session!['id'] as int);
+      final finished = await _runTeacherRequest((client) => client.finishSession(_session!['id'] as int));
       _questionTimer?.cancel();
       setState(() {
         _session = finished;
@@ -892,7 +985,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _showLeaderboard() async {
     if (_session == null) return;
     try {
-      final rows = await _client().getLeaderboard(_session!['id'] as int);
+      final rows = await _runTeacherRequest((client) => client.getLeaderboard(_session!['id'] as int));
       if (!mounted) return;
 
       showDialog<void>(
@@ -939,6 +1032,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
     _questionTimer?.cancel();
     await _closeSessionSocket();
     await _clearPersistedAuthSession();
+    if (!mounted) return;
     setState(() {
       _accessToken = null;
       _refreshToken = null;
@@ -1251,6 +1345,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   }
 
   void _appendEvent(String text) {
+    if (!mounted) return;
     final timestamp = DateTime.now().toIso8601String().substring(11, 19);
     setState(() {
       _events.insert(0, '[$timestamp] $text');

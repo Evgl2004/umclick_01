@@ -12,7 +12,7 @@ MVP-платформа для интерактивных викторин в с�
 - `main`
 - `develop-cai`
 
-## Что реализовано (MVP-5)
+## Что реализовано (MVP-6)
 - JWT-аутентификация преподавателя.
 - CRUD викторин (teacher-only).
 - Создание live-сессий, PIN и QR для подключения.
@@ -40,6 +40,7 @@ MVP-платформа для интерактивных викторин в с�
 - Персистентная сессия преподавателя во Flutter:
   - access/refresh токены сохраняются локально в браузере
   - при перезагрузке UI пробует восстановить teacher-сессию автоматически
+  - при ответе 401 Unauthorized UI пытается обновить access token через refresh token и повторяет teacher-запрос
 - Экспорт результатов в CSV (`points`, `correct_answers`).
 
 ## Структура
@@ -101,5 +102,4 @@ Authorization: Bearer <access_token>
 ## Следующая итерация
 - Визуальный конструктор викторин во Flutter (без demo-кнопки).
 - Стабильный multi-instance таймер (Redis/Celery beat вместо in-process).
-- Авто-refresh access токена через refresh token.
 - Privacy/personal data страницы и версионирование согласий.
