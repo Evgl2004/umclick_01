@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from apps.quiz.models import Choice, Question, Quiz
 from apps.session.models import LiveSession, Participant, ParticipantAnswer, SessionParticipant
+from apps.session.realtime import serialize_question_for_participants
 
 
 def build_join_url(session: LiveSession) -> str:
@@ -57,6 +58,7 @@ class LiveSessionSerializer(serializers.ModelSerializer):
     join_url = serializers.SerializerMethodField()
     qr_code_base64 = serializers.SerializerMethodField()
     participants_count = serializers.SerializerMethodField()
+    current_question = serializers.SerializerMethodField()
 
     class Meta:
         model = LiveSession
@@ -70,6 +72,8 @@ class LiveSessionSerializer(serializers.ModelSerializer):
             "join_url",
             "qr_code_base64",
             "participants_count",
+            "current_question",
+            "question_started_at",
             "started_at",
             "finished_at",
             "created_at",
@@ -84,6 +88,9 @@ class LiveSessionSerializer(serializers.ModelSerializer):
     def get_participants_count(self, obj: LiveSession) -> int:
         return obj.participants.count()
 
+    def get_current_question(self, obj: LiveSession):
+        return serialize_question_for_participants(obj.current_question)
+
 
 class ParticipantJoinSerializer(serializers.Serializer):
     pin = serializers.CharField(max_length=6)
@@ -96,8 +103,10 @@ class ParticipantJoinSerializer(serializers.Serializer):
             raise serializers.ValidationError("Consent is required to join quiz sessions.")
 
         try:
-            session = LiveSession.objects.select_related("quiz").prefetch_related("quiz__questions__choices").get(
-                pin=attrs["pin"]
+            session = (
+                LiveSession.objects.select_related("quiz", "current_question")
+                .prefetch_related("current_question__choices", "participants")
+                .get(pin=attrs["pin"])
             )
         except LiveSession.DoesNotExist as exc:
             raise serializers.ValidationError("Session with this PIN was not found.") from exc
@@ -142,17 +151,25 @@ class SubmitAnswerSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         try:
-            session_participant = SessionParticipant.objects.select_related("session").get(
-                id=attrs["session_participant_id"]
-            )
+            session_participant = SessionParticipant.objects.select_related(
+                "session",
+                "session__current_question",
+            ).get(id=attrs["session_participant_id"])
         except SessionParticipant.DoesNotExist as exc:
             raise serializers.ValidationError("Participant session link was not found.") from exc
 
-        if session_participant.session.status != LiveSession.STATUS_LIVE:
+        session = session_participant.session
+        if session.status != LiveSession.STATUS_LIVE:
             raise serializers.ValidationError("Session is not active.")
 
+        if session.current_question_id is None:
+            raise serializers.ValidationError("No active question right now. Wait for teacher signal.")
+
+        if session.current_question_id != attrs["question_id"]:
+            raise serializers.ValidationError("This question is not active right now.")
+
         try:
-            question = Question.objects.get(id=attrs["question_id"], quiz_id=session_participant.session.quiz_id)
+            question = Question.objects.get(id=attrs["question_id"], quiz_id=session.quiz_id)
         except Question.DoesNotExist as exc:
             raise serializers.ValidationError("Question was not found in this session quiz.") from exc
 
@@ -160,6 +177,9 @@ class SubmitAnswerSerializer(serializers.Serializer):
             choice = Choice.objects.get(id=attrs["choice_id"], question_id=question.id)
         except Choice.DoesNotExist as exc:
             raise serializers.ValidationError("Choice was not found for this question.") from exc
+
+        if ParticipantAnswer.objects.filter(session_participant=session_participant, question=question).exists():
+            raise serializers.ValidationError("Answer for this question has already been submitted.")
 
         attrs["session_participant"] = session_participant
         attrs["question"] = question
@@ -171,13 +191,11 @@ class SubmitAnswerSerializer(serializers.Serializer):
         question = validated_data["question"]
         choice = validated_data["choice"]
 
-        answer, _ = ParticipantAnswer.objects.update_or_create(
+        answer = ParticipantAnswer.objects.create(
             session_participant=session_participant,
             question=question,
-            defaults={
-                "choice": choice,
-                "is_correct": choice.is_correct,
-            },
+            choice=choice,
+            is_correct=choice.is_correct,
         )
 
         score = ParticipantAnswer.objects.filter(

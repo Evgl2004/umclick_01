@@ -3,117 +3,94 @@
 MVP-платформа для интерактивных викторин в стиле Kahoot.
 
 ## Текущий стек
-- Backend: Django + DRF
+- Backend: Django + DRF + Channels (WebSocket)
 - Frontend: Flutter Web
 - Database: PostgreSQL
 - Orchestration: Docker Compose
 
-## Ветка разработки
-- Основная: `main`
-- Рабочая: `develop-cai`
+## Ветки
+- `main`
+- `develop-cai`
 
-## Что уже реализовано (MVP-1)
+## Что реализовано (MVP-2)
 - JWT-аутентификация преподавателя.
-- Регистрация преподавателя (`/api/auth/register/`) с опциональным `TEACHER_SIGNUP_CODE`.
-- Личный профиль преподавателя (`/api/auth/me/`).
-- CRUD викторин (вопросы + варианты ответов) с teacher-доступом.
-- Создание live-сессии преподавателем.
-- PIN-код подключения участников.
-- Join URL и QR-данные для подключения.
+- CRUD викторин (teacher-only).
+- Создание live-сессий, PIN и QR для подключения.
 - Быстрая регистрация участника: `phone + name + consent`.
-- Отправка ответов участником.
-- Подсчёт score (количество правильных ответов).
-- Leaderboard по сессии.
-- Экспорт результатов в CSV.
-- Минимальный Flutter Web клиент (Teacher / Participant).
+- Real-time события через WebSocket:
+  - `session_started`
+  - `question_started`
+  - `answer_submitted`
+  - `answer_revealed`
+  - `participant_joined`
+  - `session_finished`
+  - `session_state`
+- Управление раундом преподавателем:
+  - старт сессии
+  - следующий вопрос
+  - раскрытие правильного ответа и статистики
+  - завершение сессии
+- Ответы только для активного вопроса (повторная отправка запрещена).
+- Leaderboard и экспорт результатов в CSV.
 
-## Структура проекта
-- `backend/` - Django + DRF API
+## Структура
+- `backend/` - Django API + WebSocket
 - `frontend/` - Flutter Web клиент
-- `docker-compose.yml` - инфраструктура сервисов
+- `docker-compose.yml` - локальная инфраструктура
 
 ## Быстрый старт
 1. Создать `.env`:
 ```bash
 cp .env.example .env
 ```
-2. Опционально ограничить регистрацию преподавателя:
+2. (Опционально) Ограничить регистрацию преподавателя:
 ```bash
 # в .env
 TEACHER_SIGNUP_CODE=my-private-code
 ```
-3. Поднять сервисы:
+3. Запуск:
 ```bash
 docker compose up --build
 ```
-4. Backend будет доступен на:
-- `http://localhost:8000`
-5. Frontend будет доступен на:
-- `http://localhost:3000`
+4. Доступ:
+- Backend API: `http://localhost:8000/api`
+- WebSocket: `ws://localhost:8000/ws/sessions/<session_id>/`
+- Frontend: `http://localhost:3000`
 
 ## Auth API
-Base URL: `http://localhost:8000/api`
+- `POST /api/auth/register/`
+- `POST /api/auth/token/`
+- `POST /api/auth/token/refresh/`
+- `GET /api/auth/me/`
 
-- `POST /auth/register/`
-- `POST /auth/token/`
-- `POST /auth/token/refresh/`
-- `GET /auth/me/`
-
-### Пример логина
-```json
-{
-  "username": "teacher1",
-  "password": "strong-password"
-}
-```
-
-Ответ содержит `access` и `refresh`. Для teacher API использовать заголовок:
+Для teacher API нужен заголовок:
 ```text
 Authorization: Bearer <access_token>
 ```
 
-## Основные API endpoints
+## Teacher API (JWT)
+- `GET /api/quizzes/`
+- `POST /api/quizzes/`
+- `GET /api/quizzes/{id}/`
+- `PUT /api/quizzes/{id}/`
+- `DELETE /api/quizzes/{id}/`
 
-### Teacher (нужен JWT)
-- `GET /quizzes/`
-- `POST /quizzes/`
-- `GET /quizzes/{id}/`
-- `PUT /quizzes/{id}/`
-- `DELETE /quizzes/{id}/`
-- `POST /sessions/` - создать сессию
-- `GET /sessions/{id}/` - получить сессию (PIN, join URL, QR)
-- `POST /sessions/{id}/start/` - старт сессии
-- `POST /sessions/{id}/finish/` - завершить сессию
-- `GET /sessions/{id}/leaderboard/` - таблица результатов
-- `GET /sessions/{id}/results/export/` - экспорт CSV
+- `POST /api/sessions/`
+- `GET /api/sessions/{id}/`
+- `POST /api/sessions/{id}/start/`
+- `POST /api/sessions/{id}/next-question/`
+- `POST /api/sessions/{id}/reveal-answer/`
+- `POST /api/sessions/{id}/finish/`
+- `GET /api/sessions/{id}/leaderboard/`
+- `GET /api/sessions/{id}/results/export/`
 
-### Participant (публичные)
-- `POST /sessions/join/`
-- `POST /sessions/answer/`
+## Participant API (публичные)
+- `POST /api/sessions/join/`
+- `POST /api/sessions/answer/`
+- `GET /api/sessions/{id}/state/`
 
-## Пример payload для создания викторины
-```json
-{
-  "title": "Math quiz",
-  "description": "Simple arithmetic",
-  "questions": [
-    {
-      "text": "2 + 2 = ?",
-      "order": 1,
-      "time_limit_sec": 20,
-      "choices": [
-        {"text": "3", "order": 1, "is_correct": false},
-        {"text": "4", "order": 2, "is_correct": true},
-        {"text": "5", "order": 3, "is_correct": false}
-      ]
-    }
-  ]
-}
-```
-
-## Что планируем в следующей итерации
-- Режим реального времени (WebSocket) для синхронного показа вопросов.
-- Таймер вопроса и античит-правила.
-- Расширенный экспорт (CSV/XLSX, детализация по вопросам).
-- Нормальная форма создания викторины во Flutter (без demo-кнопки).
-- Юридические страницы privacy/personal data и фиксация версии согласия.
+## Следующая итерация
+- Таймер вопроса и авто-завершение раунда.
+- Начисление очков по скорости ответа (Kahoot-style).
+- Нормальный визуальный конструктор викторин во Flutter.
+- Privacy/personal data страницы и версионирование согласий.

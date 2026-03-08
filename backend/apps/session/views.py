@@ -1,13 +1,21 @@
 ﻿import csv
 
 from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.permissions import IsTeacher
-from apps.session.models import LiveSession
+from apps.session.models import LiveSession, ParticipantAnswer
+from apps.session.realtime import (
+    broadcast_session_event,
+    build_answer_reveal_payload,
+    build_public_session_state,
+    get_next_question,
+    serialize_question_for_participants,
+)
 from apps.session.serializers import (
     LeaderboardRowSerializer,
     LiveSessionCreateSerializer,
@@ -19,7 +27,11 @@ from apps.session.serializers import (
 
 
 class LiveSessionViewSet(viewsets.ModelViewSet):
-    queryset = LiveSession.objects.select_related("quiz").prefetch_related("quiz__questions__choices", "participants")
+    queryset = (
+        LiveSession.objects.select_related("quiz", "current_question")
+        .prefetch_related("quiz__questions__choices", "current_question__choices", "participants")
+        .all()
+    )
     permission_classes = [IsTeacher]
 
     def get_serializer_class(self):
@@ -35,16 +47,92 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
                 {"detail": "Session is already finished."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
         session.status = LiveSession.STATUS_LIVE
-        session.save(update_fields=["status", "started_at"])
+        session.current_question = None
+        session.question_started_at = None
+        session.save(update_fields=["status", "started_at", "current_question", "question_started_at"])
+
+        broadcast_session_event(session.id, "session_started", build_public_session_state(session))
         return Response(LiveSessionSerializer(session).data)
 
     @action(detail=True, methods=["post"])
     def finish(self, request, pk=None):
         session = self.get_object()
         session.status = LiveSession.STATUS_FINISHED
-        session.save(update_fields=["status", "finished_at"])
+        session.current_question = None
+        session.question_started_at = None
+        session.save(update_fields=["status", "finished_at", "current_question", "question_started_at"])
+
+        broadcast_session_event(session.id, "session_finished", build_public_session_state(session))
         return Response(LiveSessionSerializer(session).data)
+
+    @action(detail=True, methods=["post"], url_path="next-question")
+    def next_question(self, request, pk=None):
+        session = self.get_object()
+        if session.status != LiveSession.STATUS_LIVE:
+            return Response(
+                {"detail": "Session must be live to move to the next question."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        next_question = get_next_question(session)
+        if next_question is None:
+            session.status = LiveSession.STATUS_FINISHED
+            session.current_question = None
+            session.question_started_at = None
+            session.save(update_fields=["status", "finished_at", "current_question", "question_started_at"])
+
+            payload = build_public_session_state(session)
+            broadcast_session_event(session.id, "session_finished", payload)
+            return Response(
+                {
+                    "detail": "No more questions. Session finished.",
+                    "session": LiveSessionSerializer(session).data,
+                }
+            )
+
+        session.current_question = next_question
+        session.question_started_at = timezone.now()
+        session.save(update_fields=["current_question", "question_started_at"])
+
+        payload = {
+            "session_id": session.id,
+            "status": session.status,
+            "question": serialize_question_for_participants(next_question),
+            "question_started_at": session.question_started_at.isoformat() if session.question_started_at else None,
+        }
+        broadcast_session_event(session.id, "question_started", payload)
+        return Response(payload)
+
+    @action(detail=True, methods=["post"], url_path="reveal-answer")
+    def reveal_answer(self, request, pk=None):
+        session = self.get_object()
+        if session.status != LiveSession.STATUS_LIVE:
+            return Response(
+                {"detail": "Session must be live to reveal answers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if session.current_question_id is None:
+            return Response(
+                {"detail": "No active question to reveal."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payload = build_answer_reveal_payload(session)
+        broadcast_session_event(session.id, "answer_revealed", payload)
+        return Response(payload)
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="state",
+        permission_classes=[permissions.AllowAny],
+    )
+    def state(self, request, pk=None):
+        session = self.get_object()
+        return Response(build_public_session_state(session))
 
     @action(detail=True, methods=["get"], url_path="results/export")
     def export_results(self, request, pk=None):
@@ -81,12 +169,25 @@ class JoinSessionAPIView(APIView):
         session_participant = payload["session_participant"]
         participant = payload["participant"]
 
+        participants_count = session.participants.count()
+        broadcast_session_event(
+            session.id,
+            "participant_joined",
+            {
+                "session_id": session.id,
+                "participant_name": participant.name,
+                "participants_count": participants_count,
+            },
+        )
+        broadcast_session_event(session.id, "session_state", build_public_session_state(session))
+
         return Response(
             {
                 "session_id": session.id,
                 "session_pin": session.pin,
                 "session_status": session.status,
                 "session_participant_id": session_participant.id,
+                "participants_count": participants_count,
                 "participant": {
                     "id": participant.id,
                     "name": participant.name,
@@ -96,20 +197,8 @@ class JoinSessionAPIView(APIView):
                     "id": session.quiz.id,
                     "title": session.quiz.title,
                     "description": session.quiz.description,
-                    "questions": [
-                        {
-                            "id": q.id,
-                            "text": q.text,
-                            "order": q.order,
-                            "time_limit_sec": q.time_limit_sec,
-                            "choices": [
-                                {"id": c.id, "text": c.text, "order": c.order}
-                                for c in q.choices.all()
-                            ],
-                        }
-                        for q in session.quiz.questions.all()
-                    ],
                 },
+                "current_question": serialize_question_for_participants(session.current_question),
             },
             status=status.HTTP_200_OK,
         )
@@ -121,5 +210,23 @@ class SubmitAnswerAPIView(APIView):
     def post(self, request):
         serializer = SubmitAnswerSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        session_participant = serializer.validated_data["session_participant"]
+        question = serializer.validated_data["question"]
         payload = serializer.save()
+
+        answered_count = ParticipantAnswer.objects.filter(
+            session_participant__session=session_participant.session,
+            question=question,
+        ).count()
+        broadcast_session_event(
+            session_participant.session_id,
+            "answer_submitted",
+            {
+                "session_id": session_participant.session_id,
+                "question_id": question.id,
+                "answered_count": answered_count,
+            },
+        )
+
         return Response(payload, status=status.HTTP_200_OK)

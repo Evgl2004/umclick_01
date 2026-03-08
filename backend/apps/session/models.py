@@ -27,6 +27,14 @@ class LiveSession(models.Model):
     pin = models.CharField(max_length=6, unique=True, db_index=True)
     join_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_WAITING)
+    current_question = models.ForeignKey(
+        Question,
+        related_name="active_sessions",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    question_started_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
