@@ -11,8 +11,78 @@ void main() {
   runApp(const UmclickApp());
 }
 
+const _defaultApiBaseUrl = 'http://localhost:8000/api';
+const _defaultPrivacyPolicyVersion = '2026-03';
+const _defaultPersonalDataConsentVersion = '2026-03';
+
+enum UmclickEntryPoint {
+  home,
+  legalPrivacy,
+  legalConsent,
+}
+
+enum PublicLegalDocumentType {
+  privacyPolicy,
+  personalDataConsent,
+}
+
+String _normalizePath(String path) {
+  if (path.isEmpty) return '/';
+  final trimmed = path.replaceAll(RegExp(r'/+$'), '');
+  return trimmed.isEmpty ? '/' : trimmed;
+}
+
+UmclickEntryPoint resolveEntryPoint(Uri uri) {
+  final normalizedPath = _normalizePath(uri.path.toLowerCase());
+  switch (normalizedPath) {
+    case '/legal/privacy':
+      return UmclickEntryPoint.legalPrivacy;
+    case '/legal/consent':
+      return UmclickEntryPoint.legalConsent;
+    default:
+      return UmclickEntryPoint.home;
+  }
+}
+
+int resolveInitialHomeTab(Uri uri) {
+  final normalizedPath = _normalizePath(uri.path.toLowerCase());
+  if (normalizedPath == '/join') {
+    return 1;
+  }
+  return 0;
+}
+
+String resolvePublicLegalApiBase(Uri uri) {
+  final apiFromQuery = uri.queryParameters['api']?.trim() ?? '';
+  if (apiFromQuery.isNotEmpty) {
+    return apiFromQuery;
+  }
+  return _defaultApiBaseUrl;
+}
+
 class UmclickApp extends StatelessWidget {
   const UmclickApp({super.key});
+
+  Widget _buildHomeForEntryPoint() {
+    final uri = Uri.base;
+    final entryPoint = resolveEntryPoint(uri);
+    final publicApiBase = resolvePublicLegalApiBase(uri);
+
+    switch (entryPoint) {
+      case UmclickEntryPoint.legalPrivacy:
+        return PublicLegalDocumentPage(
+          documentType: PublicLegalDocumentType.privacyPolicy,
+          apiBaseUrl: publicApiBase,
+        );
+      case UmclickEntryPoint.legalConsent:
+        return PublicLegalDocumentPage(
+          documentType: PublicLegalDocumentType.personalDataConsent,
+          apiBaseUrl: publicApiBase,
+        );
+      case UmclickEntryPoint.home:
+        return HomePage(initialIndex: resolveInitialHomeTab(uri));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,20 +93,28 @@ class UmclickApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0E7C7B)),
         useMaterial3: true,
       ),
-      home: const HomePage(),
+      home: _buildHomeForEntryPoint(),
     );
   }
 }
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.initialIndex = 0});
+
+  final int initialIndex;
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  int _index = 0;
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex.clamp(0, 1).toInt();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -421,7 +499,7 @@ class TeacherPanel extends StatefulWidget {
 }
 
 class _TeacherPanelState extends State<TeacherPanel> {
-  final _apiController = TextEditingController(text: 'http://localhost:8000/api');
+  final _apiController = TextEditingController(text: _defaultApiBaseUrl);
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _emailController = TextEditingController();
@@ -1464,7 +1542,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
             controller: _apiController,
             decoration: const InputDecoration(
               labelText: 'API base URL',
-              hintText: 'http://localhost:8000/api',
+              hintText: _defaultApiBaseUrl,
             ),
           ),
           const SizedBox(height: 12),
@@ -1858,7 +1936,7 @@ class ParticipantPanel extends StatefulWidget {
 }
 
 class _ParticipantPanelState extends State<ParticipantPanel> {
-  final _apiController = TextEditingController(text: 'http://localhost:8000/api');
+  final _apiController = TextEditingController(text: _defaultApiBaseUrl);
   final _pinController = TextEditingController();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -1974,7 +2052,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
 
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => LegalDocumentsPage(documents: _legalDocuments!),
+        builder: (_) => LegalDocumentsPage(documents: _legalDocuments!, apiBaseUrl: _apiController.text.trim()),
       ),
     );
   }
@@ -2367,9 +2445,14 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
 }
 
 class LegalDocumentsPage extends StatelessWidget {
-  const LegalDocumentsPage({super.key, required this.documents});
+  const LegalDocumentsPage({
+    super.key,
+    required this.documents,
+    required this.apiBaseUrl,
+  });
 
   final Map<String, dynamic> documents;
+  final String apiBaseUrl;
 
   String _version(String key) {
     final section = mapOrNull(documents[key]);
@@ -2422,12 +2505,265 @@ class LegalDocumentsPage extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: () {
+                  Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => PublicLegalDocumentPage(
+                        documentType: PublicLegalDocumentType.privacyPolicy,
+                        initialDocuments: documents,
+                        apiBaseUrl: apiBaseUrl,
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.policy_outlined),
+                label: const Text('Open privacy policy'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: () {
+                  Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => PublicLegalDocumentPage(
+                        documentType: PublicLegalDocumentType.personalDataConsent,
+                        initialDocuments: documents,
+                        apiBaseUrl: apiBaseUrl,
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.gpp_maybe_outlined),
+                label: const Text('Open consent form'),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
+class PublicLegalDocumentPage extends StatefulWidget {
+  const PublicLegalDocumentPage({
+    super.key,
+    required this.documentType,
+    this.initialDocuments,
+    this.apiBaseUrl = _defaultApiBaseUrl,
+  });
+
+  final PublicLegalDocumentType documentType;
+  final Map<String, dynamic>? initialDocuments;
+  final String apiBaseUrl;
+
+  @override
+  State<PublicLegalDocumentPage> createState() => _PublicLegalDocumentPageState();
+}
+
+class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
+  Map<String, dynamic>? _documents;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _documents = widget.initialDocuments;
+    if (_documents == null) {
+      _loadLegalDocuments();
+    }
+  }
+
+  String get _documentKey {
+    if (widget.documentType == PublicLegalDocumentType.privacyPolicy) {
+      return 'privacy_policy';
+    }
+    return 'personal_data_consent';
+  }
+
+  String get _fallbackVersion {
+    if (widget.documentType == PublicLegalDocumentType.privacyPolicy) {
+      return _defaultPrivacyPolicyVersion;
+    }
+    return _defaultPersonalDataConsentVersion;
+  }
+
+  String get _title {
+    if (widget.documentType == PublicLegalDocumentType.privacyPolicy) {
+      return 'Privacy Policy';
+    }
+    return 'Personal Data Processing Consent';
+  }
+
+  String get _shortDescription {
+    if (widget.documentType == PublicLegalDocumentType.privacyPolicy) {
+      return 'How umclick collects, stores, and uses participant data.';
+    }
+    return 'Rules of consent for collecting and processing personal data in umclick.';
+  }
+
+  String get _fallbackPublicUrl {
+    if (widget.documentType == PublicLegalDocumentType.privacyPolicy) {
+      return '/legal/privacy';
+    }
+    return '/legal/consent';
+  }
+
+  String get _version {
+    final section = mapOrNull(_documents?[_documentKey]);
+    final version = section?['version']?.toString().trim() ?? '';
+    return version.isEmpty ? _fallbackVersion : version;
+  }
+
+  String get _documentUrl {
+    final section = mapOrNull(_documents?[_documentKey]);
+    final url = section?['url']?.toString().trim() ?? '';
+    return url.isEmpty ? _fallbackPublicUrl : url;
+  }
+
+  String get _contactEmail {
+    final email = _documents?['contact_email']?.toString().trim() ?? '';
+    return email.isEmpty ? 'privacy@umclick.local' : email;
+  }
+
+  List<MapEntry<String, String>> get _sections {
+    if (widget.documentType == PublicLegalDocumentType.privacyPolicy) {
+      return const [
+        MapEntry('1. Data We Collect', 'We collect participant phone number, display name, session participation metadata, answer history, and technical logs required for reliability and abuse prevention.'),
+        MapEntry('2. Why We Process Data', 'Data is used to register participants, run live quiz sessions, calculate scores, build leaderboards, and export results to teachers after each session.'),
+        MapEntry('3. Legal Basis', 'Processing is based on explicit participant consent accepted before joining a quiz session.'),
+        MapEntry('4. Storage and Retention', 'Data is stored in service databases and retained only for the period required to deliver the service, resolve disputes, and satisfy legal obligations.'),
+        MapEntry('5. Sharing and Access', 'Data is available to authorized teacher accounts of the specific session and to technical operators responsible for hosting and support under confidentiality duties.'),
+        MapEntry('6. Participant Rights', 'Participants may request access, correction, restriction, deletion, or withdrawal of consent by contacting the legal email listed on this page.'),
+      ];
+    }
+
+    return const [
+      MapEntry('1. Scope of Consent', 'By joining a session, participant consents to processing of phone number, name, quiz answers, score values, and participation timestamps.'),
+      MapEntry('2. Processing Actions', 'Consent covers collection, recording, systematization, storage, updating, extraction, transfer to authorized teacher accounts, and deletion after retention period.'),
+      MapEntry('3. Purpose of Processing', 'Processing is required for participant authorization, quiz gameplay, score calculation, leaderboard display, and teacher report export.'),
+      MapEntry('4. Consent Period', 'Consent is valid from the moment of acceptance and remains active until withdrawal or until processing purposes are fully achieved.'),
+      MapEntry('5. Withdrawal Procedure', 'Participant can withdraw consent by contacting legal support. Withdrawal may limit ability to continue using quiz participation features.'),
+      MapEntry('6. Confirmation', 'Continuing with registration confirms that participant has read and accepted this consent text and related privacy policy version.'),
+    ];
+  }
+
+  Future<void> _loadLegalDocuments() async {
+    if (_loading) {
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final docs = await ApiClient(widget.apiBaseUrl).getCurrentLegalDocuments();
+      if (!mounted) return;
+      setState(() {
+        _documents = docs;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_title),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const HomePage()),
+                (route) => false,
+              );
+            },
+            icon: const Icon(Icons.home_outlined),
+            label: const Text('Open app'),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (_loading) const LinearProgressIndicator(),
+          if (_loading) const SizedBox(height: 12),
+          if (_error != null) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Failed to refresh legal metadata: $_error'),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _loadLegalDocuments,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_shortDescription, style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Text('Version: $_version'),
+                  SelectableText('Public URL: $_documentUrl'),
+                  SelectableText('Legal contact: $_contactEmail'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ..._sections.map((section) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(section.key, style: Theme.of(context).textTheme.titleSmall),
+                      const SizedBox(height: 6),
+                      Text(section.value),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
 class _QuestionCard extends StatelessWidget {
   const _QuestionCard({
     required this.question,
