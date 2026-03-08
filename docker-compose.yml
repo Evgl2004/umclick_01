@@ -1,0 +1,57 @@
+﻿version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: umclick-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-umclick}
+      POSTGRES_USER: ${POSTGRES_USER:-umclick}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-umclick}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-umclick} -d ${POSTGRES_DB:-umclick}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: umclick-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+    command: >
+      sh -c "python manage.py makemigrations quiz session --noinput &&
+      python manage.py migrate --noinput &&
+      python manage.py runserver 0.0.0.0:8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: ghcr.io/cirruslabs/flutter:stable
+    container_name: umclick-frontend
+    working_dir: /app
+    restart: unless-stopped
+    command: >
+      bash -lc "flutter config --enable-web && flutter pub get &&
+      flutter run -d web-server --web-hostname=0.0.0.0 --web-port=3000"
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

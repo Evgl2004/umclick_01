@@ -1,0 +1,26 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.log
+.venv/
+venv/
+
+# Django static
+backend/staticfiles/
+
+# Env
+.env
+
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
