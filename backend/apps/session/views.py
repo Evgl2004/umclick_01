@@ -1,11 +1,12 @@
 ﻿import csv
 
 from django.http import HttpResponse
-from rest_framework import status, viewsets
+from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.permissions import IsTeacher
 from apps.session.models import LiveSession
 from apps.session.serializers import (
     LeaderboardRowSerializer,
@@ -19,6 +20,7 @@ from apps.session.serializers import (
 
 class LiveSessionViewSet(viewsets.ModelViewSet):
     queryset = LiveSession.objects.select_related("quiz").prefetch_related("quiz__questions__choices", "participants")
+    permission_classes = [IsTeacher]
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -68,6 +70,8 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
 
 
 class JoinSessionAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
     def post(self, request):
         serializer = ParticipantJoinSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -112,6 +116,8 @@ class JoinSessionAPIView(APIView):
 
 
 class SubmitAnswerAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
     def post(self, request):
         serializer = SubmitAnswerSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

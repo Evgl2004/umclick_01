@@ -12,8 +12,11 @@ MVP-платформа для интерактивных викторин в с�
 - Основная: `main`
 - Рабочая: `develop-cai`
 
-## Что уже реализовано (MVP-0)
-- CRUD викторин (вопросы + варианты ответов).
+## Что уже реализовано (MVP-1)
+- JWT-аутентификация преподавателя.
+- Регистрация преподавателя (`/api/auth/register/`) с опциональным `TEACHER_SIGNUP_CODE`.
+- Личный профиль преподавателя (`/api/auth/me/`).
+- CRUD викторин (вопросы + варианты ответов) с teacher-доступом.
 - Создание live-сессии преподавателем.
 - PIN-код подключения участников.
 - Join URL и QR-данные для подключения.
@@ -34,26 +37,49 @@ MVP-платформа для интерактивных викторин в с�
 ```bash
 cp .env.example .env
 ```
-2. Поднять сервисы:
+2. Опционально ограничить регистрацию преподавателя:
+```bash
+# в .env
+TEACHER_SIGNUP_CODE=my-private-code
+```
+3. Поднять сервисы:
 ```bash
 docker compose up --build
 ```
-3. Backend будет доступен на:
+4. Backend будет доступен на:
 - `http://localhost:8000`
-4. Frontend будет доступен на:
+5. Frontend будет доступен на:
 - `http://localhost:3000`
 
-## Основные API endpoints
+## Auth API
 Base URL: `http://localhost:8000/api`
 
-### Викторины (преподаватель)
+- `POST /auth/register/`
+- `POST /auth/token/`
+- `POST /auth/token/refresh/`
+- `GET /auth/me/`
+
+### Пример логина
+```json
+{
+  "username": "teacher1",
+  "password": "strong-password"
+}
+```
+
+Ответ содержит `access` и `refresh`. Для teacher API использовать заголовок:
+```text
+Authorization: Bearer <access_token>
+```
+
+## Основные API endpoints
+
+### Teacher (нужен JWT)
 - `GET /quizzes/`
 - `POST /quizzes/`
 - `GET /quizzes/{id}/`
 - `PUT /quizzes/{id}/`
 - `DELETE /quizzes/{id}/`
-
-### Сессии (преподаватель)
 - `POST /sessions/` - создать сессию
 - `GET /sessions/{id}/` - получить сессию (PIN, join URL, QR)
 - `POST /sessions/{id}/start/` - старт сессии
@@ -61,7 +87,7 @@ Base URL: `http://localhost:8000/api`
 - `GET /sessions/{id}/leaderboard/` - таблица результатов
 - `GET /sessions/{id}/results/export/` - экспорт CSV
 
-### Участник
+### Participant (публичные)
 - `POST /sessions/join/`
 - `POST /sessions/answer/`
 
@@ -86,7 +112,6 @@ Base URL: `http://localhost:8000/api`
 ```
 
 ## Что планируем в следующей итерации
-- Авторизация преподавателя (JWT/Session).
 - Режим реального времени (WebSocket) для синхронного показа вопросов.
 - Таймер вопроса и античит-правила.
 - Расширенный экспорт (CSV/XLSX, детализация по вопросам).

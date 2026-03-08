@@ -61,14 +61,85 @@ class _HomePageState extends State<HomePage> {
 }
 
 class ApiClient {
-  ApiClient(this.baseUrl);
+  ApiClient(this.baseUrl, {this.accessToken});
 
-  String baseUrl;
+  final String baseUrl;
+  final String? accessToken;
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
+  Map<String, String> _headers({bool jsonBody = false, bool auth = false}) {
+    final headers = <String, String>{};
+    if (jsonBody) {
+      headers['Content-Type'] = 'application/json';
+    }
+    if (auth && accessToken != null && accessToken!.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $accessToken';
+    }
+    return headers;
+  }
+
+  Future<Map<String, dynamic>> registerTeacher({
+    required String username,
+    required String password,
+    String? email,
+    String? signupCode,
+  }) async {
+    final payload = {
+      'username': username,
+      'password': password,
+      if (email != null && email.isNotEmpty) 'email': email,
+      if (signupCode != null && signupCode.isNotEmpty) 'signup_code': signupCode,
+    };
+
+    final response = await http.post(
+      _uri('/auth/register/'),
+      headers: _headers(jsonBody: true),
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode >= 400) {
+      throw Exception('Failed to register teacher: ${response.body}');
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> loginTeacher({
+    required String username,
+    required String password,
+  }) async {
+    final response = await http.post(
+      _uri('/auth/token/'),
+      headers: _headers(jsonBody: true),
+      body: jsonEncode({'username': username, 'password': password}),
+    );
+
+    if (response.statusCode >= 400) {
+      throw Exception('Failed to login: ${response.body}');
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getMe() async {
+    final response = await http.get(
+      _uri('/auth/me/'),
+      headers: _headers(auth: true),
+    );
+
+    if (response.statusCode >= 400) {
+      throw Exception('Failed to get profile: ${response.body}');
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   Future<List<dynamic>> getQuizzes() async {
-    final response = await http.get(_uri('/quizzes/'));
+    final response = await http.get(
+      _uri('/quizzes/'),
+      headers: _headers(auth: true),
+    );
     if (response.statusCode >= 400) {
       throw Exception('Failed to load quizzes: ${response.body}');
     }
@@ -96,7 +167,7 @@ class ApiClient {
 
     final response = await http.post(
       _uri('/quizzes/'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(jsonBody: true, auth: true),
       body: jsonEncode(payload),
     );
 
@@ -110,7 +181,7 @@ class ApiClient {
   Future<Map<String, dynamic>> createSession(int quizId) async {
     final response = await http.post(
       _uri('/sessions/'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(jsonBody: true, auth: true),
       body: jsonEncode({'quiz': quizId, 'host_name': 'Teacher'}),
     );
 
@@ -119,7 +190,10 @@ class ApiClient {
     }
 
     final created = jsonDecode(response.body) as Map<String, dynamic>;
-    final details = await http.get(_uri('/sessions/${created['id']}/'));
+    final details = await http.get(
+      _uri('/sessions/${created['id']}/'),
+      headers: _headers(auth: true),
+    );
     if (details.statusCode >= 400) {
       throw Exception('Failed to fetch session details: ${details.body}');
     }
@@ -127,7 +201,10 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> startSession(int sessionId) async {
-    final response = await http.post(_uri('/sessions/$sessionId/start/'));
+    final response = await http.post(
+      _uri('/sessions/$sessionId/start/'),
+      headers: _headers(auth: true),
+    );
     if (response.statusCode >= 400) {
       throw Exception('Failed to start session: ${response.body}');
     }
@@ -135,7 +212,10 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> finishSession(int sessionId) async {
-    final response = await http.post(_uri('/sessions/$sessionId/finish/'));
+    final response = await http.post(
+      _uri('/sessions/$sessionId/finish/'),
+      headers: _headers(auth: true),
+    );
     if (response.statusCode >= 400) {
       throw Exception('Failed to finish session: ${response.body}');
     }
@@ -150,7 +230,7 @@ class ApiClient {
   }) async {
     final response = await http.post(
       _uri('/sessions/join/'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(jsonBody: true),
       body: jsonEncode({
         'pin': pin,
         'phone': phone,
@@ -172,7 +252,7 @@ class ApiClient {
   }) async {
     final response = await http.post(
       _uri('/sessions/answer/'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(jsonBody: true),
       body: jsonEncode({
         'session_participant_id': sessionParticipantId,
         'question_id': questionId,
@@ -196,38 +276,129 @@ class TeacherPanel extends StatefulWidget {
 
 class _TeacherPanelState extends State<TeacherPanel> {
   final _apiController = TextEditingController(text: 'http://localhost:8000/api');
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _signupCodeController = TextEditingController();
   final _quizTitleController = TextEditingController(text: 'Demo quiz');
 
-  late ApiClient _api;
   List<dynamic> _quizzes = [];
   int? _selectedQuizId;
   Map<String, dynamic>? _session;
+  Map<String, dynamic>? _teacher;
+  String? _accessToken;
+  String? _refreshToken;
   bool _loading = false;
   String? _error;
 
-  @override
-  void initState() {
-    super.initState();
-    _api = ApiClient(_apiController.text);
-    _refreshQuizzes();
+  ApiClient _client({bool withToken = true}) {
+    return ApiClient(
+      _apiController.text.trim(),
+      accessToken: withToken ? _accessToken : null,
+    );
   }
+
+  bool get _isLoggedIn => _accessToken != null && _accessToken!.isNotEmpty;
 
   @override
   void dispose() {
     _apiController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
+    _emailController.dispose();
+    _signupCodeController.dispose();
     _quizTitleController.dispose();
     super.dispose();
   }
 
-  Future<void> _refreshQuizzes() async {
+  Future<void> _registerTeacher() async {
     setState(() {
       _loading = true;
       _error = null;
-      _api = ApiClient(_apiController.text);
     });
 
     try {
-      final quizzes = await _api.getQuizzes();
+      await _client(withToken: false).registerTeacher(
+        username: _usernameController.text.trim(),
+        password: _passwordController.text.trim(),
+        email: _emailController.text.trim(),
+        signupCode: _signupCodeController.text.trim(),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Teacher registered. Now login.')),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _loginTeacher() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final tokenPayload = await _client(withToken: false).loginTeacher(
+        username: _usernameController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      setState(() {
+        _accessToken = tokenPayload['access'] as String?;
+        _refreshToken = tokenPayload['refresh'] as String?;
+      });
+
+      await _loadMe();
+      await _refreshQuizzes();
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _loadMe() async {
+    if (!_isLoggedIn) return;
+    try {
+      final me = await _client().getMe();
+      setState(() {
+        _teacher = me;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    }
+  }
+
+  Future<void> _refreshQuizzes() async {
+    if (!_isLoggedIn) {
+      setState(() {
+        _error = 'Login required for teacher API.';
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final quizzes = await _client().getQuizzes();
       setState(() {
         _quizzes = quizzes;
         if (_quizzes.isNotEmpty) {
@@ -246,14 +417,20 @@ class _TeacherPanelState extends State<TeacherPanel> {
   }
 
   Future<void> _createDemoQuiz() async {
+    if (!_isLoggedIn) {
+      setState(() {
+        _error = 'Login required for teacher API.';
+      });
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
-      _api = ApiClient(_apiController.text);
     });
 
     try {
-      await _api.createDemoQuiz(_quizTitleController.text.trim());
+      await _client().createDemoQuiz(_quizTitleController.text.trim());
       await _refreshQuizzes();
     } catch (e) {
       setState(() {
@@ -267,15 +444,15 @@ class _TeacherPanelState extends State<TeacherPanel> {
   }
 
   Future<void> _createSession() async {
-    if (_selectedQuizId == null) return;
+    if (!_isLoggedIn || _selectedQuizId == null) return;
+
     setState(() {
       _loading = true;
       _error = null;
-      _api = ApiClient(_apiController.text);
     });
 
     try {
-      final session = await _api.createSession(_selectedQuizId!);
+      final session = await _client().createSession(_selectedQuizId!);
       setState(() {
         _session = session;
       });
@@ -292,17 +469,41 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
   Future<void> _startSession() async {
     if (_session == null) return;
-    final started = await _api.startSession(_session!['id'] as int);
-    setState(() {
-      _session = started;
-    });
+    try {
+      final started = await _client().startSession(_session!['id'] as int);
+      setState(() {
+        _session = started;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    }
   }
 
   Future<void> _finishSession() async {
     if (_session == null) return;
-    final finished = await _api.finishSession(_session!['id'] as int);
+    try {
+      final finished = await _client().finishSession(_session!['id'] as int);
+      setState(() {
+        _session = finished;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    }
+  }
+
+  void _logout() {
     setState(() {
-      _session = finished;
+      _accessToken = null;
+      _refreshToken = null;
+      _teacher = null;
+      _quizzes = [];
+      _selectedQuizId = null;
+      _session = null;
+      _error = null;
     });
   }
 
@@ -321,29 +522,92 @@ class _TeacherPanelState extends State<TeacherPanel> {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _quizTitleController,
-                  decoration: const InputDecoration(labelText: 'Quiz title'),
-                ),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Teacher Auth', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _usernameController,
+                    decoration: const InputDecoration(labelText: 'Username'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _passwordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Password'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _emailController,
+                    decoration: const InputDecoration(labelText: 'Email (optional)'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _signupCodeController,
+                    decoration: const InputDecoration(labelText: 'Signup code (optional)'),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      FilledButton(
+                        onPressed: _loading ? null : _registerTeacher,
+                        child: const Text('Register'),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: _loading ? null : _loginTeacher,
+                        child: const Text('Login'),
+                      ),
+                      OutlinedButton(
+                        onPressed: _loading ? null : _loadMe,
+                        child: const Text('Who am I'),
+                      ),
+                      OutlinedButton(
+                        onPressed: _loading ? null : _logout,
+                        child: const Text('Logout'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _isLoggedIn
+                        ? 'Logged in${_teacher != null ? ': ${_teacher!['username']}' : ''}'
+                        : 'Not authenticated',
+                  ),
+                  if (_refreshToken != null && _refreshToken!.isNotEmpty)
+                    const Text('Refresh token is saved in memory for this session.'),
+                ],
               ),
-              const SizedBox(width: 12),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _quizTitleController,
+            decoration: const InputDecoration(labelText: 'Quiz title'),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
               FilledButton(
-                onPressed: _loading ? null : _createDemoQuiz,
+                onPressed: (_loading || !_isLoggedIn) ? null : _createDemoQuiz,
                 child: const Text('Create demo quiz'),
+              ),
+              FilledButton.tonal(
+                onPressed: (_loading || !_isLoggedIn) ? null : _refreshQuizzes,
+                child: const Text('Refresh quizzes'),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              FilledButton.tonal(
-                onPressed: _loading ? null : _refreshQuizzes,
-                child: const Text('Refresh quizzes'),
-              ),
-              const SizedBox(width: 12),
               if (_quizzes.isNotEmpty)
                 Expanded(
                   child: DropdownButton<int>(
@@ -363,10 +627,12 @@ class _TeacherPanelState extends State<TeacherPanel> {
                       });
                     },
                   ),
-                ),
+                )
+              else
+                const Expanded(child: Text('No quizzes yet')),
               const SizedBox(width: 12),
               FilledButton(
-                onPressed: (_loading || _selectedQuizId == null) ? null : _createSession,
+                onPressed: (_loading || !_isLoggedIn || _selectedQuizId == null) ? null : _createSession,
                 child: const Text('Create session'),
               ),
             ],
