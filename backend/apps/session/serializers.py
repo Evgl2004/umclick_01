@@ -130,7 +130,8 @@ class LiveSessionSerializer(serializers.ModelSerializer):
 
 
 class ParticipantJoinSerializer(serializers.Serializer):
-    pin = serializers.CharField(max_length=6)
+    pin = serializers.CharField(max_length=6, required=False, allow_blank=True)
+    join_token = serializers.UUIDField(required=False)
     phone = serializers.CharField(max_length=32)
     name = serializers.CharField(max_length=255)
     consent = serializers.BooleanField()
@@ -139,14 +140,23 @@ class ParticipantJoinSerializer(serializers.Serializer):
         if not attrs["consent"]:
             raise serializers.ValidationError("Consent is required to join quiz sessions.")
 
+        pin = (attrs.get("pin") or "").strip()
+        join_token = attrs.get("join_token")
+        if not pin and not join_token:
+            raise serializers.ValidationError("PIN or join token is required.")
+
+        session_lookup = LiveSession.objects.select_related("quiz", "current_question").prefetch_related(
+            "current_question__choices",
+            "participants",
+        )
+
         try:
-            session = (
-                LiveSession.objects.select_related("quiz", "current_question")
-                .prefetch_related("current_question__choices", "participants")
-                .get(pin=attrs["pin"])
-            )
+            if join_token is not None:
+                session = session_lookup.get(join_token=join_token)
+            else:
+                session = session_lookup.get(pin=pin)
         except LiveSession.DoesNotExist as exc:
-            raise serializers.ValidationError("Session with this PIN was not found.") from exc
+            raise serializers.ValidationError("Session was not found by provided PIN/token.") from exc
 
         if session.status == LiveSession.STATUS_FINISHED:
             raise serializers.ValidationError("Session is already finished.")

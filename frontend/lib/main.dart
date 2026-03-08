@@ -385,20 +385,32 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> joinSession({
-    required String pin,
+    String? pin,
+    String? joinToken,
     required String phone,
     required String name,
     required bool consent,
   }) async {
+    final payload = <String, dynamic>{
+      'phone': phone,
+      'name': name,
+      'consent': consent,
+    };
+
+    final normalizedPin = (pin ?? '').trim();
+    if (normalizedPin.isNotEmpty) {
+      payload['pin'] = normalizedPin;
+    }
+
+    final normalizedJoinToken = (joinToken ?? '').trim();
+    if (normalizedJoinToken.isNotEmpty) {
+      payload['join_token'] = normalizedJoinToken;
+    }
+
     final response = await http.post(
       _uri('/sessions/join/'),
       headers: _headers(jsonBody: true),
-      body: jsonEncode({
-        'pin': pin,
-        'phone': phone,
-        'name': name,
-        'consent': consent,
-      }),
+      body: jsonEncode(payload),
     );
     if (response.statusCode >= 400) {
       _throwError(response, 'Failed to join session');
@@ -1957,6 +1969,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   bool _isQuestionExpired = false;
   Map<String, dynamic>? _legalDocuments;
   bool _loadingLegalDocuments = false;
+  String? _joinTokenFromLink;
+  bool _useJoinTokenFromLink = false;
 
   WebSocketChannel? _socket;
   StreamSubscription? _socketSubscription;
@@ -1969,7 +1983,22 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   @override
   void initState() {
     super.initState();
+    _configureJoinSourceFromUrl();
     _loadLegalDocuments(showError: false);
+  }
+
+  void _configureJoinSourceFromUrl() {
+    final tokenFromUrl = Uri.base.queryParameters['token']?.trim() ?? '';
+    if (tokenFromUrl.isNotEmpty) {
+      _joinTokenFromLink = tokenFromUrl;
+      _useJoinTokenFromLink = true;
+      return;
+    }
+
+    final pinFromUrl = Uri.base.queryParameters['pin']?.trim() ?? '';
+    if (pinFromUrl.isNotEmpty) {
+      _pinController.text = pinFromUrl;
+    }
   }
 
   @override
@@ -2228,8 +2257,12 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     });
 
     try {
+      final joinToken = _useJoinTokenFromLink ? _joinTokenFromLink : null;
+      final pin = _useJoinTokenFromLink ? null : _pinController.text.trim();
+
       final payload = await _client().joinSession(
-        pin: _pinController.text.trim(),
+        pin: pin,
+        joinToken: joinToken,
         phone: _phoneController.text.trim(),
         name: _nameController.text.trim(),
         consent: _consent,
@@ -2262,7 +2295,10 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
       await _connectSocket(payload['session_id'] as int);
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        final fallbackHint = _useJoinTokenFromLink
+            ? '\nYou can switch to manual PIN input if this link is outdated.'
+            : '';
+        _error = '${e.toString()}$fallbackHint';
       });
     } finally {
       setState(() {
@@ -2310,11 +2346,52 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
             decoration: const InputDecoration(labelText: 'API base URL'),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _pinController,
-            decoration: const InputDecoration(labelText: 'Session PIN'),
-          ),
-          const SizedBox(height: 12),
+          if (_useJoinTokenFromLink && _joinTokenFromLink != null) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Join link detected. Session PIN is not required.'),
+                    const SizedBox(height: 6),
+                    SelectableText('Token: $_joinTokenFromLink'),
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: _loading
+                          ? null
+                          : () {
+                              setState(() {
+                                _useJoinTokenFromLink = false;
+                              });
+                            },
+                      child: const Text('Use PIN instead'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ] else ...[
+            TextField(
+              controller: _pinController,
+              decoration: const InputDecoration(labelText: 'Session PIN'),
+            ),
+            if (_joinTokenFromLink != null) ...[
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _loading
+                    ? null
+                    : () {
+                        setState(() {
+                          _useJoinTokenFromLink = true;
+                        });
+                      },
+                child: const Text('Use token from join link'),
+              ),
+            ],
+            const SizedBox(height: 12),
+          ],
           TextField(
             controller: _nameController,
             decoration: const InputDecoration(labelText: 'Name'),
