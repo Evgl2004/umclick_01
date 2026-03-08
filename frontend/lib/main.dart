@@ -185,25 +185,7 @@ class ApiClient {
     return jsonDecode(response.body) as List<dynamic>;
   }
 
-  Future<Map<String, dynamic>> createDemoQuiz(String title) async {
-    final payload = {
-      'title': title,
-      'description': 'Auto-created demo quiz',
-      'questions': [
-        {
-          'text': 'What is 2 + 2?',
-          'order': 1,
-          'time_limit_sec': 20,
-          'choices': [
-            {'text': '3', 'order': 1, 'is_correct': false},
-            {'text': '4', 'order': 2, 'is_correct': true},
-            {'text': '5', 'order': 3, 'is_correct': false},
-            {'text': '22', 'order': 4, 'is_correct': false},
-          ],
-        }
-      ],
-    };
-
+  Future<Map<String, dynamic>> createQuiz(Map<String, dynamic> payload) async {
     final response = await http.post(
       _uri('/quizzes/'),
       headers: _headers(jsonBody: true, auth: true),
@@ -213,6 +195,28 @@ class ApiClient {
       _throwError(response, 'Failed to create quiz');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateQuiz(int quizId, Map<String, dynamic> payload) async {
+    final response = await http.put(
+      _uri('/quizzes/$quizId/'),
+      headers: _headers(jsonBody: true, auth: true),
+      body: jsonEncode(payload),
+    );
+    if (response.statusCode >= 400) {
+      _throwError(response, 'Failed to update quiz');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<void> deleteQuiz(int quizId) async {
+    final response = await http.delete(
+      _uri('/quizzes/$quizId/'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode >= 400) {
+      _throwError(response, 'Failed to delete quiz');
+    }
   }
 
   Future<Map<String, dynamic>> createSession(int quizId) async {
@@ -364,6 +368,40 @@ const _prefsRefreshTokenKey = 'umclick_teacher_refresh_token';
 const _prefsApiBaseUrlKey = 'umclick_api_base_url';
 const _prefsUsernameKey = 'umclick_teacher_username';
 
+class QuizDraftChoice {
+  QuizDraftChoice({String text = '', this.isCorrect = false})
+      : textController = TextEditingController(text: text);
+
+  final TextEditingController textController;
+  bool isCorrect;
+
+  void dispose() {
+    textController.dispose();
+  }
+}
+
+class QuizDraftQuestion {
+  QuizDraftQuestion({
+    String text = '',
+    int timeLimitSec = 20,
+    List<QuizDraftChoice>? choices,
+  })  : textController = TextEditingController(text: text),
+        timeLimitController = TextEditingController(text: '$timeLimitSec'),
+        choices = choices ?? [QuizDraftChoice(), QuizDraftChoice()];
+
+  final TextEditingController textController;
+  final TextEditingController timeLimitController;
+  final List<QuizDraftChoice> choices;
+
+  void dispose() {
+    textController.dispose();
+    timeLimitController.dispose();
+    for (final choice in choices) {
+      choice.dispose();
+    }
+  }
+}
+
 class TeacherPanel extends StatefulWidget {
   const TeacherPanel({super.key});
 
@@ -377,7 +415,11 @@ class _TeacherPanelState extends State<TeacherPanel> {
   final _passwordController = TextEditingController();
   final _emailController = TextEditingController();
   final _signupCodeController = TextEditingController();
-  final _quizTitleController = TextEditingController(text: 'Demo quiz');
+  final _quizTitleController = TextEditingController();
+  final _quizDescriptionController = TextEditingController();
+
+  final List<QuizDraftQuestion> _draftQuestions = [];
+  int? _editingQuizId;
 
   List<dynamic> _quizzes = [];
   int? _selectedQuizId;
@@ -412,6 +454,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   @override
   void initState() {
     super.initState();
+    _resetQuizDraft(withState: false);
     _restoreAuthSession();
   }
 
@@ -419,12 +462,14 @@ class _TeacherPanelState extends State<TeacherPanel> {
   void dispose() {
     _questionTimer?.cancel();
     _closeSessionSocket();
+    _disposeQuizDraft();
     _apiController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     _emailController.dispose();
     _signupCodeController.dispose();
     _quizTitleController.dispose();
+    _quizDescriptionController.dispose();
     super.dispose();
   }
 
@@ -439,6 +484,244 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
   }
 
+  QuizDraftQuestion _newDraftQuestion({
+    String text = '',
+    int timeLimitSec = 20,
+    List<QuizDraftChoice>? choices,
+  }) {
+    final resolvedChoices = choices ?? [
+      QuizDraftChoice(isCorrect: true),
+      QuizDraftChoice(),
+      QuizDraftChoice(),
+      QuizDraftChoice(),
+    ];
+
+    if (resolvedChoices.isNotEmpty && !resolvedChoices.any((choice) => choice.isCorrect)) {
+      resolvedChoices.first.isCorrect = true;
+    }
+
+    return QuizDraftQuestion(
+      text: text,
+      timeLimitSec: timeLimitSec,
+      choices: resolvedChoices,
+    );
+  }
+
+  void _disposeQuizDraft() {
+    for (final question in _draftQuestions) {
+      question.dispose();
+    }
+    _draftQuestions.clear();
+  }
+
+  void _resetQuizDraft({bool withState = true}) {
+    void apply() {
+      _disposeQuizDraft();
+      _editingQuizId = null;
+      _quizTitleController.clear();
+      _quizDescriptionController.clear();
+      _draftQuestions.add(_newDraftQuestion());
+    }
+
+    if (withState && mounted) {
+      setState(apply);
+    } else {
+      apply();
+    }
+  }
+
+  Map<String, dynamic>? _quizById(int quizId) {
+    for (final rawQuiz in _quizzes) {
+      final quiz = mapOrNull(rawQuiz);
+      if (quiz == null) continue;
+      if (asInt(quiz['id'], -1) == quizId) {
+        return quiz;
+      }
+    }
+    return null;
+  }
+
+  void _loadQuizDraftFromMap(Map<String, dynamic> quiz) {
+    setState(() {
+      _disposeQuizDraft();
+
+      final parsedQuizId = asInt(quiz['id'], -1);
+      _editingQuizId = parsedQuizId > 0 ? parsedQuizId : null;
+      if (_editingQuizId != null) {
+        _selectedQuizId = _editingQuizId;
+      }
+      _quizTitleController.text = quiz['title']?.toString() ?? '';
+      _quizDescriptionController.text = quiz['description']?.toString() ?? '';
+
+      final questionMaps = ((quiz['questions'] as List<dynamic>? ?? <dynamic>[])
+              .map(mapOrNull)
+              .whereType<Map<String, dynamic>>()
+              .toList())
+            ..sort((a, b) => asInt(a['order']).compareTo(asInt(b['order'])));
+
+      for (final questionMap in questionMaps) {
+        final choiceMaps = ((questionMap['choices'] as List<dynamic>? ?? <dynamic>[])
+                .map(mapOrNull)
+                .whereType<Map<String, dynamic>>()
+                .toList())
+              ..sort((a, b) => asInt(a['order']).compareTo(asInt(b['order'])));
+
+        final draftChoices = choiceMaps
+            .map(
+              (choice) => QuizDraftChoice(
+                text: choice['text']?.toString() ?? '',
+                isCorrect: choice['is_correct'] == true,
+              ),
+            )
+            .toList();
+
+        while (draftChoices.length < 2) {
+          draftChoices.add(QuizDraftChoice());
+        }
+
+        _draftQuestions.add(
+          _newDraftQuestion(
+            text: questionMap['text']?.toString() ?? '',
+            timeLimitSec: asInt(questionMap['time_limit_sec'], 20),
+            choices: draftChoices,
+          ),
+        );
+      }
+
+      if (_draftQuestions.isEmpty) {
+        _draftQuestions.add(_newDraftQuestion());
+      }
+    });
+  }
+
+  void _loadSelectedQuizIntoDraft() {
+    final quizId = _selectedQuizId;
+    if (quizId == null) return;
+    final quiz = _quizById(quizId);
+    if (quiz == null) return;
+    _loadQuizDraftFromMap(quiz);
+    _appendEvent('Quiz #$quizId loaded into builder.');
+  }
+
+  void _addDraftQuestion() {
+    setState(() {
+      _draftQuestions.add(_newDraftQuestion());
+    });
+  }
+
+  void _removeDraftQuestion(int questionIndex) {
+    if (_draftQuestions.length <= 1) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Quiz must contain at least one question.')),
+      );
+      return;
+    }
+
+    setState(() {
+      final removed = _draftQuestions.removeAt(questionIndex);
+      removed.dispose();
+    });
+  }
+
+  void _addDraftChoice(QuizDraftQuestion question) {
+    setState(() {
+      question.choices.add(QuizDraftChoice());
+    });
+  }
+
+  void _removeDraftChoice(QuizDraftQuestion question, int choiceIndex) {
+    if (question.choices.length <= 2) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Each question needs at least two answer choices.')),
+      );
+      return;
+    }
+
+    setState(() {
+      final removed = question.choices.removeAt(choiceIndex);
+      removed.dispose();
+      if (!question.choices.any((choice) => choice.isCorrect)) {
+        question.choices.first.isCorrect = true;
+      }
+    });
+  }
+
+  void _setDraftCorrectChoice(QuizDraftQuestion question, int selectedChoiceIndex) {
+    setState(() {
+      for (var i = 0; i < question.choices.length; i++) {
+        question.choices[i].isCorrect = i == selectedChoiceIndex;
+      }
+    });
+  }
+
+  Map<String, dynamic> _buildQuizPayload() {
+    final title = _quizTitleController.text.trim();
+    if (title.isEmpty) {
+      throw const FormatException('Quiz title is required.');
+    }
+
+    if (_draftQuestions.isEmpty) {
+      throw const FormatException('Add at least one question.');
+    }
+
+    final questions = <Map<String, dynamic>>[];
+
+    for (var questionIndex = 0; questionIndex < _draftQuestions.length; questionIndex++) {
+      final question = _draftQuestions[questionIndex];
+      final questionNumber = questionIndex + 1;
+      final questionText = question.textController.text.trim();
+      if (questionText.isEmpty) {
+        throw FormatException('Question $questionNumber text is required.');
+      }
+
+      final timeLimit = int.tryParse(question.timeLimitController.text.trim());
+      if (timeLimit == null || timeLimit < 5 || timeLimit > 180) {
+        throw FormatException('Question $questionNumber time limit must be between 5 and 180 seconds.');
+      }
+
+      final choices = <Map<String, dynamic>>[];
+      var correctCount = 0;
+
+      for (final choice in question.choices) {
+        final choiceText = choice.textController.text.trim();
+        if (choiceText.isEmpty) {
+          continue;
+        }
+
+        if (choice.isCorrect) {
+          correctCount += 1;
+        }
+
+        choices.add({
+          'text': choiceText,
+          'order': choices.length + 1,
+          'is_correct': choice.isCorrect,
+        });
+      }
+
+      if (choices.length < 2) {
+        throw FormatException('Question $questionNumber must have at least two non-empty choices.');
+      }
+      if (correctCount != 1) {
+        throw FormatException('Question $questionNumber must have exactly one correct choice.');
+      }
+
+      questions.add({
+        'text': questionText,
+        'order': questionNumber,
+        'time_limit_sec': timeLimit,
+        'choices': choices,
+      });
+    }
+
+    return {
+      'title': title,
+      'description': _quizDescriptionController.text.trim(),
+      'questions': questions,
+    };
+  }
   Future<void> _persistAuthSession() async {
     final prefs = await SharedPreferences.getInstance();
     if (_accessToken != null && _accessToken!.isNotEmpty) {
@@ -811,7 +1094,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
     }
   }
 
-  Future<void> _refreshQuizzes() async {
+  Future<void> _refreshQuizzes({int? selectQuizId}) async {
     if (!_isLoggedIn) {
       setState(() {
         _error = 'Login required for teacher API.';
@@ -826,24 +1109,37 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
     try {
       final quizzes = await _runTeacherRequest((client) => client.getQuizzes());
+      final preferredQuizId = selectQuizId ?? _selectedQuizId;
+
+      int? nextSelectedQuizId;
+      if (quizzes.isNotEmpty) {
+        final hasPreferred = preferredQuizId != null &&
+            quizzes.any((rawQuiz) => asInt(mapOrNull(rawQuiz)?['id'], -1) == preferredQuizId);
+        nextSelectedQuizId = hasPreferred
+            ? preferredQuizId
+            : asInt(mapOrNull(quizzes.first)?['id'], 0);
+      }
+
       setState(() {
         _quizzes = quizzes;
-        if (_quizzes.isNotEmpty) {
-          _selectedQuizId = _selectedQuizId ?? _quizzes.first['id'] as int;
-        }
+        _selectedQuizId = nextSelectedQuizId;
       });
     } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+        });
+      }
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
-  Future<void> _createDemoQuiz() async {
+  Future<void> _saveQuizDraft() async {
     if (!_isLoggedIn) {
       setState(() {
         _error = 'Login required for teacher API.';
@@ -857,16 +1153,106 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
 
     try {
-      await _runTeacherRequest((client) => client.createDemoQuiz(_quizTitleController.text.trim()));
-      await _refreshQuizzes();
+      final payload = _buildQuizPayload();
+      final editingQuizId = _editingQuizId;
+
+      final savedQuiz = editingQuizId == null
+          ? await _runTeacherRequest((client) => client.createQuiz(payload))
+          : await _runTeacherRequest((client) => client.updateQuiz(editingQuizId, payload));
+
+      final savedQuizId = asInt(savedQuiz['id'], 0);
+      await _refreshQuizzes(selectQuizId: savedQuizId);
+
+      final refreshedQuiz = _quizById(savedQuizId) ?? savedQuiz;
+      _loadQuizDraftFromMap(refreshedQuiz);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              editingQuizId == null
+                  ? 'Quiz created successfully.'
+                  : 'Quiz updated successfully.',
+            ),
+          ),
+        );
+      }
+      _appendEvent(
+        editingQuizId == null
+            ? 'Quiz #$savedQuizId created from builder.'
+            : 'Quiz #$savedQuizId updated from builder.',
+      );
+    } on FormatException catch (e) {
+      setState(() {
+        _error = e.message;
+      });
     } catch (e) {
       setState(() {
         _error = e.toString();
       });
     } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _deleteSelectedQuiz() async {
+    final quizId = _selectedQuizId;
+    if (quizId == null || !_isLoggedIn) {
+      return;
+    }
+
+    final quizTitle = _quizById(quizId)?['title']?.toString() ?? 'selected quiz';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete quiz?'),
+          content: Text('Delete "$quizTitle" permanently? This action cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      await _runTeacherRequest((client) => client.deleteQuiz(quizId));
+      final wasEditingDeletedQuiz = _editingQuizId == quizId;
+      await _refreshQuizzes();
+      if (wasEditingDeletedQuiz) {
+        _resetQuizDraft();
+      }
+      _appendEvent('Quiz #$quizId deleted.');
+    } catch (e) {
       setState(() {
-        _loading = false;
+        _error = e.toString();
       });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -1032,6 +1418,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
     _questionTimer?.cancel();
     await _closeSessionSocket();
     await _clearPersistedAuthSession();
+    _resetQuizDraft(withState: false);
     if (!mounted) return;
     setState(() {
       _accessToken = null;
@@ -1130,50 +1517,199 @@ class _TeacherPanelState extends State<TeacherPanel> {
             ),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _quizTitleController,
-            decoration: const InputDecoration(labelText: 'Quiz title'),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              FilledButton(
-                onPressed: (_loading || !_isLoggedIn) ? null : _createDemoQuiz,
-                child: const Text('Create demo quiz'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Quiz Builder', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Text(
+                    _editingQuizId == null
+                        ? 'Mode: new quiz draft'
+                        : 'Mode: editing quiz #$_editingQuizId',
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      if (_quizzes.isNotEmpty)
+                        Expanded(
+                          child: DropdownButton<int>(
+                            value: _selectedQuizId,
+                            isExpanded: true,
+                            items: _quizzes
+                                .map((rawQuiz) {
+                                  final quiz = mapOrNull(rawQuiz) ?? <String, dynamic>{};
+                                  final quizId = asInt(quiz['id'], 0);
+                                  final quizTitle = quiz['title']?.toString() ?? 'Untitled';
+                                  return DropdownMenuItem<int>(
+                                    value: quizId,
+                                    child: Text('$quizId: $quizTitle'),
+                                  );
+                                })
+                                .toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedQuizId = value;
+                              });
+                            },
+                          ),
+                        )
+                      else
+                        const Expanded(child: Text('No quizzes yet')),
+                      const SizedBox(width: 12),
+                      FilledButton.tonal(
+                        onPressed: (_loading || !_isLoggedIn || _selectedQuizId == null)
+                            ? null
+                            : _loadSelectedQuizIntoDraft,
+                        child: const Text('Load'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      FilledButton(
+                        onPressed: (_loading || !_isLoggedIn) ? null : _saveQuizDraft,
+                        child: Text(_editingQuizId == null ? 'Save new quiz' : 'Save changes'),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: (_loading || !_isLoggedIn) ? null : () => _resetQuizDraft(),
+                        child: const Text('New draft'),
+                      ),
+                      OutlinedButton(
+                        onPressed: (_loading || !_isLoggedIn) ? null : () => _refreshQuizzes(),
+                        child: const Text('Refresh quizzes'),
+                      ),
+                      OutlinedButton(
+                        onPressed: (_loading || !_isLoggedIn || _selectedQuizId == null)
+                            ? null
+                            : _deleteSelectedQuiz,
+                        child: const Text('Delete selected'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _quizTitleController,
+                    decoration: const InputDecoration(labelText: 'Quiz title'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _quizDescriptionController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(labelText: 'Description (optional)'),
+                  ),
+                  const SizedBox(height: 12),
+                  ..._draftQuestions.asMap().entries.map((questionEntry) {
+                    final questionIndex = questionEntry.key;
+                    final question = questionEntry.value;
+                    final correctChoiceIndex = question.choices.indexWhere((choice) => choice.isCorrect);
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'Question ${questionIndex + 1}',
+                                  style: Theme.of(context).textTheme.titleSmall,
+                                ),
+                                const Spacer(),
+                                IconButton(
+                                  onPressed: _loading ? null : () => _removeDraftQuestion(questionIndex),
+                                  icon: const Icon(Icons.delete_outline),
+                                  tooltip: 'Remove question',
+                                ),
+                              ],
+                            ),
+                            TextField(
+                              controller: question.textController,
+                              decoration: const InputDecoration(labelText: 'Question text'),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: question.timeLimitController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Time limit (sec)',
+                                hintText: '5-180',
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            ...question.choices.asMap().entries.map((choiceEntry) {
+                              final choiceIndex = choiceEntry.key;
+                              final choice = choiceEntry.value;
+
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Row(
+                                  children: [
+                                    Radio<int>(
+                                      value: choiceIndex,
+                                      groupValue: correctChoiceIndex >= 0 ? correctChoiceIndex : null,
+                                      onChanged: _loading
+                                          ? null
+                                          : (_) => _setDraftCorrectChoice(question, choiceIndex),
+                                    ),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: choice.textController,
+                                        decoration: InputDecoration(
+                                          labelText: 'Choice ${choiceIndex + 1}',
+                                        ),
+                                      ),
+                                    ),
+                                    IconButton(
+                                      onPressed: _loading
+                                          ? null
+                                          : () => _removeDraftChoice(question, choiceIndex),
+                                      icon: const Icon(Icons.close),
+                                      tooltip: 'Remove choice',
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: OutlinedButton.icon(
+                                onPressed: _loading ? null : () => _addDraftChoice(question),
+                                icon: const Icon(Icons.add),
+                                label: const Text('Add choice'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                  FilledButton.tonalIcon(
+                    onPressed: (_loading || !_isLoggedIn) ? null : _addDraftQuestion,
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('Add question'),
+                  ),
+                ],
               ),
-              FilledButton.tonal(
-                onPressed: (_loading || !_isLoggedIn) ? null : _refreshQuizzes,
-                child: const Text('Refresh quizzes'),
-              ),
-            ],
+            ),
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              if (_quizzes.isNotEmpty)
-                Expanded(
-                  child: DropdownButton<int>(
-                    value: _selectedQuizId,
-                    isExpanded: true,
-                    items: _quizzes
-                        .map(
-                          (q) => DropdownMenuItem<int>(
-                            value: q['id'] as int,
-                            child: Text('${q['id']}: ${q['title']}'),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedQuizId = value;
-                      });
-                    },
-                  ),
-                )
-              else
-                const Expanded(child: Text('No quizzes yet')),
+              Expanded(
+                child: Text(
+                  _selectedQuizId == null
+                      ? 'Select a quiz in builder to create a live session.'
+                      : 'Session quiz: #$_selectedQuizId',
+                ),
+              ),
               const SizedBox(width: 12),
               FilledButton(
                 onPressed: (_loading || !_isLoggedIn || _selectedQuizId == null) ? null : _createSession,
