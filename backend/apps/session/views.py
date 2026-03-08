@@ -13,6 +13,7 @@ from apps.session.autoreveal import (
     reveal_current_question_once,
     schedule_auto_reveal,
 )
+from apps.session.legal import get_current_legal_documents
 from apps.session.models import LiveSession, ParticipantAnswer
 from apps.session.realtime import (
     broadcast_session_event,
@@ -209,6 +210,13 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+class CurrentLegalDocumentsAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        return Response(get_current_legal_documents())
+
+
 class JoinSessionAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -245,6 +253,14 @@ class JoinSessionAPIView(APIView):
                     "id": participant.id,
                     "name": participant.name,
                     "phone": participant.phone,
+                    "consent": participant.consent,
+                    "consent_given_at": (
+                        participant.consent_given_at.isoformat()
+                        if participant.consent_given_at
+                        else None
+                    ),
+                    "privacy_policy_version": participant.privacy_policy_version,
+                    "personal_data_consent_version": participant.personal_data_consent_version,
                 },
                 "quiz": {
                     "id": session.quiz.id,
@@ -255,6 +271,7 @@ class JoinSessionAPIView(APIView):
                 "question_started_at": session_state.get("question_started_at"),
                 "question_ends_at": session_state.get("question_ends_at"),
                 "is_answer_revealed": session_state.get("is_answer_revealed"),
+                "legal_documents": get_current_legal_documents(),
             },
             status=status.HTTP_200_OK,
         )

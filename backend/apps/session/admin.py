@@ -1,18 +1,18 @@
-﻿from django.contrib import admin
+from django.contrib import admin
 
 from apps.session.models import LiveSession, Participant, ParticipantAnswer, SessionParticipant
 
 
 @admin.register(LiveSession)
 class LiveSessionAdmin(admin.ModelAdmin):
-    list_display = ("id", "pin", "quiz", "status", "current_question", "created_at")
+    list_display = ("id", "pin", "quiz", "status", "current_question", "revealed_question_id", "created_at")
     list_filter = ("status", "created_at")
     search_fields = ("pin", "quiz__title", "host_name")
 
 
 @admin.register(Participant)
 class ParticipantAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "phone", "consent", "created_at")
+    list_display = ("id", "name", "phone", "consent", "consent_given_at", "privacy_policy_version", "personal_data_consent_version", "created_at")
     search_fields = ("name", "phone")
 
 

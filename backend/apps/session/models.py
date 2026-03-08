@@ -63,6 +63,9 @@ class Participant(models.Model):
     phone = models.CharField(max_length=32, unique=True)
     name = models.CharField(max_length=255)
     consent = models.BooleanField(default=False)
+    consent_given_at = models.DateTimeField(null=True, blank=True)
+    privacy_policy_version = models.CharField(max_length=32, blank=True)
+    personal_data_consent_version = models.CharField(max_length=32, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

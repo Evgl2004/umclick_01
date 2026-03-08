@@ -10,6 +10,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.quiz.models import Choice, Question, Quiz
+from apps.session.legal import get_current_consent_versions
 from apps.session.models import LiveSession, Participant, ParticipantAnswer, SessionParticipant
 from apps.session.realtime import serialize_question_for_participants
 
@@ -159,14 +160,34 @@ class ParticipantJoinSerializer(serializers.Serializer):
         consent = validated_data["consent"]
         session = validated_data["session"]
 
+        privacy_policy_version, personal_data_consent_version = get_current_consent_versions()
+        consent_given_at = timezone.now() if consent else None
+
         participant, created = Participant.objects.get_or_create(
             phone=phone,
-            defaults={"name": name, "consent": consent},
+            defaults={
+                "name": name,
+                "consent": consent,
+                "consent_given_at": consent_given_at,
+                "privacy_policy_version": privacy_policy_version,
+                "personal_data_consent_version": personal_data_consent_version,
+            },
         )
         if not created:
             participant.name = name
             participant.consent = consent
-            participant.save(update_fields=["name", "consent"])
+            participant.consent_given_at = consent_given_at
+            participant.privacy_policy_version = privacy_policy_version
+            participant.personal_data_consent_version = personal_data_consent_version
+            participant.save(
+                update_fields=[
+                    "name",
+                    "consent",
+                    "consent_given_at",
+                    "privacy_policy_version",
+                    "personal_data_consent_version",
+                ]
+            )
 
         session_participant, _ = SessionParticipant.objects.get_or_create(
             session=session,

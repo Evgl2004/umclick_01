@@ -295,6 +295,17 @@ class ApiClient {
     return jsonDecode(response.body) as List<dynamic>;
   }
 
+  Future<Map<String, dynamic>> getCurrentLegalDocuments() async {
+    final response = await http.get(
+      _uri('/sessions/legal/current/'),
+      headers: _headers(),
+    );
+    if (response.statusCode >= 400) {
+      _throwError(response, 'Failed to load legal documents');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> joinSession({
     required String pin,
     required String phone,
@@ -1866,6 +1877,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   bool _sessionFinished = false;
   String _timeLeftLabel = '--:--';
   bool _isQuestionExpired = false;
+  Map<String, dynamic>? _legalDocuments;
+  bool _loadingLegalDocuments = false;
 
   WebSocketChannel? _socket;
   StreamSubscription? _socketSubscription;
@@ -1874,6 +1887,12 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   final List<String> _events = [];
 
   ApiClient _client() => ApiClient(_apiController.text.trim());
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLegalDocuments(showError: false);
+  }
 
   @override
   void dispose() {
@@ -1895,6 +1914,69 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         _events.removeRange(25, _events.length);
       }
     });
+  }
+
+  String _legalVersion(String section) {
+    final sectionMap = mapOrNull(_legalDocuments?[section]);
+    final version = sectionMap?['version']?.toString() ?? '';
+    return version.isEmpty ? 'n/a' : version;
+  }
+
+  String get _consentCheckboxLabel {
+    final privacyVersion = _legalVersion('privacy_policy');
+    final consentVersion = _legalVersion('personal_data_consent');
+    return 'I consent to personal data processing and privacy policy '
+        '(privacy v$privacyVersion, consent v$consentVersion)';
+  }
+
+  Future<void> _loadLegalDocuments({bool showError = true}) async {
+    if (_loadingLegalDocuments) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _loadingLegalDocuments = true;
+        if (showError) {
+          _error = null;
+        }
+      });
+    }
+
+    try {
+      final legalDocuments = await _client().getCurrentLegalDocuments();
+      if (!mounted) return;
+      setState(() {
+        _legalDocuments = legalDocuments;
+      });
+    } catch (e) {
+      if (showError && mounted) {
+        setState(() {
+          _error = e.toString();
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingLegalDocuments = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openLegalDocumentsPage() async {
+    if (_legalDocuments == null) {
+      await _loadLegalDocuments();
+    }
+    if (!mounted || _legalDocuments == null) {
+      return;
+    }
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => LegalDocumentsPage(documents: _legalDocuments!),
+      ),
+    );
   }
 
   void _startCountdown(DateTime? endsAt) {
@@ -2089,6 +2171,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         _selectedChoiceId = null;
         _isQuestionExpired = isAnswerRevealed;
         _timeLeftLabel = isAnswerRevealed ? '00:00' : '--:--';
+        _legalDocuments = mapOrNull(payload['legal_documents']) ?? _legalDocuments;
         _events.clear();
       });
 
@@ -2171,9 +2254,24 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                 _consent = value ?? false;
               });
             },
-            title: const Text('I consent to personal data processing and privacy policy'),
+            title: Text(_consentCheckboxLabel),
             contentPadding: EdgeInsets.zero,
           ),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              OutlinedButton(
+                onPressed: (_loading || _loadingLegalDocuments) ? null : _openLegalDocumentsPage,
+                child: const Text('Privacy & consent'),
+              ),
+              OutlinedButton(
+                onPressed: (_loading || _loadingLegalDocuments) ? null : () => _loadLegalDocuments(),
+                child: const Text('Refresh legal docs'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           FilledButton(
             onPressed: _loading ? null : _join,
             child: const Text('Join session'),
@@ -2262,6 +2360,68 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class LegalDocumentsPage extends StatelessWidget {
+  const LegalDocumentsPage({super.key, required this.documents});
+
+  final Map<String, dynamic> documents;
+
+  String _version(String key) {
+    final section = mapOrNull(documents[key]);
+    final version = section?['version']?.toString() ?? '';
+    return version.isEmpty ? 'n/a' : version;
+  }
+
+  String _url(String key) {
+    final section = mapOrNull(documents[key]);
+    return section?['url']?.toString() ?? '-';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final privacyVersion = _version('privacy_policy');
+    final consentVersion = _version('personal_data_consent');
+    final contactEmail = documents['contact_email']?.toString() ?? '-';
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Privacy & Consent')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Current legal versions', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Text('Privacy policy version: $privacyVersion'),
+                  SelectableText('Privacy policy URL: ${_url('privacy_policy')}'),
+                  const SizedBox(height: 6),
+                  Text('Personal data consent version: $consentVersion'),
+                  SelectableText('Consent URL: ${_url('personal_data_consent')}'),
+                  const SizedBox(height: 6),
+                  SelectableText('Contact: $contactEmail'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(12),
+              child: Text(
+                'Before joining a quiz, participant agrees to personal data processing '
+                'and acknowledges the privacy policy. Versions above are saved with consent.',
+              ),
+            ),
+          ),
         ],
       ),
     );

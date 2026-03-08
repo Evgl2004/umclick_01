@@ -110,3 +110,10 @@ Authorization: Bearer <access_token>
 
 ## Следующая итерация
 - Privacy/personal data страницы и версионирование согласий.
+
+## What Is Implemented (MVP-9)
+- Privacy/personal-data consent versioning is stored per participant (`consent_given_at`, `privacy_policy_version`, `personal_data_consent_version`).
+- Public legal endpoint added: `GET /api/sessions/legal/current/`.
+- Join API now returns legal metadata and saved participant consent fields.
+- Flutter participant flow loads legal metadata, shows consent versions in UI, and opens a dedicated legal details screen.
+- Legal document versions/links/contact are configurable via environment variables.
