@@ -10,6 +10,7 @@ import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
 import '../../shared/widgets/app_surfaces.dart';
 import '../legal/legal_documents.dart';
+import 'models/join_source.dart';
 import 'widgets/question_card.dart';
 
 class ParticipantPanel extends StatefulWidget {
@@ -67,27 +68,28 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   @override
   void initState() {
     super.initState();
-    _configureJoinSourceFromUrl();
+    final initialJoinSource = ParticipantJoinSource.fromUri(Uri.base);
+    _configureJoinSource(initialJoinSource);
     _loadLegalDocuments(showError: false);
-    _loadJoinPreview(showError: _joinTokenFromLink != null || _activePin != null);
+    _loadJoinPreview(showError: initialJoinSource.hasJoinTarget);
   }
 
-  void _configureJoinSourceFromUrl() {
-    final apiBaseFromUrl = Uri.base.queryParameters['api']?.trim() ?? '';
-    if (apiBaseFromUrl.isNotEmpty) {
-      _apiController.text = apiBaseFromUrl;
+  void _configureJoinSource(ParticipantJoinSource joinSource) {
+    final apiBaseUrl = joinSource.apiBaseUrl;
+    if (apiBaseUrl != null) {
+      _apiController.text = apiBaseUrl;
     }
 
-    final tokenFromUrl = Uri.base.queryParameters['token']?.trim() ?? '';
-    if (tokenFromUrl.isNotEmpty) {
-      _joinTokenFromLink = tokenFromUrl;
-      _useJoinTokenFromLink = true;
+    final joinToken = joinSource.joinToken;
+    if (joinToken != null) {
+      _joinTokenFromLink = joinToken;
+      _useJoinTokenFromLink = joinSource.shouldUseJoinToken;
       return;
     }
 
-    final pinFromUrl = Uri.base.queryParameters['pin']?.trim() ?? '';
-    if (pinFromUrl.isNotEmpty) {
-      _pinController.text = pinFromUrl;
+    final pin = joinSource.pin;
+    if (pin != null) {
+      _pinController.text = pin;
     }
   }
 
