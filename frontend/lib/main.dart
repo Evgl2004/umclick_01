@@ -7,24 +7,17 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
+import 'l10n/app_language.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await appLanguage.load();
   runApp(const UmclickApp());
 }
 
 const _defaultApiBaseUrl = 'http://localhost:8000/api';
 const _defaultPrivacyPolicyVersion = '2026-03';
 const _defaultPersonalDataConsentVersion = '2026-03';
-
-enum UiLanguage {
-  ru,
-  en,
-}
-
-final ValueNotifier<UiLanguage> uiLanguage = ValueNotifier<UiLanguage>(UiLanguage.ru);
-
-String uiText({required String ru, required String en}) {
-  return uiLanguage.value == UiLanguage.ru ? ru : en;
-}
 
 enum UmclickEntryPoint {
   home,
@@ -98,8 +91,8 @@ class UmclickApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<UiLanguage>(
-      valueListenable: uiLanguage,
-      builder: (context, language, _) {
+      valueListenable: appLanguage,
+      builder: (context, _, __) {
         return MaterialApp(
           title: 'umclick',
           debugShowCheckedModeBanner: false,
@@ -110,25 +103,6 @@ class UmclickApp extends StatelessWidget {
           ),
           home: _buildHomeForEntryPoint(),
         );
-      },
-    );
-  }
-}
-
-class LanguageSwitcher extends StatelessWidget {
-  const LanguageSwitcher({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return SegmentedButton<UiLanguage>(
-      showSelectedIcon: false,
-      segments: const [
-        ButtonSegment(value: UiLanguage.ru, label: Text('RU')),
-        ButtonSegment(value: UiLanguage.en, label: Text('EN')),
-      ],
-      selected: {uiLanguage.value},
-      onSelectionChanged: (selection) {
-        uiLanguage.value = selection.first;
       },
     );
   }
