@@ -1904,10 +1904,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
                     Text(appText(
                       AppText.webSocketState,
                       args: {
-                        'state': uiText(
-                          ru: _wsConnected ? 'подключен' : 'отключен',
-                          en: _wsConnected ? 'connected' : 'disconnected',
-                        ),
+                        'state': _wsConnected ? appText(AppText.webSocketConnected) : appText(AppText.webSocketDisconnected),
                       },
                     )),
                     if (_activeQuestion != null)
@@ -1977,9 +1974,12 @@ class _TeacherPanelState extends State<TeacherPanel> {
                           dense: true,
                           leading: Icon(correct ? Icons.check_circle : Icons.circle_outlined),
                           title: Text('${choice['text']}'),
-                          trailing: Text(uiText(
-                            ru: 'Голоса: ${choice['answers_count'] ?? 0} | Очки: ${choice['points_awarded'] ?? 0}',
-                            en: 'Votes: ${choice['answers_count'] ?? 0} | Pts: ${choice['points_awarded'] ?? 0}',
+                          trailing: Text(appText(
+                            AppText.choiceStats,
+                            args: {
+                              'votes': choice['answers_count'] ?? 0,
+                              'points': choice['points_awarded'] ?? 0,
+                            },
                           )),
                         );
                       })),
@@ -2171,11 +2171,12 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   String get _consentCheckboxLabel {
     final privacyVersion = _legalVersion('privacy_policy');
     final consentVersion = _legalVersion('personal_data_consent');
-    return uiText(
-      ru: 'Согласен(на) на обработку персональных данных и принимаю политику конфиденциальности '
-          '(политика v$privacyVersion, согласие v$consentVersion)',
-      en: 'I consent to personal data processing and privacy policy '
-          '(privacy v$privacyVersion, consent v$consentVersion)',
+    return appText(
+      AppText.consentCheckboxLabel,
+      args: {
+        'privacyVersion': privacyVersion,
+        'consentVersion': consentVersion,
+      },
     );
   }
 
@@ -2676,10 +2677,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
             Text(appText(
               AppText.webSocketState,
               args: {
-                'state': uiText(
-                  ru: _socketConnected ? 'подключен' : 'отключен',
-                  en: _socketConnected ? 'connected' : 'disconnected',
-                ),
+                'state': _socketConnected ? appText(AppText.webSocketConnected) : appText(AppText.webSocketDisconnected),
               },
             )),
             if (_activeQuestion != null) Text(appText(AppText.timeLeft, args: {'time': _timeLeftLabel})),
@@ -2730,9 +2728,12 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                           dense: true,
                           leading: Icon(isCorrect ? Icons.check_circle : Icons.circle_outlined),
                           title: Text('${choice['text']}'),
-                          trailing: Text(uiText(
-                            ru: 'Голоса: ${choice['answers_count'] ?? 0} | Очки: ${choice['points_awarded'] ?? 0}',
-                            en: 'Votes: ${choice['answers_count'] ?? 0} | Pts: ${choice['points_awarded'] ?? 0}',
+                          trailing: Text(appText(
+                            AppText.choiceStats,
+                            args: {
+                              'votes': choice['answers_count'] ?? 0,
+                              'points': choice['points_awarded'] ?? 0,
+                            },
                           )),
                         );
                       })),
@@ -2805,13 +2806,13 @@ class LegalDocumentsPage extends StatelessWidget {
                 children: [
                   Text(appText(AppText.currentLegalVersionsTitle), style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
-                  Text(uiText(ru: 'Версия политики: $privacyVersion', en: 'Privacy policy version: $privacyVersion')),
-                  SelectableText(uiText(ru: 'URL политики: ${_url('privacy_policy')}', en: 'Privacy policy URL: ${_url('privacy_policy')}')),
+                  Text(appText(AppText.privacyVersionLabel, args: {'version': privacyVersion})),
+                  SelectableText(appText(AppText.privacyUrlLabel, args: {'url': _url('privacy_policy')})),
                   const SizedBox(height: 6),
-                  Text(uiText(ru: 'Версия согласия: $consentVersion', en: 'Personal data consent version: $consentVersion')),
-                  SelectableText(uiText(ru: 'URL согласия: ${_url('personal_data_consent')}', en: 'Consent URL: ${_url('personal_data_consent')}')),
+                  Text(appText(AppText.personalDataConsentVersionLabel, args: {'version': consentVersion})),
+                  SelectableText(appText(AppText.personalDataConsentUrlLabel, args: {'url': _url('personal_data_consent')})),
                   const SizedBox(height: 6),
-                  SelectableText(uiText(ru: 'Контакт: $contactEmail', en: 'Contact: $contactEmail')),
+                  SelectableText(appText(AppText.legalContactLabel, args: {'email': contactEmail})),
                 ],
               ),
             ),
@@ -2821,12 +2822,7 @@ class LegalDocumentsPage extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Text(
-                uiText(
-                  ru: 'Перед входом в викторину участник подтверждает согласие на обработку персональных данных '
-                      'и принимает политику конфиденциальности. Эти версии сохраняются вместе с согласием.',
-                  en: 'Before joining a quiz, participant agrees to personal data processing '
-                      'and acknowledges the privacy policy. Versions above are saved with consent.',
-                ),
+                appText(AppText.legalConsentNotice),
               ),
             ),
           ),
@@ -2919,22 +2915,16 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
 
   String get _title {
     if (widget.documentType == PublicLegalDocumentType.privacyPolicy) {
-      return uiText(ru: 'Политика конфиденциальности', en: 'Privacy Policy');
+      return appText(AppText.privacyPolicyTitle);
     }
-    return uiText(ru: 'Согласие на обработку персональных данных', en: 'Personal Data Processing Consent');
+    return appText(AppText.personalDataConsentTitle);
   }
 
   String get _shortDescription {
     if (widget.documentType == PublicLegalDocumentType.privacyPolicy) {
-      return uiText(
-        ru: 'Как umclick собирает, хранит и использует данные участников.',
-        en: 'How umclick collects, stores, and uses participant data.',
-      );
+      return appText(AppText.privacyPolicyDescription);
     }
-    return uiText(
-      ru: 'Условия согласия на сбор и обработку персональных данных в umclick.',
-      en: 'Rules of consent for collecting and processing personal data in umclick.',
-    );
+    return appText(AppText.personalDataConsentDescription);
   }
 
   String get _fallbackPublicUrl {
@@ -2964,22 +2954,22 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
   List<MapEntry<String, String>> get _sections {
     if (widget.documentType == PublicLegalDocumentType.privacyPolicy) {
       return [
-        MapEntry(uiText(ru: '1. Какие данные мы собираем', en: '1. Data We Collect'), uiText(ru: 'Мы собираем телефон участника, отображаемое имя, сведения об участии в сессии, историю ответов и технические журналы, необходимые для надежной работы сервиса.', en: 'We collect participant phone number, display name, session participation metadata, answer history, and technical logs required for reliability and abuse prevention.')),
-        MapEntry(uiText(ru: '2. Для чего обрабатываются данные', en: '2. Why We Process Data'), uiText(ru: 'Данные используются для регистрации участников, проведения live-викторин, расчета очков, формирования рейтинга и выгрузки результатов преподавателю.', en: 'Data is used to register participants, run live quiz sessions, calculate scores, build leaderboards, and export results to teachers after each session.')),
-        MapEntry(uiText(ru: '3. Правовое основание', en: '3. Legal Basis'), uiText(ru: 'Обработка выполняется на основании явного согласия участника, принятого перед входом в сессию.', en: 'Processing is based on explicit participant consent accepted before joining a quiz session.')),
-        MapEntry(uiText(ru: '4. Хранение', en: '4. Storage and Retention'), uiText(ru: 'Данные хранятся в базах сервиса только в течение срока, необходимого для работы продукта, разрешения спорных ситуаций и соблюдения обязательств.', en: 'Data is stored in service databases and retained only for the period required to deliver the service, resolve disputes, and satisfy legal obligations.')),
-        MapEntry(uiText(ru: '5. Доступ и передача', en: '5. Sharing and Access'), uiText(ru: 'Данные доступны авторизованному преподавателю конкретной сессии и техническим операторам, которые обеспечивают хостинг и поддержку.', en: 'Data is available to authorized teacher accounts of the specific session and to technical operators responsible for hosting and support under confidentiality duties.')),
-        MapEntry(uiText(ru: '6. Права участника', en: '6. Participant Rights'), uiText(ru: 'Участник может запросить доступ, исправление, ограничение, удаление данных или отзыв согласия через контактный email на этой странице.', en: 'Participants may request access, correction, restriction, deletion, or withdrawal of consent by contacting the legal email listed on this page.')),
+        MapEntry(appText(AppText.privacyDataCollectedTitle), appText(AppText.privacyDataCollectedBody)),
+        MapEntry(appText(AppText.privacyPurposeTitle), appText(AppText.privacyPurposeBody)),
+        MapEntry(appText(AppText.privacyLegalBasisTitle), appText(AppText.privacyLegalBasisBody)),
+        MapEntry(appText(AppText.privacyRetentionTitle), appText(AppText.privacyRetentionBody)),
+        MapEntry(appText(AppText.privacySharingTitle), appText(AppText.privacySharingBody)),
+        MapEntry(appText(AppText.privacyRightsTitle), appText(AppText.privacyRightsBody)),
       ];
     }
 
     return [
-      MapEntry(uiText(ru: '1. Объем согласия', en: '1. Scope of Consent'), uiText(ru: 'Входя в сессию, участник соглашается на обработку телефона, имени, ответов, очков и времени участия.', en: 'By joining a session, participant consents to processing of phone number, name, quiz answers, score values, and participation timestamps.')),
-      MapEntry(uiText(ru: '2. Действия с данными', en: '2. Processing Actions'), uiText(ru: 'Согласие включает сбор, запись, систематизацию, хранение, обновление, извлечение, передачу авторизованному преподавателю и удаление после срока хранения.', en: 'Consent covers collection, recording, systematization, storage, updating, extraction, transfer to authorized teacher accounts, and deletion after retention period.')),
-      MapEntry(uiText(ru: '3. Цель обработки', en: '3. Purpose of Processing'), uiText(ru: 'Обработка нужна для входа участника, прохождения викторины, расчета очков, показа рейтинга и экспорта отчета преподавателю.', en: 'Processing is required for participant authorization, quiz gameplay, score calculation, leaderboard display, and teacher report export.')),
-      MapEntry(uiText(ru: '4. Срок действия', en: '4. Consent Period'), uiText(ru: 'Согласие действует с момента принятия до отзыва или до достижения целей обработки.', en: 'Consent is valid from the moment of acceptance and remains active until withdrawal or until processing purposes are fully achieved.')),
-      MapEntry(uiText(ru: '5. Отзыв согласия', en: '5. Withdrawal Procedure'), uiText(ru: 'Участник может отозвать согласие через юридический контакт. Отзыв может ограничить дальнейшее участие в викторинах.', en: 'Participant can withdraw consent by contacting legal support. Withdrawal may limit ability to continue using quiz participation features.')),
-      MapEntry(uiText(ru: '6. Подтверждение', en: '6. Confirmation'), uiText(ru: 'Продолжая регистрацию, участник подтверждает, что прочитал и принял этот текст согласия и связанную версию политики конфиденциальности.', en: 'Continuing with registration confirms that participant has read and accepted this consent text and related privacy policy version.')),
+      MapEntry(appText(AppText.consentScopeTitle), appText(AppText.consentScopeBody)),
+      MapEntry(appText(AppText.consentActionsTitle), appText(AppText.consentActionsBody)),
+      MapEntry(appText(AppText.consentPurposeTitle), appText(AppText.consentPurposeBody)),
+      MapEntry(appText(AppText.consentPeriodTitle), appText(AppText.consentPeriodBody)),
+      MapEntry(appText(AppText.consentWithdrawalTitle), appText(AppText.consentWithdrawalBody)),
+      MapEntry(appText(AppText.consentConfirmationTitle), appText(AppText.consentConfirmationBody)),
     ];
   }
 
@@ -3043,7 +3033,7 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(uiText(ru: 'Не удалось обновить юридические данные: $_error', en: 'Failed to refresh legal metadata: $_error')),
+                    Text(appText(AppText.legalMetadataRefreshError, args: {'error': _error})),
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
                       onPressed: _loadLegalDocuments,
@@ -3064,9 +3054,9 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
                 children: [
                   Text(_shortDescription, style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
-                  Text(uiText(ru: 'Версия: $_version', en: 'Version: $_version')),
-                  SelectableText(uiText(ru: 'Публичный URL: $_documentUrl', en: 'Public URL: $_documentUrl')),
-                  SelectableText(uiText(ru: 'Юридический контакт: $_contactEmail', en: 'Legal contact: $_contactEmail')),
+                  Text(appText(AppText.publicLegalVersionLabel, args: {'version': _version})),
+                  SelectableText(appText(AppText.publicLegalUrlLabel, args: {'url': _documentUrl})),
+                  SelectableText(appText(AppText.publicLegalContactLabel, args: {'email': _contactEmail})),
                 ],
               ),
             ),
@@ -3137,7 +3127,7 @@ class _QuestionCard extends StatelessWidget {
           children: [
             Text('${question['text']}', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            Text(uiText(ru: 'Лимит времени: ${question['time_limit_sec'] ?? '-'} сек', en: 'Time limit: ${question['time_limit_sec'] ?? '-'} sec')),
+            Text(appText(AppText.questionTimeLimitLabel, args: {'seconds': question['time_limit_sec'] ?? '-'})),
             const SizedBox(height: 12),
             ...choices.asMap().entries.map((entry) {
               final choiceIndex = entry.key;
@@ -3169,7 +3159,7 @@ class _QuestionCard extends StatelessWidget {
               );
             }),
             if (questionLocked)
-              Text(uiText(ru: 'Ответ зафиксирован. Ждём обновления от преподавателя.', en: 'Answer locked. Waiting for teacher update.')),
+              Text(appText(AppText.answerLockedMessage)),
           ],
         ),
       ),
