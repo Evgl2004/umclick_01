@@ -8,6 +8,7 @@ import '../../api/api_client.dart';
 import '../../core/app_config.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
+import '../../shared/widgets/app_surfaces.dart';
 import '../legal/legal_documents.dart';
 
 class ParticipantPanel extends StatefulWidget {
@@ -533,13 +534,13 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _buildStatusChip(
+              AppStatusChip(
                 icon: Icons.flag_outlined,
                 label: appText(AppText.statusValue, args: {'status': statusLabel}),
                 background: Colors.white.withOpacity(0.66),
                 foreground: const Color(0xFF023047),
               ),
-              _buildStatusChip(
+              AppStatusChip(
                 icon: Icons.group_outlined,
                 label: appText(AppText.participantsCount, args: {'count': participantsCount}),
                 background: Colors.white.withOpacity(0.66),
@@ -555,45 +556,6 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
             const SizedBox(height: 10),
             const LinearProgressIndicator(),
           ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildParticipantCard(
-    BuildContext context, {
-    required Widget child,
-    EdgeInsetsGeometry padding = const EdgeInsets.all(18),
-  }) {
-    return Card(
-      elevation: 0,
-      color: Theme.of(context).colorScheme.surface.withOpacity(0.94),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      child: Padding(
-        padding: padding,
-        child: child,
-      ),
-    );
-  }
-
-  Widget _buildStatusChip({
-    required IconData icon,
-    required String label,
-    required Color background,
-    required Color foreground,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18, color: foreground),
-          const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: foreground, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -630,7 +592,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildStatusChip(
+          AppStatusChip(
             icon: isLive ? Icons.bolt : Icons.qr_code_2,
             label: isLive ? appText(AppText.participantHeroLiveBadge) : appText(AppText.participantHeroJoinBadge),
             background: Colors.white.withOpacity(0.18),
@@ -658,26 +620,26 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
               spacing: 10,
               runSpacing: 10,
               children: [
-                _buildStatusChip(
+                AppStatusChip(
                   icon: Icons.emoji_events_outlined,
                   label: appText(AppText.participantPoints, args: {'points': _totalPoints}),
                   background: Colors.white,
                   foreground: const Color(0xFF023047),
                 ),
-                _buildStatusChip(
+                AppStatusChip(
                   icon: Icons.flag_outlined,
                   label: statusText,
                   background: Colors.white.withOpacity(0.18),
                   foreground: Colors.white,
                 ),
-                _buildStatusChip(
+                AppStatusChip(
                   icon: _socketConnected ? Icons.wifi : Icons.wifi_off,
                   label: socketText,
                   background: Colors.white.withOpacity(0.18),
                   foreground: Colors.white,
                 ),
                 if (_activeQuestion != null)
-                  _buildStatusChip(
+                  AppStatusChip(
                     icon: Icons.timer_outlined,
                     label: appText(AppText.timeLeft, args: {'time': _timeLeftLabel}),
                     background: Colors.white.withOpacity(0.18),
@@ -692,8 +654,9 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   }
 
   Widget _buildJoinConnectionCard(BuildContext context) {
-    return _buildParticipantCard(
-      context,
+    return AppSectionCard(
+      color: Theme.of(context).colorScheme.surface.withOpacity(0.94),
+      borderRadius: 28,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -803,8 +766,9 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   }
 
   Widget _buildParticipantProfileCard(BuildContext context) {
-    return _buildParticipantCard(
-      context,
+    return AppSectionCard(
+      color: Theme.of(context).colorScheme.surface.withOpacity(0.94),
+      borderRadius: 28,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -877,8 +841,9 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   }
 
   Widget _buildLiveSessionArea(BuildContext context) {
-    return _buildParticipantCard(
-      context,
+    return AppSectionCard(
+      color: Theme.of(context).colorScheme.surface.withOpacity(0.94),
+      borderRadius: 28,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

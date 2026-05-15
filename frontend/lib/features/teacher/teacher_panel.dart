@@ -10,6 +10,7 @@ import '../../api/api_client.dart';
 import '../../core/app_config.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
+import '../../shared/widgets/app_surfaces.dart';
 import 'quiz_draft.dart';
 
 class TeacherPanel extends StatefulWidget {
@@ -1052,49 +1053,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
   }
 
-
-  Widget _buildTeacherSectionCard(
-    BuildContext context, {
-    required Widget child,
-    EdgeInsetsGeometry padding = const EdgeInsets.all(18),
-  }) {
-    return Card(
-      elevation: 0,
-      color: Theme.of(context).colorScheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: Padding(
-        padding: padding,
-        child: child,
-      ),
-    );
-  }
-
-  Widget _buildTeacherStatusChip({
-    required IconData icon,
-    required String label,
-    required Color background,
-    required Color foreground,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18, color: foreground),
-          const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: foreground, fontWeight: FontWeight.w700)),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSessionSetupCard(BuildContext context) {
-    return _buildTeacherSectionCard(
-      context,
+    return AppSectionCard(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -1180,19 +1140,19 @@ class _TeacherPanelState extends State<TeacherPanel> {
                       spacing: 10,
                       runSpacing: 10,
                       children: [
-                        _buildTeacherStatusChip(
+                        AppStatusChip(
                           icon: Icons.pin_outlined,
                           label: 'PIN: ${session['pin']}',
                           background: Colors.white,
                           foreground: const Color(0xFF023047),
                         ),
-                        _buildTeacherStatusChip(
+                        AppStatusChip(
                           icon: Icons.flag_outlined,
                           label: appText(AppText.statusValue, args: {'status': session['status']}),
                           background: Colors.white.withOpacity(0.16),
                           foreground: Colors.white,
                         ),
-                        _buildTeacherStatusChip(
+                        AppStatusChip(
                           icon: Icons.group_outlined,
                           label: appText(
                             AppText.participantsCount,
@@ -1201,7 +1161,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
                           background: Colors.white.withOpacity(0.16),
                           foreground: Colors.white,
                         ),
-                        _buildTeacherStatusChip(
+                        AppStatusChip(
                           icon: _wsConnected ? Icons.wifi : Icons.wifi_off,
                           label: appText(
                             AppText.webSocketState,
@@ -1215,14 +1175,14 @@ class _TeacherPanelState extends State<TeacherPanel> {
                           foreground: Colors.white,
                         ),
                         if (_activeQuestion != null)
-                          _buildTeacherStatusChip(
+                          AppStatusChip(
                             icon: Icons.timer_outlined,
                             label: appText(AppText.timeLeft, args: {'time': _questionTimeLeftLabel}),
                             background: Colors.white.withOpacity(0.16),
                             foreground: Colors.white,
                           ),
                         if (_answeredCount > 0)
-                          _buildTeacherStatusChip(
+                          AppStatusChip(
                             icon: Icons.how_to_vote_outlined,
                             label: appText(AppText.answersReceived, args: {'count': _answeredCount}),
                             background: Colors.white.withOpacity(0.16),
@@ -1380,8 +1340,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   }
 
   Widget _buildTeacherLiveEventsCard(BuildContext context) {
-    return _buildTeacherSectionCard(
-      context,
+    return AppSectionCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
