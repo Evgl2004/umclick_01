@@ -1594,6 +1594,351 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
   }
 
+
+  Widget _buildTeacherSectionCard(
+    BuildContext context, {
+    required Widget child,
+    EdgeInsetsGeometry padding = const EdgeInsets.all(18),
+  }) {
+    return Card(
+      elevation: 0,
+      color: Theme.of(context).colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: padding,
+        child: child,
+      ),
+    );
+  }
+
+  Widget _buildTeacherStatusChip({
+    required IconData icon,
+    required String label,
+    required Color background,
+    required Color foreground,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: foreground),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(color: foreground, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSessionSetupCard(BuildContext context) {
+    return _buildTeacherSectionCard(
+      context,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE0F7FA),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Icon(Icons.cast_for_education_outlined, color: Color(0xFF005F73)),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(appText(AppText.teacherSessionSetupTitle), style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 4),
+                Text(appText(AppText.teacherSessionSetupSubtitle)),
+                const SizedBox(height: 8),
+                Text(
+                  _selectedQuizId == null
+                      ? appText(AppText.selectQuizForSession)
+                      : appText(AppText.sessionQuiz, args: {'id': _selectedQuizId}),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          FilledButton.icon(
+            onPressed: (_loading || !_isLoggedIn || _selectedQuizId == null) ? null : _createSession,
+            icon: const Icon(Icons.playlist_add_check_circle_outlined),
+            label: Text(appText(AppText.createSessionButton)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTeacherLiveSessionCard(BuildContext context) {
+    final session = _session!;
+    final joinUrl = session['join_url'] as String;
+    final exportUrl = '${_apiController.text}/sessions/${session['id']}/results/export/';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF023047), Color(0xFF005F73), Color(0xFF0A9396)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF023047).withOpacity(0.2),
+            blurRadius: 26,
+            offset: const Offset(0, 18),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      appText(AppText.teacherLivePanelTitle),
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                          ),
+                    ),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        _buildTeacherStatusChip(
+                          icon: Icons.pin_outlined,
+                          label: 'PIN: ${session['pin']}',
+                          background: Colors.white,
+                          foreground: const Color(0xFF023047),
+                        ),
+                        _buildTeacherStatusChip(
+                          icon: Icons.flag_outlined,
+                          label: appText(AppText.statusValue, args: {'status': session['status']}),
+                          background: Colors.white.withOpacity(0.16),
+                          foreground: Colors.white,
+                        ),
+                        _buildTeacherStatusChip(
+                          icon: Icons.group_outlined,
+                          label: appText(
+                            AppText.participantsCount,
+                            args: {'count': session['participants_count'] ?? 0},
+                          ),
+                          background: Colors.white.withOpacity(0.16),
+                          foreground: Colors.white,
+                        ),
+                        _buildTeacherStatusChip(
+                          icon: _wsConnected ? Icons.wifi : Icons.wifi_off,
+                          label: appText(
+                            AppText.webSocketState,
+                            args: {
+                              'state': _wsConnected
+                                  ? appText(AppText.webSocketConnected)
+                                  : appText(AppText.webSocketDisconnected),
+                            },
+                          ),
+                          background: Colors.white.withOpacity(0.16),
+                          foreground: Colors.white,
+                        ),
+                        if (_activeQuestion != null)
+                          _buildTeacherStatusChip(
+                            icon: Icons.timer_outlined,
+                            label: appText(AppText.timeLeft, args: {'time': _questionTimeLeftLabel}),
+                            background: Colors.white.withOpacity(0.16),
+                            foreground: Colors.white,
+                          ),
+                        if (_answeredCount > 0)
+                          _buildTeacherStatusChip(
+                            icon: Icons.how_to_vote_outlined,
+                            label: appText(AppText.answersReceived, args: {'count': _answeredCount}),
+                            background: Colors.white.withOpacity(0.16),
+                            foreground: Colors.white,
+                          ),
+                      ],
+                    ),
+                    if (_activeQuestion != null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        appText(AppText.currentQuestion, args: {'text': _activeQuestion!['text']}),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 18),
+              Container(
+                width: 220,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Column(
+                  children: [
+                    Text(appText(AppText.teacherQrCodeTitle), style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 10),
+                    QrImageView(data: joinUrl, size: 170),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SelectableText(
+            appText(AppText.joinUrl, args: {'url': joinUrl}),
+            style: TextStyle(color: Colors.white.withOpacity(0.88)),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            appText(AppText.teacherRoundControlsTitle),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              FilledButton.icon(
+                onPressed: _startSession,
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: Text(appText(AppText.startButton)),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: _nextQuestion,
+                icon: const Icon(Icons.skip_next_outlined),
+                label: Text(appText(AppText.nextQuestionButton)),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: _revealAnswers,
+                icon: const Icon(Icons.visibility_outlined),
+                label: Text(appText(AppText.revealAnswersButton)),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: _finishSession,
+                icon: const Icon(Icons.flag_outlined),
+                label: Text(appText(AppText.finishButton)),
+              ),
+              OutlinedButton.icon(
+                onPressed: _showLeaderboard,
+                icon: const Icon(Icons.leaderboard_outlined),
+                label: Text(appText(AppText.leaderboardButton)),
+                style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
+              ),
+              OutlinedButton.icon(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(appText(AppText.exportUrlSnack, args: {'url': exportUrl}))),
+                  );
+                },
+                icon: const Icon(Icons.download_outlined),
+                label: Text(appText(AppText.exportCsvButton)),
+                style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
+              ),
+            ],
+          ),
+          if (_revealPayload != null) ...[
+            const SizedBox(height: 16),
+            _buildTeacherRevealResultsCard(context),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTeacherRevealResultsCard(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withOpacity(0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            appText(AppText.revealResultsTitle),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            appText(AppText.totalAnswers, args: {'count': _revealPayload!['total_answers'] ?? 0}),
+            style: const TextStyle(color: Colors.white),
+          ),
+          Text(
+            appText(AppText.pointsAwarded, args: {'points': _revealPayload!['total_points_awarded'] ?? 0}),
+            style: const TextStyle(color: Colors.white),
+          ),
+          Text(
+            appText(AppText.revealedBy, args: {'value': _revealPayload!['revealed_by'] ?? 'teacher'}),
+            style: const TextStyle(color: Colors.white),
+          ),
+          const SizedBox(height: 8),
+          ...((_revealPayload!['choices'] as List<dynamic>? ?? <dynamic>[]).map((rawChoice) {
+            final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
+            final correct = choice['is_correct'] == true;
+            return ListTile(
+              dense: true,
+              textColor: Colors.white,
+              iconColor: Colors.white,
+              leading: Icon(correct ? Icons.check_circle : Icons.circle_outlined),
+              title: Text('${choice['text']}'),
+              trailing: Text(appText(
+                AppText.choiceStats,
+                args: {
+                  'votes': choice['answers_count'] ?? 0,
+                  'points': choice['points_awarded'] ?? 0,
+                },
+              )),
+            );
+          })),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTeacherLiveEventsCard(BuildContext context) {
+    return _buildTeacherSectionCard(
+      context,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(appText(AppText.liveEventsTitle), style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          if (_events.isEmpty)
+            Text(appText(AppText.noEventsYet))
+          else
+            ..._events.map((event) => Text(event)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -1869,142 +2214,16 @@ class _TeacherPanelState extends State<TeacherPanel> {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _selectedQuizId == null
-                      ? appText(AppText.selectQuizForSession)
-                      : appText(AppText.sessionQuiz, args: {'id': _selectedQuizId}),
-                ),
-              ),
-              const SizedBox(width: 12),
-              FilledButton(
-                onPressed: (_loading || !_isLoggedIn || _selectedQuizId == null) ? null : _createSession,
-                child: Text(appText(AppText.createSessionButton)),
-              ),
-            ],
-          ),
+          _buildSessionSetupCard(context),
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ],
           if (_session != null) ...[
             const SizedBox(height: 20),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('PIN: ${_session!['pin']}', style: Theme.of(context).textTheme.headlineSmall),
-                    const SizedBox(height: 8),
-                    Text(appText(AppText.statusValue, args: {'status': _session!['status']})),
-                    Text(appText(AppText.participantsCount, args: {'count': _session!['participants_count'] ?? 0})),
-                    Text(appText(
-                      AppText.webSocketState,
-                      args: {
-                        'state': _wsConnected ? appText(AppText.webSocketConnected) : appText(AppText.webSocketDisconnected),
-                      },
-                    )),
-                    if (_activeQuestion != null)
-                      Text(appText(AppText.currentQuestion, args: {'text': _activeQuestion!['text']})),
-                    if (_activeQuestion != null)
-                      Text(appText(AppText.timeLeft, args: {'time': _questionTimeLeftLabel})),
-                    if (_answeredCount > 0)
-                      Text(appText(AppText.answersReceived, args: {'count': _answeredCount})),
-                    const SizedBox(height: 8),
-                    Text(appText(AppText.joinUrl, args: {'url': _session!['join_url']})),
-                    const SizedBox(height: 12),
-                    Center(
-                      child: QrImageView(
-                        data: _session!['join_url'] as String,
-                        size: 180,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        FilledButton(
-                          onPressed: _startSession,
-                          child: Text(appText(AppText.startButton)),
-                        ),
-                        FilledButton.tonal(
-                          onPressed: _nextQuestion,
-                          child: Text(appText(AppText.nextQuestionButton)),
-                        ),
-                        FilledButton.tonal(
-                          onPressed: _revealAnswers,
-                          child: Text(appText(AppText.revealAnswersButton)),
-                        ),
-                        FilledButton.tonal(
-                          onPressed: _finishSession,
-                          child: Text(appText(AppText.finishButton)),
-                        ),
-                        OutlinedButton(
-                          onPressed: _showLeaderboard,
-                          child: Text(appText(AppText.leaderboardButton)),
-                        ),
-                        OutlinedButton(
-                          onPressed: () {
-                            final exportUrl =
-                                '${_apiController.text}/sessions/${_session!['id']}/results/export/';
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(appText(AppText.exportUrlSnack, args: {'url': exportUrl}))),
-                            );
-                          },
-                          child: Text(appText(AppText.exportCsvButton)),
-                        ),
-                      ],
-                    ),
-                    if (_revealPayload != null) ...[
-                      const SizedBox(height: 12),
-                      const Divider(),
-                      Text(appText(AppText.revealResultsTitle), style: Theme.of(context).textTheme.titleMedium),
-                      Text(appText(AppText.totalAnswers, args: {'count': _revealPayload!['total_answers'] ?? 0})),
-                      Text(appText(AppText.pointsAwarded, args: {'points': _revealPayload!['total_points_awarded'] ?? 0})),
-                      Text(appText(AppText.revealedBy, args: {'value': _revealPayload!['revealed_by'] ?? 'teacher'})),
-                      const SizedBox(height: 8),
-                      ...((_revealPayload!['choices'] as List<dynamic>? ?? <dynamic>[]).map((rawChoice) {
-                        final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
-                        final correct = choice['is_correct'] == true;
-                        return ListTile(
-                          dense: true,
-                          leading: Icon(correct ? Icons.check_circle : Icons.circle_outlined),
-                          title: Text('${choice['text']}'),
-                          trailing: Text(appText(
-                            AppText.choiceStats,
-                            args: {
-                              'votes': choice['answers_count'] ?? 0,
-                              'points': choice['points_awarded'] ?? 0,
-                            },
-                          )),
-                        );
-                      })),
-                    ],
-                  ],
-                ),
-              ),
-            ),
+            _buildTeacherLiveSessionCard(context),
             const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(appText(AppText.liveEventsTitle), style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 8),
-                    if (_events.isEmpty)
-                      Text(appText(AppText.noEventsYet))
-                    else
-                      ..._events.map((event) => Text(event)),
-                  ],
-                ),
-              ),
-            ),
+            _buildTeacherLiveEventsCard(context),
           ],
         ],
       ),

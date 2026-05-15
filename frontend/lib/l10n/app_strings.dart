@@ -46,6 +46,11 @@ enum AppText {
   addQuestionButton,
   selectQuizForSession,
   sessionQuiz,
+  teacherSessionSetupTitle,
+  teacherSessionSetupSubtitle,
+  teacherLivePanelTitle,
+  teacherQrCodeTitle,
+  teacherRoundControlsTitle,
   createSessionButton,
   statusValue,
   participantsCount,
@@ -233,6 +238,26 @@ const _strings = <AppText, LocalizedString>{
     en: 'Select a quiz in builder to create a live session.',
   ),
   AppText.sessionQuiz: LocalizedString(ru: 'Викторина сессии: #{id}', en: 'Session quiz: #{id}'),
+  AppText.teacherSessionSetupTitle: LocalizedString(
+    ru: 'Live-сессия',
+    en: 'Live session',
+  ),
+  AppText.teacherSessionSetupSubtitle: LocalizedString(
+    ru: 'Выберите викторину и создайте комнату для участников.',
+    en: 'Select a quiz and create a room for participants.',
+  ),
+  AppText.teacherLivePanelTitle: LocalizedString(
+    ru: 'Панель ведущего',
+    en: 'Host panel',
+  ),
+  AppText.teacherQrCodeTitle: LocalizedString(
+    ru: 'QR для подключения',
+    en: 'Join QR code',
+  ),
+  AppText.teacherRoundControlsTitle: LocalizedString(
+    ru: 'Управление раундом',
+    en: 'Round controls',
+  ),
   AppText.createSessionButton: LocalizedString(ru: 'Создать сессию', en: 'Create session'),
   AppText.statusValue: LocalizedString(ru: 'Статус: {status}', en: 'Status: {status}'),
   AppText.participantsCount: LocalizedString(ru: 'Участники: {count}', en: 'Participants: {count}'),
