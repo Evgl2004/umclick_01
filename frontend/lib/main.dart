@@ -2501,49 +2501,206 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     final canJoin = preview['can_join'] != false;
     final closedReason = preview['closed_reason']?.toString() ?? '';
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(canJoin ? Icons.fact_check_outlined : Icons.lock_outline),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(title, style: Theme.of(context).textTheme.titleMedium),
-                ),
-              ],
-            ),
-            if (description.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(description),
-            ],
-            const SizedBox(height: 8),
-            Text(appText(AppText.statusValue, args: {'status': statusLabel})),
-            Text(appText(AppText.participantsCount, args: {'count': participantsCount})),
-            if (!canJoin && closedReason.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(closedReason, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            ],
-            if (_loadingJoinPreview) ...[
-              const SizedBox(height: 8),
-              const LinearProgressIndicator(),
-            ],
-          ],
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: canJoin ? const Color(0xFFFFF4D6) : Theme.of(context).colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: canJoin ? const Color(0xFFFFB703).withOpacity(0.42) : Theme.of(context).colorScheme.error,
         ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(canJoin ? Icons.fact_check_outlined : Icons.lock_outline),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+          if (description.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(description),
+          ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildStatusChip(
+                icon: Icons.flag_outlined,
+                label: appText(AppText.statusValue, args: {'status': statusLabel}),
+                background: Colors.white.withOpacity(0.66),
+                foreground: const Color(0xFF023047),
+              ),
+              _buildStatusChip(
+                icon: Icons.group_outlined,
+                label: appText(AppText.participantsCount, args: {'count': participantsCount}),
+                background: Colors.white.withOpacity(0.66),
+                foreground: const Color(0xFF023047),
+              ),
+            ],
+          ),
+          if (!canJoin && closedReason.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(closedReason, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ],
+          if (_loadingJoinPreview) ...[
+            const SizedBox(height: 10),
+            const LinearProgressIndicator(),
+          ],
+        ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+  Widget _buildParticipantCard(
+    BuildContext context, {
+    required Widget child,
+    EdgeInsetsGeometry padding = const EdgeInsets.all(18),
+  }) {
+    return Card(
+      elevation: 0,
+      color: Theme.of(context).colorScheme.surface.withOpacity(0.94),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      child: Padding(
+        padding: padding,
+        child: child,
+      ),
+    );
+  }
+
+  Widget _buildStatusChip({
+    required IconData icon,
+    required String label,
+    required Color background,
+    required Color foreground,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: foreground),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(color: foreground, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildParticipantHero(BuildContext context) {
+    final isLive = _joinPayload != null;
+    final statusText = appText(AppText.statusValue, args: {'status': _sessionStatus});
+    final socketText = appText(
+      AppText.webSocketState,
+      args: {
+        'state': _socketConnected ? appText(AppText.webSocketConnected) : appText(AppText.webSocketDisconnected),
+      },
+    );
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(32),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF023047), Color(0xFF0A9396), Color(0xFFFFB703)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF023047).withOpacity(0.22),
+            blurRadius: 28,
+            offset: const Offset(0, 18),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildStatusChip(
+            icon: isLive ? Icons.bolt : Icons.qr_code_2,
+            label: isLive ? appText(AppText.participantHeroLiveBadge) : appText(AppText.participantHeroJoinBadge),
+            background: Colors.white.withOpacity(0.18),
+            foreground: Colors.white,
+          ),
+          const SizedBox(height: 18),
+          Text(
+            isLive ? appText(AppText.participantHeroLiveTitle) : appText(AppText.participantHeroJoinTitle),
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            isLive ? appText(AppText.participantHeroLiveSubtitle) : appText(AppText.participantHeroJoinSubtitle),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Colors.white.withOpacity(0.9),
+                  height: 1.35,
+                ),
+          ),
+          if (isLive) ...[
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _buildStatusChip(
+                  icon: Icons.emoji_events_outlined,
+                  label: appText(AppText.participantPoints, args: {'points': _totalPoints}),
+                  background: Colors.white,
+                  foreground: const Color(0xFF023047),
+                ),
+                _buildStatusChip(
+                  icon: Icons.flag_outlined,
+                  label: statusText,
+                  background: Colors.white.withOpacity(0.18),
+                  foreground: Colors.white,
+                ),
+                _buildStatusChip(
+                  icon: _socketConnected ? Icons.wifi : Icons.wifi_off,
+                  label: socketText,
+                  background: Colors.white.withOpacity(0.18),
+                  foreground: Colors.white,
+                ),
+                if (_activeQuestion != null)
+                  _buildStatusChip(
+                    icon: Icons.timer_outlined,
+                    label: appText(AppText.timeLeft, args: {'time': _timeLeftLabel}),
+                    background: Colors.white.withOpacity(0.18),
+                    foreground: Colors.white,
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildJoinConnectionCard(BuildContext context) {
+    return _buildParticipantCard(
+      context,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(appText(AppText.participantJoinCardTitle), style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 14),
           TextField(
             controller: _apiController,
             decoration: InputDecoration(
@@ -2551,81 +2708,116 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
               helperText: appText(AppText.participantApiBaseUrlHelper),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           if (_useJoinTokenFromLink && _joinTokenFromLink != null) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(appText(AppText.joinLinkDetected)),
-                    const SizedBox(height: 6),
-                    SelectableText(appText(AppText.joinTokenLabel, args: {'token': _joinTokenFromLink})),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        OutlinedButton(
-                          onPressed: (_loading || _loadingJoinPreview) ? null : () => _loadJoinPreview(),
-                          child: Text(appText(AppText.refreshPreviewButton)),
-                        ),
-                        OutlinedButton(
-                          onPressed: _loading
-                              ? null
-                              : () {
-                                  setState(() {
-                                    _useJoinTokenFromLink = false;
-                                    _joinPreview = null;
-                                  });
-                                },
-                          child: Text(appText(AppText.usePinInsteadButton)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE0F7FA),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFF0A9396).withOpacity(0.32)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.link, color: Color(0xFF005F73)),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(appText(AppText.joinLinkDetected))),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(appText(AppText.joinTokenLabel, args: {'token': _joinTokenFromLink})),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: (_loading || _loadingJoinPreview) ? null : () => _loadJoinPreview(),
+                        icon: const Icon(Icons.refresh),
+                        label: Text(appText(AppText.refreshPreviewButton)),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _loading
+                            ? null
+                            : () {
+                                setState(() {
+                                  _useJoinTokenFromLink = false;
+                                  _joinPreview = null;
+                                });
+                              },
+                        icon: const Icon(Icons.pin_outlined),
+                        label: Text(appText(AppText.usePinInsteadButton)),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
           ] else ...[
             TextField(
               controller: _pinController,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
               decoration: InputDecoration(
                 labelText: appText(AppText.sessionPinLabel),
                 helperText: appText(AppText.sessionPinHelper),
+                prefixIcon: const Icon(Icons.pin_outlined),
               ),
             ),
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: (_loading || _loadingJoinPreview) ? null : () => _loadJoinPreview(),
-              child: Text(appText(AppText.previewSessionButton)),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: (_loading || _loadingJoinPreview) ? null : () => _loadJoinPreview(),
+                  icon: const Icon(Icons.visibility_outlined),
+                  label: Text(appText(AppText.previewSessionButton)),
+                ),
+                if (_joinTokenFromLink != null)
+                  TextButton.icon(
+                    onPressed: _loading
+                        ? null
+                        : () {
+                            setState(() {
+                              _useJoinTokenFromLink = true;
+                              _joinPreview = null;
+                            });
+                            _loadJoinPreview(showError: false);
+                          },
+                    icon: const Icon(Icons.link),
+                    label: Text(appText(AppText.useJoinTokenButton)),
+                  ),
+              ],
             ),
-            if (_joinTokenFromLink != null) ...[
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: _loading
-                    ? null
-                    : () {
-                        setState(() {
-                          _useJoinTokenFromLink = true;
-                          _joinPreview = null;
-                        });
-                        _loadJoinPreview(showError: false);
-                      },
-                child: Text(appText(AppText.useJoinTokenButton)),
-              ),
-            ],
-            const SizedBox(height: 12),
           ],
           if (_loadingJoinPreview || _joinPreview != null) ...[
+            const SizedBox(height: 14),
             _buildJoinPreviewCard(),
-            const SizedBox(height: 12),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildParticipantProfileCard(BuildContext context) {
+    return _buildParticipantCard(
+      context,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(appText(AppText.participantProfileCardTitle), style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 14),
           TextField(
             controller: _nameController,
-            decoration: InputDecoration(labelText: appText(AppText.participantNameLabel)),
+            decoration: InputDecoration(
+              labelText: appText(AppText.participantNameLabel),
+              prefixIcon: const Icon(Icons.badge_outlined),
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -2633,6 +2825,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
             decoration: InputDecoration(
               labelText: appText(AppText.participantPhoneLabel),
               helperText: appText(AppText.participantPhoneHelper),
+              prefixIcon: const Icon(Icons.phone_outlined),
             ),
           ),
           const SizedBox(height: 12),
@@ -2645,125 +2838,226 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
             },
             title: Text(_consentCheckboxLabel),
             contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
           ),
           Wrap(
             spacing: 10,
             runSpacing: 10,
             children: [
-              OutlinedButton(
+              OutlinedButton.icon(
                 onPressed: (_loading || _loadingLegalDocuments) ? null : _openLegalDocumentsPage,
-                child: Text(appText(AppText.legalDocumentsButton)),
+                icon: const Icon(Icons.policy_outlined),
+                label: Text(appText(AppText.legalDocumentsButton)),
               ),
-              OutlinedButton(
+              OutlinedButton.icon(
                 onPressed: (_loading || _loadingLegalDocuments) ? null : () => _loadLegalDocuments(),
-                child: Text(appText(AppText.refreshLegalDocsButton)),
+                icon: const Icon(Icons.refresh),
+                label: Text(appText(AppText.refreshLegalDocsButton)),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          FilledButton(
-            onPressed: _loading ? null : _join,
-            child: Text(appText(AppText.joinSessionButton)),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _loading ? null : _join,
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: Text(appText(AppText.joinSessionButton)),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                textStyle: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+            ),
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ],
-          if (_joinPayload != null) ...[
-            const SizedBox(height: 20),
-            Text(appText(AppText.participantPoints, args: {'points': _totalPoints}), style: Theme.of(context).textTheme.titleLarge),
-            Text(appText(AppText.participantLastAnswer, args: {'points': _lastAnswerPoints})),
-            Text(appText(AppText.statusValue, args: {'status': _sessionStatus})),
-            Text(appText(
-              AppText.webSocketState,
-              args: {
-                'state': _socketConnected ? appText(AppText.webSocketConnected) : appText(AppText.webSocketDisconnected),
-              },
-            )),
-            if (_activeQuestion != null) Text(appText(AppText.timeLeft, args: {'time': _timeLeftLabel})),
-            const SizedBox(height: 12),
-            if (_sessionFinished)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(appText(AppText.sessionFinishedMessage)),
-                ),
-              )
-            else if (_activeQuestion == null)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(appText(AppText.waitingForQuestionMessage)),
-                ),
-              )
-            else
-              _QuestionCard(
-                question: _activeQuestion!,
-                onAnswer: _answer,
-                questionLocked: _questionAnswered || _isQuestionExpired,
-                selectedChoiceId: _selectedChoiceId,
-              ),
-            if (_isQuestionExpired && !_questionAnswered && !_sessionFinished)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(appText(AppText.timeOverMessage)),
-              ),
-            if (_revealPayload != null) ...[
-              const SizedBox(height: 12),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(appText(AppText.revealResultsTitle), style: Theme.of(context).textTheme.titleMedium),
-                      Text(appText(AppText.totalAnswers, args: {'count': _revealPayload!['total_answers'] ?? 0})),
-                      Text(appText(AppText.pointsAwarded, args: {'points': _revealPayload!['total_points_awarded'] ?? 0})),
-                      Text(appText(AppText.revealedBy, args: {'value': _revealPayload!['revealed_by'] ?? 'teacher'})),
-                      const SizedBox(height: 8),
-                      ...((_revealPayload!['choices'] as List<dynamic>? ?? <dynamic>[]).map((rawChoice) {
-                        final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
-                        final isCorrect = choice['is_correct'] == true;
-                        return ListTile(
-                          dense: true,
-                          leading: Icon(isCorrect ? Icons.check_circle : Icons.circle_outlined),
-                          title: Text('${choice['text']}'),
-                          trailing: Text(appText(
-                            AppText.choiceStats,
-                            args: {
-                              'votes': choice['answers_count'] ?? 0,
-                              'points': choice['points_awarded'] ?? 0,
-                            },
-                          )),
-                        );
-                      })),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(appText(AppText.liveEventsTitle), style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 8),
-                    if (_events.isEmpty)
-                      Text(appText(AppText.noEventsYet))
-                    else
-                      ..._events.map((event) => Text(event)),
-                  ],
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
+
+  Widget _buildLiveSessionArea(BuildContext context) {
+    return _buildParticipantCard(
+      context,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(appText(AppText.participantLiveCardTitle), style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 10),
+          Text(appText(AppText.participantLastAnswer, args: {'points': _lastAnswerPoints})),
+          const SizedBox(height: 14),
+          if (_sessionFinished)
+            _buildRoundMessage(
+              context,
+              icon: Icons.flag_circle_outlined,
+              message: appText(AppText.sessionFinishedMessage),
+              color: const Color(0xFF0A9396),
+            )
+          else if (_activeQuestion == null)
+            _buildRoundMessage(
+              context,
+              icon: Icons.hourglass_top_outlined,
+              message: appText(AppText.waitingForQuestionMessage),
+              color: const Color(0xFF005F73),
+            )
+          else
+            _QuestionCard(
+              question: _activeQuestion!,
+              onAnswer: _answer,
+              questionLocked: _questionAnswered || _isQuestionExpired,
+              selectedChoiceId: _selectedChoiceId,
+            ),
+          if (_isQuestionExpired && !_questionAnswered && !_sessionFinished) ...[
+            const SizedBox(height: 10),
+            _buildRoundMessage(
+              context,
+              icon: Icons.timer_off_outlined,
+              message: appText(AppText.timeOverMessage),
+              color: Theme.of(context).colorScheme.error,
+            ),
+          ],
+          if (_revealPayload != null) ...[
+            const SizedBox(height: 14),
+            _buildRevealResultsCard(context),
+          ],
+          const SizedBox(height: 14),
+          _buildLiveEventsCard(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoundMessage(
+    BuildContext context, {
+    required IconData icon,
+    required String message,
+    required Color color,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.11),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: color.withOpacity(0.24)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 10),
+          Expanded(child: Text(message)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRevealResultsCard(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(appText(AppText.revealResultsTitle), style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Text(appText(AppText.totalAnswers, args: {'count': _revealPayload!['total_answers'] ?? 0})),
+          Text(appText(AppText.pointsAwarded, args: {'points': _revealPayload!['total_points_awarded'] ?? 0})),
+          Text(appText(AppText.revealedBy, args: {'value': _revealPayload!['revealed_by'] ?? 'teacher'})),
+          const SizedBox(height: 8),
+          ...((_revealPayload!['choices'] as List<dynamic>? ?? <dynamic>[]).map((rawChoice) {
+            final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
+            final isCorrect = choice['is_correct'] == true;
+            return ListTile(
+              dense: true,
+              leading: Icon(isCorrect ? Icons.check_circle : Icons.circle_outlined),
+              title: Text('${choice['text']}'),
+              trailing: Text(appText(
+                AppText.choiceStats,
+                args: {
+                  'votes': choice['answers_count'] ?? 0,
+                  'points': choice['points_awarded'] ?? 0,
+                },
+              )),
+            );
+          })),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveEventsCard(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(appText(AppText.liveEventsTitle), style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          if (_events.isEmpty)
+            Text(appText(AppText.noEventsYet))
+          else
+            ..._events.map((event) => Text(event)),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFFF7F9FC), Color(0xFFE0F7FA)],
+            ),
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 920,
+                  minHeight: constraints.maxHeight.isFinite && constraints.maxHeight > 32
+                      ? constraints.maxHeight - 32
+                      : 0,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildParticipantHero(context),
+                    const SizedBox(height: 16),
+                    if (_joinPayload == null) ...[
+                      _buildJoinConnectionCard(context),
+                      const SizedBox(height: 14),
+                      _buildParticipantProfileCard(context),
+                    ] else ...[
+                      _buildLiveSessionArea(context),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
 }
 
 class LegalDocumentsPage extends StatelessWidget {
@@ -3098,6 +3392,20 @@ class _QuestionCard extends StatelessWidget {
   final bool questionLocked;
   final int? selectedChoiceId;
 
+  static const _answerColors = [
+    Color(0xFFE21B3C),
+    Color(0xFF1368CE),
+    Color(0xFFD89E00),
+    Color(0xFF26890C),
+  ];
+
+  static const _answerIcons = [
+    Icons.change_history,
+    Icons.diamond_outlined,
+    Icons.circle_outlined,
+    Icons.square_outlined,
+  ];
+
   @override
   Widget build(BuildContext context) {
     final choices = (question['choices'] as List<dynamic>? ?? <dynamic>[]).toList()
@@ -3106,61 +3414,177 @@ class _QuestionCard extends StatelessWidget {
         final bMap = mapOrNull(b) ?? <String, dynamic>{};
         return asInt(aMap['order']).compareTo(asInt(bMap['order']));
       });
-    final choiceColors = [
-      Theme.of(context).colorScheme.errorContainer,
-      Theme.of(context).colorScheme.primaryContainer,
-      Theme.of(context).colorScheme.tertiaryContainer,
-      Theme.of(context).colorScheme.secondaryContainer,
-    ];
-    final choiceIcons = [
-      Icons.change_history,
-      Icons.diamond_outlined,
-      Icons.circle_outlined,
-      Icons.square_outlined,
-    ];
 
-    return Card(
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF111827), Color(0xFF023047)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF111827).withOpacity(0.22),
+            blurRadius: 26,
+            offset: const Offset(0, 18),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${question['text']}', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text(appText(AppText.questionTimeLimitLabel, args: {'seconds': question['time_limit_sec'] ?? '-'})),
-            const SizedBox(height: 12),
-            ...choices.asMap().entries.map((entry) {
-              final choiceIndex = entry.key;
-              final rawChoice = entry.value;
-              final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
-              final choiceId = asInt(choice['id'], -1);
-              final isSelected = selectedChoiceId == choiceId;
-              final color = choiceColors[choiceIndex % choiceColors.length];
-              final icon = choiceIcons[choiceIndex % choiceIcons.length];
-
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.tonalIcon(
-                    onPressed: questionLocked ? null : () => onAnswer(choiceId),
-                    icon: Icon(icon),
-                    style: FilledButton.styleFrom(
-                      alignment: Alignment.centerLeft,
-                      backgroundColor: isSelected ? Theme.of(context).colorScheme.inversePrimary : color,
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-                    ),
-                    label: Text(
-                      '${choice['text']}',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    appText(AppText.questionTimeLimitLabel, args: {'seconds': question['time_limit_sec'] ?? '-'}),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
                   ),
                 ),
-              );
-            }),
-            if (questionLocked)
-              Text(appText(AppText.answerLockedMessage)),
+                if (questionLocked)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      appText(AppText.answerLockedMessage),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Text(
+              '${question['text']}',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    height: 1.15,
+                  ),
+            ),
+            const SizedBox(height: 18),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final useTwoColumns = constraints.maxWidth >= 680;
+                final itemWidth = useTwoColumns ? (constraints.maxWidth - 12) / 2 : constraints.maxWidth;
+
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: choices.asMap().entries.map((entry) {
+                    final choiceIndex = entry.key;
+                    final rawChoice = entry.value;
+                    final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
+                    final choiceId = asInt(choice['id'], -1);
+                    final isSelected = selectedChoiceId == choiceId;
+                    final color = _answerColors[choiceIndex % _answerColors.length];
+                    final icon = _answerIcons[choiceIndex % _answerIcons.length];
+
+                    return SizedBox(
+                      width: itemWidth,
+                      child: _buildAnswerTile(
+                        context,
+                        color: color,
+                        icon: icon,
+                        label: '${choice['text']}',
+                        isSelected: isSelected,
+                        isDimmed: questionLocked && !isSelected,
+                        onTap: questionLocked ? null : () => onAnswer(choiceId),
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnswerTile(
+    BuildContext context, {
+    required Color color,
+    required IconData icon,
+    required String label,
+    required bool isSelected,
+    required bool isDimmed,
+    required VoidCallback? onTap,
+  }) {
+    final radius = BorderRadius.circular(24);
+
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 180),
+      opacity: isDimmed ? 0.58 : 1,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: radius,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            minHeight: 88,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: radius,
+              border: Border.all(
+                color: isSelected ? Colors.white : Colors.white.withOpacity(0.18),
+                width: isSelected ? 4 : 1,
+              ),
+              boxShadow: [
+                if (isSelected)
+                  BoxShadow(
+                    color: Colors.white.withOpacity(0.28),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(icon, color: Colors.white, size: 28),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          height: 1.2,
+                        ),
+                  ),
+                ),
+                if (isSelected) ...[
+                  const SizedBox(width: 10),
+                  const Icon(Icons.check_circle, color: Colors.white),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
