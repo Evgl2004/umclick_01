@@ -15,6 +15,17 @@ const _defaultApiBaseUrl = 'http://localhost:8000/api';
 const _defaultPrivacyPolicyVersion = '2026-03';
 const _defaultPersonalDataConsentVersion = '2026-03';
 
+enum UiLanguage {
+  ru,
+  en,
+}
+
+final ValueNotifier<UiLanguage> uiLanguage = ValueNotifier<UiLanguage>(UiLanguage.ru);
+
+String uiText({required String ru, required String en}) {
+  return uiLanguage.value == UiLanguage.ru ? ru : en;
+}
+
 enum UmclickEntryPoint {
   home,
   legalPrivacy,
@@ -86,14 +97,39 @@ class UmclickApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'umclick',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0E7C7B)),
-        useMaterial3: true,
-      ),
-      home: _buildHomeForEntryPoint(),
+    return ValueListenableBuilder<UiLanguage>(
+      valueListenable: uiLanguage,
+      builder: (context, language, _) {
+        return MaterialApp(
+          title: 'umclick',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0E7C7B)),
+            useMaterial3: true,
+            tooltipTheme: const TooltipThemeData(waitDuration: Duration(milliseconds: 350)),
+          ),
+          home: _buildHomeForEntryPoint(),
+        );
+      },
+    );
+  }
+}
+
+class LanguageSwitcher extends StatelessWidget {
+  const LanguageSwitcher({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton<UiLanguage>(
+      showSelectedIcon: false,
+      segments: const [
+        ButtonSegment(value: UiLanguage.ru, label: Text('RU')),
+        ButtonSegment(value: UiLanguage.en, label: Text('EN')),
+      ],
+      selected: {uiLanguage.value},
+      onSelectionChanged: (selection) {
+        uiLanguage.value = selection.first;
+      },
     );
   }
 }
@@ -121,13 +157,27 @@ class _HomePageState extends State<HomePage> {
     final pages = [const TeacherPanel(), const ParticipantPanel()];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('umclick MVP')),
+      appBar: AppBar(
+        title: Text(uiText(ru: 'umclick MVP', en: 'umclick MVP')),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 12),
+            child: Center(child: LanguageSwitcher()),
+          ),
+        ],
+      ),
       body: pages[_index],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.school), label: 'Teacher'),
-          NavigationDestination(icon: Icon(Icons.group), label: 'Participant'),
+        destinations: [
+          NavigationDestination(
+            icon: const Icon(Icons.school),
+            label: uiText(ru: 'Преподаватель', en: 'Teacher'),
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.group),
+            label: uiText(ru: 'Участник', en: 'Participant'),
+          ),
         ],
         onDestinationSelected: (value) {
           setState(() {
@@ -1578,9 +1628,13 @@ class _TeacherPanelState extends State<TeacherPanel> {
         children: [
           TextField(
             controller: _apiController,
-            decoration: const InputDecoration(
-              labelText: 'API base URL',
+            decoration: InputDecoration(
+              labelText: uiText(ru: 'Адрес API', en: 'API base URL'),
               hintText: _defaultApiBaseUrl,
+              helperText: uiText(
+                ru: 'Обычно менять не нужно. Используется для запросов к backend.',
+                en: 'Usually does not need changes. Used for backend API requests.',
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -1590,27 +1644,33 @@ class _TeacherPanelState extends State<TeacherPanel> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Teacher Auth', style: Theme.of(context).textTheme.titleMedium),
+                  Text(uiText(ru: 'Вход преподавателя', en: 'Teacher Auth'), style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _usernameController,
-                    decoration: const InputDecoration(labelText: 'Username'),
+                    decoration: InputDecoration(labelText: uiText(ru: 'Логин', en: 'Username')),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _passwordController,
                     obscureText: true,
-                    decoration: const InputDecoration(labelText: 'Password'),
+                    decoration: InputDecoration(labelText: uiText(ru: 'Пароль', en: 'Password')),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _emailController,
-                    decoration: const InputDecoration(labelText: 'Email (optional)'),
+                    decoration: InputDecoration(labelText: uiText(ru: 'Email (необязательно)', en: 'Email (optional)')),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _signupCodeController,
-                    decoration: const InputDecoration(labelText: 'Signup code (optional)'),
+                    decoration: InputDecoration(
+                      labelText: uiText(ru: 'Код регистрации (необязательно)', en: 'Signup code (optional)'),
+                      helperText: uiText(
+                        ru: 'Если в .env задан TEACHER_SIGNUP_CODE, без него регистрация закрыта.',
+                        en: 'Required only when TEACHER_SIGNUP_CODE is configured in .env.',
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   Wrap(
@@ -1619,32 +1679,38 @@ class _TeacherPanelState extends State<TeacherPanel> {
                     children: [
                       FilledButton(
                         onPressed: _loading ? null : _registerTeacher,
-                        child: const Text('Register'),
+                        child: Text(uiText(ru: 'Зарегистрироваться', en: 'Register')),
                       ),
                       FilledButton.tonal(
                         onPressed: _loading ? null : _loginTeacher,
-                        child: const Text('Login'),
+                        child: Text(uiText(ru: 'Войти', en: 'Login')),
                       ),
                       OutlinedButton(
                         onPressed: _loading ? null : _loadMe,
-                        child: const Text('Who am I'),
+                        child: Text(uiText(ru: 'Профиль', en: 'Who am I')),
                       ),
                       OutlinedButton(
                         onPressed: _loading ? null : _logout,
-                        child: const Text('Logout'),
+                        child: Text(uiText(ru: 'Выйти', en: 'Logout')),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   if (_restoringSession)
-                    const Text('Restoring saved teacher session...'),
+                    Text(uiText(ru: 'Восстанавливаем сессию преподавателя...', en: 'Restoring saved teacher session...')),
                   Text(
                     _isLoggedIn
-                        ? 'Logged in${_teacher != null ? ': ${_teacher!['username']}' : ''}'
-                        : 'Not authenticated',
+                        ? uiText(
+                            ru: 'Вход выполнен${_teacher != null ? ': ${_teacher!['username']}' : ''}',
+                            en: 'Logged in${_teacher != null ? ': ${_teacher!['username']}' : ''}',
+                          )
+                        : uiText(ru: 'Не авторизован', en: 'Not authenticated'),
                   ),
                   if (_refreshToken != null && _refreshToken!.isNotEmpty)
-                    const Text('Refresh token is stored locally for this browser profile.'),
+                    Text(uiText(
+                      ru: 'Refresh token сохранен локально в этом браузере.',
+                      en: 'Refresh token is stored locally for this browser profile.',
+                    )),
                 ],
               ),
             ),
@@ -1656,12 +1722,12 @@ class _TeacherPanelState extends State<TeacherPanel> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Quiz Builder', style: Theme.of(context).textTheme.titleMedium),
+                  Text(uiText(ru: 'Конструктор викторины', en: 'Quiz Builder'), style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
                   Text(
                     _editingQuizId == null
-                        ? 'Mode: new quiz draft'
-                        : 'Mode: editing quiz #$_editingQuizId',
+                        ? uiText(ru: 'Режим: новая викторина', en: 'Mode: new quiz draft')
+                        : uiText(ru: 'Режим: редактирование викторины #$_editingQuizId', en: 'Mode: editing quiz #$_editingQuizId'),
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -1675,7 +1741,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
                                 .map((rawQuiz) {
                                   final quiz = mapOrNull(rawQuiz) ?? <String, dynamic>{};
                                   final quizId = asInt(quiz['id'], 0);
-                                  final quizTitle = quiz['title']?.toString() ?? 'Untitled';
+                                  final quizTitle = quiz['title']?.toString() ?? uiText(ru: 'Без названия', en: 'Untitled');
                                   return DropdownMenuItem<int>(
                                     value: quizId,
                                     child: Text('$quizId: $quizTitle'),
@@ -1690,13 +1756,13 @@ class _TeacherPanelState extends State<TeacherPanel> {
                           ),
                         )
                       else
-                        const Expanded(child: Text('No quizzes yet')),
+                        Expanded(child: Text(uiText(ru: 'Викторин пока нет', en: 'No quizzes yet'))),
                       const SizedBox(width: 12),
                       FilledButton.tonal(
                         onPressed: (_loading || !_isLoggedIn || _selectedQuizId == null)
                             ? null
                             : _loadSelectedQuizIntoDraft,
-                        child: const Text('Load'),
+                        child: Text(uiText(ru: 'Загрузить', en: 'Load')),
                       ),
                     ],
                   ),
@@ -1707,34 +1773,36 @@ class _TeacherPanelState extends State<TeacherPanel> {
                     children: [
                       FilledButton(
                         onPressed: (_loading || !_isLoggedIn) ? null : _saveQuizDraft,
-                        child: Text(_editingQuizId == null ? 'Save new quiz' : 'Save changes'),
+                        child: Text(_editingQuizId == null
+                            ? uiText(ru: 'Сохранить новую', en: 'Save new quiz')
+                            : uiText(ru: 'Сохранить изменения', en: 'Save changes')),
                       ),
                       FilledButton.tonal(
                         onPressed: (_loading || !_isLoggedIn) ? null : () => _resetQuizDraft(),
-                        child: const Text('New draft'),
+                        child: Text(uiText(ru: 'Новый черновик', en: 'New draft')),
                       ),
                       OutlinedButton(
                         onPressed: (_loading || !_isLoggedIn) ? null : () => _refreshQuizzes(),
-                        child: const Text('Refresh quizzes'),
+                        child: Text(uiText(ru: 'Обновить список', en: 'Refresh quizzes')),
                       ),
                       OutlinedButton(
                         onPressed: (_loading || !_isLoggedIn || _selectedQuizId == null)
                             ? null
                             : _deleteSelectedQuiz,
-                        child: const Text('Delete selected'),
+                        child: Text(uiText(ru: 'Удалить выбранную', en: 'Delete selected')),
                       ),
                     ],
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _quizTitleController,
-                    decoration: const InputDecoration(labelText: 'Quiz title'),
+                    decoration: InputDecoration(labelText: uiText(ru: 'Название викторины', en: 'Quiz title')),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _quizDescriptionController,
                     maxLines: 2,
-                    decoration: const InputDecoration(labelText: 'Description (optional)'),
+                    decoration: InputDecoration(labelText: uiText(ru: 'Описание (необязательно)', en: 'Description (optional)')),
                   ),
                   const SizedBox(height: 12),
                   ..._draftQuestions.asMap().entries.map((questionEntry) {
@@ -1752,28 +1820,32 @@ class _TeacherPanelState extends State<TeacherPanel> {
                             Row(
                               children: [
                                 Text(
-                                  'Question ${questionIndex + 1}',
+                                  uiText(ru: 'Вопрос ${questionIndex + 1}', en: 'Question ${questionIndex + 1}'),
                                   style: Theme.of(context).textTheme.titleSmall,
                                 ),
                                 const Spacer(),
                                 IconButton(
                                   onPressed: _loading ? null : () => _removeDraftQuestion(questionIndex),
                                   icon: const Icon(Icons.delete_outline),
-                                  tooltip: 'Remove question',
+                                  tooltip: uiText(ru: 'Удалить вопрос', en: 'Remove question'),
                                 ),
                               ],
                             ),
                             TextField(
                               controller: question.textController,
-                              decoration: const InputDecoration(labelText: 'Question text'),
+                              decoration: InputDecoration(labelText: uiText(ru: 'Текст вопроса', en: 'Question text')),
                             ),
                             const SizedBox(height: 8),
                             TextField(
                               controller: question.timeLimitController,
                               keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'Time limit (sec)',
+                              decoration: InputDecoration(
+                                labelText: uiText(ru: 'Лимит времени (сек)', en: 'Time limit (sec)'),
                                 hintText: '5-180',
+                                helperText: uiText(
+                                  ru: 'Участник должен ответить до окончания таймера.',
+                                  en: 'Participant must answer before the timer expires.',
+                                ),
                               ),
                             ),
                             const SizedBox(height: 10),
@@ -1796,7 +1868,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
                                       child: TextField(
                                         controller: choice.textController,
                                         decoration: InputDecoration(
-                                          labelText: 'Choice ${choiceIndex + 1}',
+                                          labelText: uiText(ru: 'Вариант ${choiceIndex + 1}', en: 'Choice ${choiceIndex + 1}'),
                                         ),
                                       ),
                                     ),
@@ -1805,7 +1877,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
                                           ? null
                                           : () => _removeDraftChoice(question, choiceIndex),
                                       icon: const Icon(Icons.close),
-                                      tooltip: 'Remove choice',
+                                      tooltip: uiText(ru: 'Удалить вариант', en: 'Remove choice'),
                                     ),
                                   ],
                                 ),
@@ -1816,7 +1888,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
                               child: OutlinedButton.icon(
                                 onPressed: _loading ? null : () => _addDraftChoice(question),
                                 icon: const Icon(Icons.add),
-                                label: const Text('Add choice'),
+                                label: Text(uiText(ru: 'Добавить вариант', en: 'Add choice')),
                               ),
                             ),
                           ],
@@ -1827,7 +1899,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
                   FilledButton.tonalIcon(
                     onPressed: (_loading || !_isLoggedIn) ? null : _addDraftQuestion,
                     icon: const Icon(Icons.add_circle_outline),
-                    label: const Text('Add question'),
+                    label: Text(uiText(ru: 'Добавить вопрос', en: 'Add question')),
                   ),
                 ],
               ),
@@ -1839,14 +1911,14 @@ class _TeacherPanelState extends State<TeacherPanel> {
               Expanded(
                 child: Text(
                   _selectedQuizId == null
-                      ? 'Select a quiz in builder to create a live session.'
-                      : 'Session quiz: #$_selectedQuizId',
+                      ? uiText(ru: 'Выберите викторину, чтобы создать live-сессию.', en: 'Select a quiz in builder to create a live session.')
+                      : uiText(ru: 'Викторина сессии: #$_selectedQuizId', en: 'Session quiz: #$_selectedQuizId'),
                 ),
               ),
               const SizedBox(width: 12),
               FilledButton(
                 onPressed: (_loading || !_isLoggedIn || _selectedQuizId == null) ? null : _createSession,
-                child: const Text('Create session'),
+                child: Text(uiText(ru: 'Создать сессию', en: 'Create session')),
               ),
             ],
           ),
@@ -1864,17 +1936,20 @@ class _TeacherPanelState extends State<TeacherPanel> {
                   children: [
                     Text('PIN: ${_session!['pin']}', style: Theme.of(context).textTheme.headlineSmall),
                     const SizedBox(height: 8),
-                    Text('Status: ${_session!['status']}'),
-                    Text('Participants: ${_session!['participants_count'] ?? 0}'),
-                    Text('WebSocket: ${_wsConnected ? 'connected' : 'disconnected'}'),
+                    Text(uiText(ru: 'Статус: ${_session!['status']}', en: 'Status: ${_session!['status']}')),
+                    Text(uiText(ru: 'Участники: ${_session!['participants_count'] ?? 0}', en: 'Participants: ${_session!['participants_count'] ?? 0}')),
+                    Text(uiText(
+                      ru: 'WebSocket: ${_wsConnected ? 'подключен' : 'отключен'}',
+                      en: 'WebSocket: ${_wsConnected ? 'connected' : 'disconnected'}',
+                    )),
                     if (_activeQuestion != null)
-                      Text('Current question: ${_activeQuestion!['text']}'),
+                      Text(uiText(ru: 'Текущий вопрос: ${_activeQuestion!['text']}', en: 'Current question: ${_activeQuestion!['text']}')),
                     if (_activeQuestion != null)
-                      Text('Time left: $_questionTimeLeftLabel'),
+                      Text(uiText(ru: 'Осталось времени: $_questionTimeLeftLabel', en: 'Time left: $_questionTimeLeftLabel')),
                     if (_answeredCount > 0)
-                      Text('Answers received: $_answeredCount'),
+                      Text(uiText(ru: 'Получено ответов: $_answeredCount', en: 'Answers received: $_answeredCount')),
                     const SizedBox(height: 8),
-                    Text('Join URL: ${_session!['join_url']}'),
+                    Text(uiText(ru: 'Ссылка для участников: ${_session!['join_url']}', en: 'Join URL: ${_session!['join_url']}')),
                     const SizedBox(height: 12),
                     Center(
                       child: QrImageView(
@@ -1889,43 +1964,43 @@ class _TeacherPanelState extends State<TeacherPanel> {
                       children: [
                         FilledButton(
                           onPressed: _startSession,
-                          child: const Text('Start'),
+                          child: Text(uiText(ru: 'Старт', en: 'Start')),
                         ),
                         FilledButton.tonal(
                           onPressed: _nextQuestion,
-                          child: const Text('Next question'),
+                          child: Text(uiText(ru: 'Следующий вопрос', en: 'Next question')),
                         ),
                         FilledButton.tonal(
                           onPressed: _revealAnswers,
-                          child: const Text('Reveal answers'),
+                          child: Text(uiText(ru: 'Показать ответы', en: 'Reveal answers')),
                         ),
                         FilledButton.tonal(
                           onPressed: _finishSession,
-                          child: const Text('Finish'),
+                          child: Text(uiText(ru: 'Завершить', en: 'Finish')),
                         ),
                         OutlinedButton(
                           onPressed: _showLeaderboard,
-                          child: const Text('Leaderboard'),
+                          child: Text(uiText(ru: 'Рейтинг', en: 'Leaderboard')),
                         ),
                         OutlinedButton(
                           onPressed: () {
                             final exportUrl =
                                 '${_apiController.text}/sessions/${_session!['id']}/results/export/';
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Export URL: $exportUrl')),
+                              SnackBar(content: Text(uiText(ru: 'Ссылка экспорта: $exportUrl', en: 'Export URL: $exportUrl'))),
                             );
                           },
-                          child: const Text('Export URL'),
+                          child: Text(uiText(ru: 'Экспорт CSV', en: 'Export URL')),
                         ),
                       ],
                     ),
                     if (_revealPayload != null) ...[
                       const SizedBox(height: 12),
                       const Divider(),
-                      Text('Reveal results', style: Theme.of(context).textTheme.titleMedium),
-                      Text('Total answers: ${_revealPayload!['total_answers'] ?? 0}'),
-                      Text('Points awarded: ${_revealPayload!['total_points_awarded'] ?? 0}'),
-                      Text('Revealed by: ${_revealPayload!['revealed_by'] ?? 'teacher'}'),
+                      Text(uiText(ru: 'Результаты раунда', en: 'Reveal results'), style: Theme.of(context).textTheme.titleMedium),
+                      Text(uiText(ru: 'Всего ответов: ${_revealPayload!['total_answers'] ?? 0}', en: 'Total answers: ${_revealPayload!['total_answers'] ?? 0}')),
+                      Text(uiText(ru: 'Начислено очков: ${_revealPayload!['total_points_awarded'] ?? 0}', en: 'Points awarded: ${_revealPayload!['total_points_awarded'] ?? 0}')),
+                      Text(uiText(ru: 'Раскрыто: ${_revealPayload!['revealed_by'] ?? 'teacher'}', en: 'Revealed by: ${_revealPayload!['revealed_by'] ?? 'teacher'}')),
                       const SizedBox(height: 8),
                       ...((_revealPayload!['choices'] as List<dynamic>? ?? <dynamic>[]).map((rawChoice) {
                         final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
@@ -1934,7 +2009,10 @@ class _TeacherPanelState extends State<TeacherPanel> {
                           dense: true,
                           leading: Icon(correct ? Icons.check_circle : Icons.circle_outlined),
                           title: Text('${choice['text']}'),
-                          trailing: Text('Votes: ${choice['answers_count'] ?? 0} | Pts: ${choice['points_awarded'] ?? 0}'),
+                          trailing: Text(uiText(
+                            ru: 'Голоса: ${choice['answers_count'] ?? 0} | Очки: ${choice['points_awarded'] ?? 0}',
+                            en: 'Votes: ${choice['answers_count'] ?? 0} | Pts: ${choice['points_awarded'] ?? 0}',
+                          )),
                         );
                       })),
                     ],
@@ -1949,10 +2027,10 @@ class _TeacherPanelState extends State<TeacherPanel> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Live events', style: Theme.of(context).textTheme.titleMedium),
+                    Text(uiText(ru: 'События', en: 'Live events'), style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 8),
                     if (_events.isEmpty)
-                      const Text('No events yet.')
+                      Text(uiText(ru: 'Событий пока нет.', en: 'No events yet.'))
                     else
                       ..._events.map((event) => Text(event)),
                   ],
@@ -2125,8 +2203,12 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   String get _consentCheckboxLabel {
     final privacyVersion = _legalVersion('privacy_policy');
     final consentVersion = _legalVersion('personal_data_consent');
-    return 'I consent to personal data processing and privacy policy '
-        '(privacy v$privacyVersion, consent v$consentVersion)';
+    return uiText(
+      ru: 'Согласен(на) на обработку персональных данных и принимаю политику конфиденциальности '
+          '(политика v$privacyVersion, согласие v$consentVersion)',
+      en: 'I consent to personal data processing and privacy policy '
+          '(privacy v$privacyVersion, consent v$consentVersion)',
+    );
   }
 
   Future<void> _loadLegalDocuments({bool showError = true}) async {
@@ -2443,7 +2525,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     }
 
     final quiz = mapOrNull(preview['quiz']) ?? <String, dynamic>{};
-    final title = quiz['title']?.toString() ?? 'Untitled quiz';
+    final title = quiz['title']?.toString() ?? uiText(ru: 'Викторина без названия', en: 'Untitled quiz');
     final description = quiz['description']?.toString() ?? '';
     final statusLabel = preview['session_status']?.toString() ?? 'unknown';
     final participantsCount = asInt(preview['participants_count']);
@@ -2470,8 +2552,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
               Text(description),
             ],
             const SizedBox(height: 8),
-            Text('Status: $statusLabel'),
-            Text('Participants: $participantsCount'),
+            Text(uiText(ru: 'Статус: $statusLabel', en: 'Status: $statusLabel')),
+            Text(uiText(ru: 'Участники: $participantsCount', en: 'Participants: $participantsCount')),
             if (!canJoin && closedReason.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(closedReason, style: TextStyle(color: Theme.of(context).colorScheme.error)),
@@ -2495,7 +2577,13 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         children: [
           TextField(
             controller: _apiController,
-            decoration: const InputDecoration(labelText: 'API base URL'),
+            decoration: InputDecoration(
+              labelText: uiText(ru: 'Адрес API', en: 'API base URL'),
+              helperText: uiText(
+                ru: 'Адрес backend. В обычном сценарии уже заполнен из ссылки.',
+                en: 'Backend URL. Usually already provided by the join link.',
+              ),
+            ),
           ),
           const SizedBox(height: 12),
           if (_useJoinTokenFromLink && _joinTokenFromLink != null) ...[
@@ -2505,9 +2593,9 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Join link detected. Session PIN is not required.'),
+                    Text(uiText(ru: 'Обнаружена ссылка входа. PIN вводить не нужно.', en: 'Join link detected. Session PIN is not required.')),
                     const SizedBox(height: 6),
-                    SelectableText('Token: $_joinTokenFromLink'),
+                    SelectableText(uiText(ru: 'Токен: $_joinTokenFromLink', en: 'Token: $_joinTokenFromLink')),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 10,
@@ -2515,7 +2603,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                       children: [
                         OutlinedButton(
                           onPressed: (_loading || _loadingJoinPreview) ? null : () => _loadJoinPreview(),
-                          child: const Text('Refresh preview'),
+                          child: Text(uiText(ru: 'Обновить предпросмотр', en: 'Refresh preview')),
                         ),
                         OutlinedButton(
                           onPressed: _loading
@@ -2526,7 +2614,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                                     _joinPreview = null;
                                   });
                                 },
-                          child: const Text('Use PIN instead'),
+                          child: Text(uiText(ru: 'Ввести PIN вручную', en: 'Use PIN instead')),
                         ),
                       ],
                     ),
@@ -2538,12 +2626,18 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
           ] else ...[
             TextField(
               controller: _pinController,
-              decoration: const InputDecoration(labelText: 'Session PIN'),
+              decoration: InputDecoration(
+                labelText: uiText(ru: 'PIN сессии', en: 'Session PIN'),
+                helperText: uiText(
+                  ru: '6 цифр с экрана преподавателя. По QR-ссылке PIN не нужен.',
+                  en: '6 digits from teacher screen. QR links do not require PIN.',
+                ),
+              ),
             ),
             const SizedBox(height: 8),
             OutlinedButton(
               onPressed: (_loading || _loadingJoinPreview) ? null : () => _loadJoinPreview(),
-              child: const Text('Preview session'),
+              child: Text(uiText(ru: 'Предпросмотр сессии', en: 'Preview session')),
             ),
             if (_joinTokenFromLink != null) ...[
               const SizedBox(height: 8),
@@ -2557,7 +2651,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                         });
                         _loadJoinPreview(showError: false);
                       },
-                child: const Text('Use token from join link'),
+                child: Text(uiText(ru: 'Использовать токен из ссылки', en: 'Use token from join link')),
               ),
             ],
             const SizedBox(height: 12),
@@ -2568,12 +2662,18 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
           ],
           TextField(
             controller: _nameController,
-            decoration: const InputDecoration(labelText: 'Name'),
+            decoration: InputDecoration(labelText: uiText(ru: 'Имя', en: 'Name')),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _phoneController,
-            decoration: const InputDecoration(labelText: 'Phone'),
+            decoration: InputDecoration(
+              labelText: uiText(ru: 'Телефон', en: 'Phone'),
+              helperText: uiText(
+                ru: 'Используется для быстрой регистрации и выгрузки результатов.',
+                en: 'Used for quick registration and result export.',
+              ),
+            ),
           ),
           const SizedBox(height: 12),
           CheckboxListTile(
@@ -2592,18 +2692,18 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
             children: [
               OutlinedButton(
                 onPressed: (_loading || _loadingLegalDocuments) ? null : _openLegalDocumentsPage,
-                child: const Text('Privacy & consent'),
+                child: Text(uiText(ru: 'Документы и согласие', en: 'Privacy & consent')),
               ),
               OutlinedButton(
                 onPressed: (_loading || _loadingLegalDocuments) ? null : () => _loadLegalDocuments(),
-                child: const Text('Refresh legal docs'),
+                child: Text(uiText(ru: 'Обновить документы', en: 'Refresh legal docs')),
               ),
             ],
           ),
           const SizedBox(height: 8),
           FilledButton(
             onPressed: _loading ? null : _join,
-            child: const Text('Join session'),
+            child: Text(uiText(ru: 'Войти в сессию', en: 'Join session')),
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
@@ -2611,24 +2711,27 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
           ],
           if (_joinPayload != null) ...[
             const SizedBox(height: 20),
-            Text('Points: $_totalPoints', style: Theme.of(context).textTheme.titleLarge),
-            Text('Last answer: +$_lastAnswerPoints pts'),
-            Text('Status: $_sessionStatus'),
-            Text('WebSocket: ${_socketConnected ? 'connected' : 'disconnected'}'),
-            if (_activeQuestion != null) Text('Time left: $_timeLeftLabel'),
+            Text(uiText(ru: 'Очки: $_totalPoints', en: 'Points: $_totalPoints'), style: Theme.of(context).textTheme.titleLarge),
+            Text(uiText(ru: 'Последний ответ: +$_lastAnswerPoints', en: 'Last answer: +$_lastAnswerPoints pts')),
+            Text(uiText(ru: 'Статус: $_sessionStatus', en: 'Status: $_sessionStatus')),
+            Text(uiText(
+              ru: 'WebSocket: ${_socketConnected ? 'подключен' : 'отключен'}',
+              en: 'WebSocket: ${_socketConnected ? 'connected' : 'disconnected'}',
+            )),
+            if (_activeQuestion != null) Text(uiText(ru: 'Осталось времени: $_timeLeftLabel', en: 'Time left: $_timeLeftLabel')),
             const SizedBox(height: 12),
             if (_sessionFinished)
-              const Card(
+              Card(
                 child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text('Session finished. Thanks for playing!'),
+                  padding: const EdgeInsets.all(16),
+                  child: Text(uiText(ru: 'Сессия завершена. Спасибо за участие!', en: 'Session finished. Thanks for playing!')),
                 ),
               )
             else if (_activeQuestion == null)
-              const Card(
+              Card(
                 child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text('Waiting for teacher to start the next question...'),
+                  padding: const EdgeInsets.all(16),
+                  child: Text(uiText(ru: 'Ждём, когда преподаватель запустит следующий вопрос...', en: 'Waiting for teacher to start the next question...')),
                 ),
               )
             else
@@ -2639,9 +2742,9 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                 selectedChoiceId: _selectedChoiceId,
               ),
             if (_isQuestionExpired && !_questionAnswered && !_sessionFinished)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: Text('Time is over. Wait for results and the next question.'),
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(uiText(ru: 'Время вышло. Ждите результаты и следующий вопрос.', en: 'Time is over. Wait for results and the next question.')),
               ),
             if (_revealPayload != null) ...[
               const SizedBox(height: 12),
@@ -2651,10 +2754,10 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Round results', style: Theme.of(context).textTheme.titleMedium),
-                      Text('Total answers: ${_revealPayload!['total_answers'] ?? 0}'),
-                      Text('Points awarded: ${_revealPayload!['total_points_awarded'] ?? 0}'),
-                      Text('Revealed by: ${_revealPayload!['revealed_by'] ?? 'teacher'}'),
+                      Text(uiText(ru: 'Результаты раунда', en: 'Round results'), style: Theme.of(context).textTheme.titleMedium),
+                      Text(uiText(ru: 'Всего ответов: ${_revealPayload!['total_answers'] ?? 0}', en: 'Total answers: ${_revealPayload!['total_answers'] ?? 0}')),
+                      Text(uiText(ru: 'Начислено очков: ${_revealPayload!['total_points_awarded'] ?? 0}', en: 'Points awarded: ${_revealPayload!['total_points_awarded'] ?? 0}')),
+                      Text(uiText(ru: 'Раскрыто: ${_revealPayload!['revealed_by'] ?? 'teacher'}', en: 'Revealed by: ${_revealPayload!['revealed_by'] ?? 'teacher'}')),
                       const SizedBox(height: 8),
                       ...((_revealPayload!['choices'] as List<dynamic>? ?? <dynamic>[]).map((rawChoice) {
                         final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
@@ -2663,7 +2766,10 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                           dense: true,
                           leading: Icon(isCorrect ? Icons.check_circle : Icons.circle_outlined),
                           title: Text('${choice['text']}'),
-                          trailing: Text('Votes: ${choice['answers_count'] ?? 0} | Pts: ${choice['points_awarded'] ?? 0}'),
+                          trailing: Text(uiText(
+                            ru: 'Голоса: ${choice['answers_count'] ?? 0} | Очки: ${choice['points_awarded'] ?? 0}',
+                            en: 'Votes: ${choice['answers_count'] ?? 0} | Pts: ${choice['points_awarded'] ?? 0}',
+                          )),
                         );
                       })),
                     ],
@@ -2678,10 +2784,10 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Live events', style: Theme.of(context).textTheme.titleMedium),
+                    Text(uiText(ru: 'События', en: 'Live events'), style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 8),
                     if (_events.isEmpty)
-                      const Text('No events yet.')
+                      Text(uiText(ru: 'Событий пока нет.', en: 'No events yet.'))
                     else
                       ..._events.map((event) => Text(event)),
                   ],
@@ -2723,7 +2829,7 @@ class LegalDocumentsPage extends StatelessWidget {
     final contactEmail = documents['contact_email']?.toString() ?? '-';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Privacy & Consent')),
+      appBar: AppBar(title: Text(uiText(ru: 'Документы и согласие', en: 'Privacy & Consent'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -2733,26 +2839,30 @@ class LegalDocumentsPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Current legal versions', style: Theme.of(context).textTheme.titleMedium),
+                  Text(uiText(ru: 'Актуальные версии документов', en: 'Current legal versions'), style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
-                  Text('Privacy policy version: $privacyVersion'),
-                  SelectableText('Privacy policy URL: ${_url('privacy_policy')}'),
+                  Text(uiText(ru: 'Версия политики: $privacyVersion', en: 'Privacy policy version: $privacyVersion')),
+                  SelectableText(uiText(ru: 'URL политики: ${_url('privacy_policy')}', en: 'Privacy policy URL: ${_url('privacy_policy')}')),
                   const SizedBox(height: 6),
-                  Text('Personal data consent version: $consentVersion'),
-                  SelectableText('Consent URL: ${_url('personal_data_consent')}'),
+                  Text(uiText(ru: 'Версия согласия: $consentVersion', en: 'Personal data consent version: $consentVersion')),
+                  SelectableText(uiText(ru: 'URL согласия: ${_url('personal_data_consent')}', en: 'Consent URL: ${_url('personal_data_consent')}')),
                   const SizedBox(height: 6),
-                  SelectableText('Contact: $contactEmail'),
+                  SelectableText(uiText(ru: 'Контакт: $contactEmail', en: 'Contact: $contactEmail')),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 12),
-          const Card(
+          Card(
             child: Padding(
-              padding: EdgeInsets.all(12),
+              padding: const EdgeInsets.all(12),
               child: Text(
-                'Before joining a quiz, participant agrees to personal data processing '
-                'and acknowledges the privacy policy. Versions above are saved with consent.',
+                uiText(
+                  ru: 'Перед входом в викторину участник подтверждает согласие на обработку персональных данных '
+                      'и принимает политику конфиденциальности. Эти версии сохраняются вместе с согласием.',
+                  en: 'Before joining a quiz, participant agrees to personal data processing '
+                      'and acknowledges the privacy policy. Versions above are saved with consent.',
+                ),
               ),
             ),
           ),
@@ -2774,7 +2884,7 @@ class LegalDocumentsPage extends StatelessWidget {
                   );
                 },
                 icon: const Icon(Icons.policy_outlined),
-                label: const Text('Open privacy policy'),
+                label: Text(uiText(ru: 'Открыть политику', en: 'Open privacy policy')),
               ),
               FilledButton.tonalIcon(
                 onPressed: () {
@@ -2789,7 +2899,7 @@ class LegalDocumentsPage extends StatelessWidget {
                   );
                 },
                 icon: const Icon(Icons.gpp_maybe_outlined),
-                label: const Text('Open consent form'),
+                label: Text(uiText(ru: 'Открыть согласие', en: 'Open consent form')),
               ),
             ],
           ),
@@ -2845,16 +2955,22 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
 
   String get _title {
     if (widget.documentType == PublicLegalDocumentType.privacyPolicy) {
-      return 'Privacy Policy';
+      return uiText(ru: 'Политика конфиденциальности', en: 'Privacy Policy');
     }
-    return 'Personal Data Processing Consent';
+    return uiText(ru: 'Согласие на обработку персональных данных', en: 'Personal Data Processing Consent');
   }
 
   String get _shortDescription {
     if (widget.documentType == PublicLegalDocumentType.privacyPolicy) {
-      return 'How umclick collects, stores, and uses participant data.';
+      return uiText(
+        ru: 'Как umclick собирает, хранит и использует данные участников.',
+        en: 'How umclick collects, stores, and uses participant data.',
+      );
     }
-    return 'Rules of consent for collecting and processing personal data in umclick.';
+    return uiText(
+      ru: 'Условия согласия на сбор и обработку персональных данных в umclick.',
+      en: 'Rules of consent for collecting and processing personal data in umclick.',
+    );
   }
 
   String get _fallbackPublicUrl {
@@ -2883,23 +2999,23 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
 
   List<MapEntry<String, String>> get _sections {
     if (widget.documentType == PublicLegalDocumentType.privacyPolicy) {
-      return const [
-        MapEntry('1. Data We Collect', 'We collect participant phone number, display name, session participation metadata, answer history, and technical logs required for reliability and abuse prevention.'),
-        MapEntry('2. Why We Process Data', 'Data is used to register participants, run live quiz sessions, calculate scores, build leaderboards, and export results to teachers after each session.'),
-        MapEntry('3. Legal Basis', 'Processing is based on explicit participant consent accepted before joining a quiz session.'),
-        MapEntry('4. Storage and Retention', 'Data is stored in service databases and retained only for the period required to deliver the service, resolve disputes, and satisfy legal obligations.'),
-        MapEntry('5. Sharing and Access', 'Data is available to authorized teacher accounts of the specific session and to technical operators responsible for hosting and support under confidentiality duties.'),
-        MapEntry('6. Participant Rights', 'Participants may request access, correction, restriction, deletion, or withdrawal of consent by contacting the legal email listed on this page.'),
+      return [
+        MapEntry(uiText(ru: '1. Какие данные мы собираем', en: '1. Data We Collect'), uiText(ru: 'Мы собираем телефон участника, отображаемое имя, сведения об участии в сессии, историю ответов и технические журналы, необходимые для надежной работы сервиса.', en: 'We collect participant phone number, display name, session participation metadata, answer history, and technical logs required for reliability and abuse prevention.')),
+        MapEntry(uiText(ru: '2. Для чего обрабатываются данные', en: '2. Why We Process Data'), uiText(ru: 'Данные используются для регистрации участников, проведения live-викторин, расчета очков, формирования рейтинга и выгрузки результатов преподавателю.', en: 'Data is used to register participants, run live quiz sessions, calculate scores, build leaderboards, and export results to teachers after each session.')),
+        MapEntry(uiText(ru: '3. Правовое основание', en: '3. Legal Basis'), uiText(ru: 'Обработка выполняется на основании явного согласия участника, принятого перед входом в сессию.', en: 'Processing is based on explicit participant consent accepted before joining a quiz session.')),
+        MapEntry(uiText(ru: '4. Хранение', en: '4. Storage and Retention'), uiText(ru: 'Данные хранятся в базах сервиса только в течение срока, необходимого для работы продукта, разрешения спорных ситуаций и соблюдения обязательств.', en: 'Data is stored in service databases and retained only for the period required to deliver the service, resolve disputes, and satisfy legal obligations.')),
+        MapEntry(uiText(ru: '5. Доступ и передача', en: '5. Sharing and Access'), uiText(ru: 'Данные доступны авторизованному преподавателю конкретной сессии и техническим операторам, которые обеспечивают хостинг и поддержку.', en: 'Data is available to authorized teacher accounts of the specific session and to technical operators responsible for hosting and support under confidentiality duties.')),
+        MapEntry(uiText(ru: '6. Права участника', en: '6. Participant Rights'), uiText(ru: 'Участник может запросить доступ, исправление, ограничение, удаление данных или отзыв согласия через контактный email на этой странице.', en: 'Participants may request access, correction, restriction, deletion, or withdrawal of consent by contacting the legal email listed on this page.')),
       ];
     }
 
-    return const [
-      MapEntry('1. Scope of Consent', 'By joining a session, participant consents to processing of phone number, name, quiz answers, score values, and participation timestamps.'),
-      MapEntry('2. Processing Actions', 'Consent covers collection, recording, systematization, storage, updating, extraction, transfer to authorized teacher accounts, and deletion after retention period.'),
-      MapEntry('3. Purpose of Processing', 'Processing is required for participant authorization, quiz gameplay, score calculation, leaderboard display, and teacher report export.'),
-      MapEntry('4. Consent Period', 'Consent is valid from the moment of acceptance and remains active until withdrawal or until processing purposes are fully achieved.'),
-      MapEntry('5. Withdrawal Procedure', 'Participant can withdraw consent by contacting legal support. Withdrawal may limit ability to continue using quiz participation features.'),
-      MapEntry('6. Confirmation', 'Continuing with registration confirms that participant has read and accepted this consent text and related privacy policy version.'),
+    return [
+      MapEntry(uiText(ru: '1. Объем согласия', en: '1. Scope of Consent'), uiText(ru: 'Входя в сессию, участник соглашается на обработку телефона, имени, ответов, очков и времени участия.', en: 'By joining a session, participant consents to processing of phone number, name, quiz answers, score values, and participation timestamps.')),
+      MapEntry(uiText(ru: '2. Действия с данными', en: '2. Processing Actions'), uiText(ru: 'Согласие включает сбор, запись, систематизацию, хранение, обновление, извлечение, передачу авторизованному преподавателю и удаление после срока хранения.', en: 'Consent covers collection, recording, systematization, storage, updating, extraction, transfer to authorized teacher accounts, and deletion after retention period.')),
+      MapEntry(uiText(ru: '3. Цель обработки', en: '3. Purpose of Processing'), uiText(ru: 'Обработка нужна для входа участника, прохождения викторины, расчета очков, показа рейтинга и экспорта отчета преподавателю.', en: 'Processing is required for participant authorization, quiz gameplay, score calculation, leaderboard display, and teacher report export.')),
+      MapEntry(uiText(ru: '4. Срок действия', en: '4. Consent Period'), uiText(ru: 'Согласие действует с момента принятия до отзыва или до достижения целей обработки.', en: 'Consent is valid from the moment of acceptance and remains active until withdrawal or until processing purposes are fully achieved.')),
+      MapEntry(uiText(ru: '5. Отзыв согласия', en: '5. Withdrawal Procedure'), uiText(ru: 'Участник может отозвать согласие через юридический контакт. Отзыв может ограничить дальнейшее участие в викторинах.', en: 'Participant can withdraw consent by contacting legal support. Withdrawal may limit ability to continue using quiz participation features.')),
+      MapEntry(uiText(ru: '6. Подтверждение', en: '6. Confirmation'), uiText(ru: 'Продолжая регистрацию, участник подтверждает, что прочитал и принял этот текст согласия и связанную версию политики конфиденциальности.', en: 'Continuing with registration confirms that participant has read and accepted this consent text and related privacy policy version.')),
     ];
   }
 
@@ -2946,7 +3062,7 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
               );
             },
             icon: const Icon(Icons.home_outlined),
-            label: const Text('Open app'),
+            label: Text(uiText(ru: 'Открыть приложение', en: 'Open app')),
           ),
           const SizedBox(width: 8),
         ],
@@ -2963,12 +3079,12 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Failed to refresh legal metadata: $_error'),
+                    Text(uiText(ru: 'Не удалось обновить юридические данные: $_error', en: 'Failed to refresh legal metadata: $_error')),
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
                       onPressed: _loadLegalDocuments,
                       icon: const Icon(Icons.refresh),
-                      label: const Text('Retry'),
+                      label: Text(uiText(ru: 'Повторить', en: 'Retry')),
                     ),
                   ],
                 ),
@@ -2984,9 +3100,9 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
                 children: [
                   Text(_shortDescription, style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
-                  Text('Version: $_version'),
-                  SelectableText('Public URL: $_documentUrl'),
-                  SelectableText('Legal contact: $_contactEmail'),
+                  Text(uiText(ru: 'Версия: $_version', en: 'Version: $_version')),
+                  SelectableText(uiText(ru: 'Публичный URL: $_documentUrl', en: 'Public URL: $_documentUrl')),
+                  SelectableText(uiText(ru: 'Юридический контакт: $_contactEmail', en: 'Legal contact: $_contactEmail')),
                 ],
               ),
             ),
@@ -3036,6 +3152,18 @@ class _QuestionCard extends StatelessWidget {
         final bMap = mapOrNull(b) ?? <String, dynamic>{};
         return asInt(aMap['order']).compareTo(asInt(bMap['order']));
       });
+    final choiceColors = [
+      Theme.of(context).colorScheme.errorContainer,
+      Theme.of(context).colorScheme.primaryContainer,
+      Theme.of(context).colorScheme.tertiaryContainer,
+      Theme.of(context).colorScheme.secondaryContainer,
+    ];
+    final choiceIcons = [
+      Icons.change_history,
+      Icons.diamond_outlined,
+      Icons.circle_outlined,
+      Icons.square_outlined,
+    ];
 
     return Card(
       child: Padding(
@@ -3045,29 +3173,39 @@ class _QuestionCard extends StatelessWidget {
           children: [
             Text('${question['text']}', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            Text('Time limit: ${question['time_limit_sec'] ?? '-'} sec'),
+            Text(uiText(ru: 'Лимит времени: ${question['time_limit_sec'] ?? '-'} сек', en: 'Time limit: ${question['time_limit_sec'] ?? '-'} sec')),
             const SizedBox(height: 12),
-            ...choices.map((rawChoice) {
+            ...choices.asMap().entries.map((entry) {
+              final choiceIndex = entry.key;
+              final rawChoice = entry.value;
               final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
               final choiceId = asInt(choice['id'], -1);
               final isSelected = selectedChoiceId == choiceId;
+              final color = choiceColors[choiceIndex % choiceColors.length];
+              final icon = choiceIcons[choiceIndex % choiceIcons.length];
 
               return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: 10),
                 child: SizedBox(
                   width: double.infinity,
-                  child: OutlinedButton(
+                  child: FilledButton.tonalIcon(
                     onPressed: questionLocked ? null : () => onAnswer(choiceId),
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: isSelected ? Theme.of(context).colorScheme.secondaryContainer : null,
+                    icon: Icon(icon),
+                    style: FilledButton.styleFrom(
+                      alignment: Alignment.centerLeft,
+                      backgroundColor: isSelected ? Theme.of(context).colorScheme.inversePrimary : color,
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
                     ),
-                    child: Text('${choice['text']}'),
+                    label: Text(
+                      '${choice['text']}',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                   ),
                 ),
               );
             }),
             if (questionLocked)
-              const Text('Answer locked. Waiting for teacher update.'),
+              Text(uiText(ru: 'Ответ зафиксирован. Ждём обновления от преподавателя.', en: 'Answer locked. Waiting for teacher update.')),
           ],
         ),
       ),
