@@ -384,6 +384,32 @@ class ApiClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> previewJoinSession({
+    String? pin,
+    String? joinToken,
+  }) async {
+    final queryParameters = <String, String>{};
+
+    final normalizedPin = (pin ?? '').trim();
+    if (normalizedPin.isNotEmpty) {
+      queryParameters['pin'] = normalizedPin;
+    }
+
+    final normalizedJoinToken = (joinToken ?? '').trim();
+    if (normalizedJoinToken.isNotEmpty) {
+      queryParameters['token'] = normalizedJoinToken;
+    }
+
+    final response = await http.get(
+      _uri('/sessions/join/preview/').replace(queryParameters: queryParameters),
+      headers: _headers(),
+    );
+    if (response.statusCode >= 400) {
+      _throwError(response, 'Failed to load session preview');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> joinSession({
     String? pin,
     String? joinToken,
@@ -1969,6 +1995,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   bool _isQuestionExpired = false;
   Map<String, dynamic>? _legalDocuments;
   bool _loadingLegalDocuments = false;
+  Map<String, dynamic>? _joinPreview;
+  bool _loadingJoinPreview = false;
   String? _joinTokenFromLink;
   bool _useJoinTokenFromLink = false;
 
@@ -1980,14 +2008,30 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
 
   ApiClient _client() => ApiClient(_apiController.text.trim());
 
+  String? get _activeJoinToken => _useJoinTokenFromLink ? _joinTokenFromLink : null;
+
+  String? get _activePin {
+    if (_useJoinTokenFromLink) {
+      return null;
+    }
+    final pin = _pinController.text.trim();
+    return pin.isEmpty ? null : pin;
+  }
+
   @override
   void initState() {
     super.initState();
     _configureJoinSourceFromUrl();
     _loadLegalDocuments(showError: false);
+    _loadJoinPreview(showError: _joinTokenFromLink != null || _activePin != null);
   }
 
   void _configureJoinSourceFromUrl() {
+    final apiBaseFromUrl = Uri.base.queryParameters['api']?.trim() ?? '';
+    if (apiBaseFromUrl.isNotEmpty) {
+      _apiController.text = apiBaseFromUrl;
+    }
+
     final tokenFromUrl = Uri.base.queryParameters['token']?.trim() ?? '';
     if (tokenFromUrl.isNotEmpty) {
       _joinTokenFromLink = tokenFromUrl;
@@ -2021,6 +2065,55 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         _events.removeRange(25, _events.length);
       }
     });
+  }
+
+  Future<void> _loadJoinPreview({bool showError = true}) async {
+    if (_loadingJoinPreview) {
+      return;
+    }
+
+    final joinToken = _activeJoinToken;
+    final pin = _activePin;
+    if ((joinToken == null || joinToken.isEmpty) && (pin == null || pin.isEmpty)) {
+      if (showError) {
+        setState(() {
+          _error = 'Enter a PIN or open a tokenized join link first.';
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _loadingJoinPreview = true;
+      if (showError) {
+        _error = null;
+      }
+    });
+
+    try {
+      final preview = await _client().previewJoinSession(
+        pin: pin,
+        joinToken: joinToken,
+      );
+      if (!mounted) return;
+      setState(() {
+        _joinPreview = preview;
+        _legalDocuments = mapOrNull(preview['legal_documents']) ?? _legalDocuments;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _joinPreview = null;
+        if (showError) {
+          _error = e.toString();
+        }
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _loadingJoinPreview = false;
+      });
+    }
   }
 
   String _legalVersion(String section) {
@@ -2257,8 +2350,14 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     });
 
     try {
-      final joinToken = _useJoinTokenFromLink ? _joinTokenFromLink : null;
-      final pin = _useJoinTokenFromLink ? null : _pinController.text.trim();
+      if (_joinPreview?['can_join'] == false) {
+        throw StateError(
+          _joinPreview?['closed_reason']?.toString() ?? 'Session is not available for joining.',
+        );
+      }
+
+      final joinToken = _activeJoinToken;
+      final pin = _activePin;
 
       final payload = await _client().joinSession(
         pin: pin,
@@ -2334,6 +2433,59 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     }
   }
 
+  Widget _buildJoinPreviewCard() {
+    final preview = _joinPreview;
+    if (_loadingJoinPreview && preview == null) {
+      return const LinearProgressIndicator();
+    }
+    if (preview == null) {
+      return const SizedBox.shrink();
+    }
+
+    final quiz = mapOrNull(preview['quiz']) ?? <String, dynamic>{};
+    final title = quiz['title']?.toString() ?? 'Untitled quiz';
+    final description = quiz['description']?.toString() ?? '';
+    final statusLabel = preview['session_status']?.toString() ?? 'unknown';
+    final participantsCount = asInt(preview['participants_count']);
+    final canJoin = preview['can_join'] != false;
+    final closedReason = preview['closed_reason']?.toString() ?? '';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(canJoin ? Icons.fact_check_outlined : Icons.lock_outline),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+                ),
+              ],
+            ),
+            if (description.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(description),
+            ],
+            const SizedBox(height: 8),
+            Text('Status: $statusLabel'),
+            Text('Participants: $participantsCount'),
+            if (!canJoin && closedReason.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(closedReason, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
+            if (_loadingJoinPreview) ...[
+              const SizedBox(height: 8),
+              const LinearProgressIndicator(),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -2357,15 +2509,26 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                     const SizedBox(height: 6),
                     SelectableText('Token: $_joinTokenFromLink'),
                     const SizedBox(height: 8),
-                    OutlinedButton(
-                      onPressed: _loading
-                          ? null
-                          : () {
-                              setState(() {
-                                _useJoinTokenFromLink = false;
-                              });
-                            },
-                      child: const Text('Use PIN instead'),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        OutlinedButton(
+                          onPressed: (_loading || _loadingJoinPreview) ? null : () => _loadJoinPreview(),
+                          child: const Text('Refresh preview'),
+                        ),
+                        OutlinedButton(
+                          onPressed: _loading
+                              ? null
+                              : () {
+                                  setState(() {
+                                    _useJoinTokenFromLink = false;
+                                    _joinPreview = null;
+                                  });
+                                },
+                          child: const Text('Use PIN instead'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -2377,6 +2540,11 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
               controller: _pinController,
               decoration: const InputDecoration(labelText: 'Session PIN'),
             ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: (_loading || _loadingJoinPreview) ? null : () => _loadJoinPreview(),
+              child: const Text('Preview session'),
+            ),
             if (_joinTokenFromLink != null) ...[
               const SizedBox(height: 8),
               TextButton(
@@ -2385,11 +2553,17 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                     : () {
                         setState(() {
                           _useJoinTokenFromLink = true;
+                          _joinPreview = null;
                         });
+                        _loadJoinPreview(showError: false);
                       },
                 child: const Text('Use token from join link'),
               ),
             ],
+            const SizedBox(height: 12),
+          ],
+          if (_loadingJoinPreview || _joinPreview != null) ...[
+            _buildJoinPreviewCard(),
             const SizedBox(height: 12),
           ],
           TextField(

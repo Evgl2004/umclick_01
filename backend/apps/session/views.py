@@ -1,5 +1,6 @@
 import csv
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
@@ -215,6 +216,61 @@ class CurrentLegalDocumentsAPIView(APIView):
 
     def get(self, request):
         return Response(get_current_legal_documents())
+
+
+class JoinSessionPreviewAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        pin = (request.query_params.get("pin") or "").strip()
+        join_token = (request.query_params.get("token") or request.query_params.get("join_token") or "").strip()
+        if not pin and not join_token:
+            return Response(
+                {"detail": "PIN or join token is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        session_lookup = (
+            LiveSession.objects.select_related("quiz", "current_question")
+            .prefetch_related("current_question__choices", "participants")
+        )
+        try:
+            if join_token:
+                session = session_lookup.get(join_token=join_token)
+            else:
+                session = session_lookup.get(pin=pin)
+        except (LiveSession.DoesNotExist, DjangoValidationError, TypeError, ValueError):
+            return Response(
+                {"detail": "Session was not found by provided PIN/token."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        session_state = build_public_session_state(session)
+        return Response(
+            {
+                "session_id": session.id,
+                "session_pin": session.pin,
+                "session_status": session.status,
+                "participants_count": session_state.get("participants_count"),
+                "can_join": session.status != LiveSession.STATUS_FINISHED,
+                "closed_reason": (
+                    "Session is already finished."
+                    if session.status == LiveSession.STATUS_FINISHED
+                    else None
+                ),
+                "quiz": {
+                    "id": session.quiz.id,
+                    "title": session.quiz.title,
+                    "description": session.quiz.description,
+                },
+                "current_question": session_state.get("current_question"),
+                "question_started_at": session_state.get("question_started_at"),
+                "question_ends_at": session_state.get("question_ends_at"),
+                "is_answer_revealed": session_state.get("is_answer_revealed"),
+                "legal_documents": get_current_legal_documents(),
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class JoinSessionAPIView(APIView):
