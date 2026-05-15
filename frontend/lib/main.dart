@@ -7,7 +7,9 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api/api_client.dart';
+import 'core/app_config.dart';
 import 'core/value_utils.dart';
+import 'features/teacher/quiz_draft.dart';
 import 'l10n/app_language.dart';
 import 'l10n/app_strings.dart';
 
@@ -16,14 +18,6 @@ Future<void> main() async {
   await appLanguage.load();
   runApp(const UmclickApp());
 }
-
-const _defaultApiBaseUrl = 'http://localhost:8000/api';
-const _defaultPrivacyPolicyVersion = '2026-03';
-const _defaultPersonalDataConsentVersion = '2026-03';
-const _prefsAccessTokenKey = 'umclick_teacher_access_token';
-const _prefsRefreshTokenKey = 'umclick_teacher_refresh_token';
-const _prefsApiBaseUrlKey = 'umclick_api_base_url';
-const _prefsUsernameKey = 'umclick_teacher_username';
 
 enum UmclickEntryPoint {
   home,
@@ -67,7 +61,7 @@ String resolvePublicLegalApiBase(Uri uri) {
   if (apiFromQuery.isNotEmpty) {
     return apiFromQuery;
   }
-  return _defaultApiBaseUrl;
+  return defaultApiBaseUrl;
 }
 
 class UmclickApp extends StatelessWidget {
@@ -169,40 +163,6 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class QuizDraftChoice {
-  QuizDraftChoice({String text = '', this.isCorrect = false})
-      : textController = TextEditingController(text: text);
-
-  final TextEditingController textController;
-  bool isCorrect;
-
-  void dispose() {
-    textController.dispose();
-  }
-}
-
-class QuizDraftQuestion {
-  QuizDraftQuestion({
-    String text = '',
-    int timeLimitSec = 20,
-    List<QuizDraftChoice>? choices,
-  })  : textController = TextEditingController(text: text),
-        timeLimitController = TextEditingController(text: '$timeLimitSec'),
-        choices = choices ?? [QuizDraftChoice(), QuizDraftChoice()];
-
-  final TextEditingController textController;
-  final TextEditingController timeLimitController;
-  final List<QuizDraftChoice> choices;
-
-  void dispose() {
-    textController.dispose();
-    timeLimitController.dispose();
-    for (final choice in choices) {
-      choice.dispose();
-    }
-  }
-}
-
 class TeacherPanel extends StatefulWidget {
   const TeacherPanel({super.key});
 
@@ -211,7 +171,7 @@ class TeacherPanel extends StatefulWidget {
 }
 
 class _TeacherPanelState extends State<TeacherPanel> {
-  final _apiController = TextEditingController(text: _defaultApiBaseUrl);
+  final _apiController = TextEditingController(text: defaultApiBaseUrl);
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _emailController = TextEditingController();
@@ -526,41 +486,41 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _persistAuthSession() async {
     final prefs = await SharedPreferences.getInstance();
     if (_accessToken != null && _accessToken!.isNotEmpty) {
-      await prefs.setString(_prefsAccessTokenKey, _accessToken!);
+      await prefs.setString(prefsAccessTokenKey, _accessToken!);
     } else {
-      await prefs.remove(_prefsAccessTokenKey);
+      await prefs.remove(prefsAccessTokenKey);
     }
 
     if (_refreshToken != null && _refreshToken!.isNotEmpty) {
-      await prefs.setString(_prefsRefreshTokenKey, _refreshToken!);
+      await prefs.setString(prefsRefreshTokenKey, _refreshToken!);
     } else {
-      await prefs.remove(_prefsRefreshTokenKey);
+      await prefs.remove(prefsRefreshTokenKey);
     }
 
     final apiBase = _apiController.text.trim();
     if (apiBase.isNotEmpty) {
-      await prefs.setString(_prefsApiBaseUrlKey, apiBase);
+      await prefs.setString(prefsApiBaseUrlKey, apiBase);
     }
 
     final username = _usernameController.text.trim();
     if (username.isNotEmpty) {
-      await prefs.setString(_prefsUsernameKey, username);
+      await prefs.setString(prefsUsernameKey, username);
     }
   }
 
   Future<void> _clearPersistedAuthSession() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_prefsAccessTokenKey);
-    await prefs.remove(_prefsRefreshTokenKey);
+    await prefs.remove(prefsAccessTokenKey);
+    await prefs.remove(prefsRefreshTokenKey);
   }
 
   Future<void> _restoreAuthSession() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final savedApiBase = prefs.getString(_prefsApiBaseUrlKey);
-      final savedUsername = prefs.getString(_prefsUsernameKey);
-      final savedAccess = prefs.getString(_prefsAccessTokenKey);
-      final savedRefresh = prefs.getString(_prefsRefreshTokenKey);
+      final savedApiBase = prefs.getString(prefsApiBaseUrlKey);
+      final savedUsername = prefs.getString(prefsUsernameKey);
+      final savedAccess = prefs.getString(prefsAccessTokenKey);
+      final savedRefresh = prefs.getString(prefsRefreshTokenKey);
 
       if (savedApiBase != null && savedApiBase.isNotEmpty) {
         _apiController.text = savedApiBase;
@@ -1599,7 +1559,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
             controller: _apiController,
             decoration: InputDecoration(
               labelText: appText(AppText.apiBaseUrlLabel),
-              hintText: _defaultApiBaseUrl,
+              hintText: defaultApiBaseUrl,
               helperText: appText(AppText.teacherApiBaseUrlHelper),
             ),
           ),
@@ -1888,7 +1848,7 @@ class ParticipantPanel extends StatefulWidget {
 }
 
 class _ParticipantPanelState extends State<ParticipantPanel> {
-  final _apiController = TextEditingController(text: _defaultApiBaseUrl);
+  final _apiController = TextEditingController(text: defaultApiBaseUrl);
   final _pinController = TextEditingController();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -3036,7 +2996,7 @@ class PublicLegalDocumentPage extends StatefulWidget {
     super.key,
     required this.documentType,
     this.initialDocuments,
-    this.apiBaseUrl = _defaultApiBaseUrl,
+    this.apiBaseUrl = defaultApiBaseUrl,
   });
 
   final PublicLegalDocumentType documentType;
@@ -3070,9 +3030,9 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
 
   String get _fallbackVersion {
     if (widget.documentType == PublicLegalDocumentType.privacyPolicy) {
-      return _defaultPrivacyPolicyVersion;
+      return defaultPrivacyPolicyVersion;
     }
-    return _defaultPersonalDataConsentVersion;
+    return defaultPersonalDataConsentVersion;
   }
 
   String get _title {
