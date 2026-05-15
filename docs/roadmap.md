@@ -31,6 +31,7 @@
 - Панель преподавателя вынесена из `main.dart` в отдельный feature-модуль `frontend/lib/features/teacher/teacher_panel.dart`.
 - Экран участника, карточка вопроса и legal-страницы вынесены из `main.dart` в feature-модули `frontend/lib/features/participant` и `frontend/lib/features/legal`.
 - Начат общий UI-слой `frontend/lib/shared/widgets`: вынесены базовая карточка секции и статусная плашка.
+- Карточка вопроса участника вынесена в отдельный feature-widget `frontend/lib/features/participant/widgets/question_card.dart`.
 - Первые пользовательские подсказки в интерфейсе.
 - Начат Kahoot-like редизайн экрана участника: игровой hero-блок, карточки подключения/регистрации, live-блок раунда и крупные цветные варианты ответов.
 - Начат редизайн панели преподавателя под live-ведение: отдельный блок сессии, PIN/QR, метрики, управление раундом и события.
