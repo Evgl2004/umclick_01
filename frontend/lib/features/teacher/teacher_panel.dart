@@ -15,7 +15,7 @@ import 'teacher_auth_session.dart';
 import 'widgets/teacher_auth_card.dart';
 import 'widgets/teacher_live_events_card.dart';
 import 'widgets/teacher_live_session_header.dart';
-import 'widgets/teacher_quiz_question_card.dart';
+import 'widgets/teacher_quiz_builder_card.dart';
 import 'widgets/teacher_reveal_results_card.dart';
 import 'widgets/teacher_round_controls.dart';
 import 'widgets/teacher_session_setup_card.dart';
@@ -980,119 +980,30 @@ class _TeacherPanelState extends State<TeacherPanel> {
             onLogout: _logout,
           ),
           const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(appText(AppText.quizBuilderTitle), style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  Text(
-                    _editingQuizId == null
-                        ? appText(AppText.quizDraftMode)
-                        : appText(AppText.quizEditMode, args: {'id': _editingQuizId}),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      if (_quizzes.isNotEmpty)
-                        Expanded(
-                          child: DropdownButton<int>(
-                            value: _selectedQuizId,
-                            isExpanded: true,
-                            items: _quizzes
-                                .map((rawQuiz) {
-                                  final quiz = mapOrNull(rawQuiz) ?? <String, dynamic>{};
-                                  final quizId = asInt(quiz['id'], 0);
-                                  final quizTitle = quiz['title']?.toString() ?? appText(AppText.untitledQuiz);
-                                  return DropdownMenuItem<int>(
-                                    value: quizId,
-                                    child: Text('$quizId: $quizTitle'),
-                                  );
-                                })
-                                .toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedQuizId = value;
-                              });
-                            },
-                          ),
-                        )
-                      else
-                        Expanded(child: Text(appText(AppText.noQuizzesYet))),
-                      const SizedBox(width: 12),
-                      FilledButton.tonal(
-                        onPressed: (_loading || !_isLoggedIn || _selectedQuizId == null)
-                            ? null
-                            : _loadSelectedQuizIntoDraft,
-                        child: Text(appText(AppText.loadButton)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      FilledButton(
-                        onPressed: (_loading || !_isLoggedIn) ? null : _saveQuizDraft,
-                        child: Text(_editingQuizId == null
-                            ? appText(AppText.saveNewQuizButton)
-                            : appText(AppText.saveQuizChangesButton)),
-                      ),
-                      FilledButton.tonal(
-                        onPressed: (_loading || !_isLoggedIn) ? null : () => _resetQuizDraft(),
-                        child: Text(appText(AppText.newDraftButton)),
-                      ),
-                      OutlinedButton(
-                        onPressed: (_loading || !_isLoggedIn) ? null : () => _refreshQuizzes(),
-                        child: Text(appText(AppText.refreshQuizzesButton)),
-                      ),
-                      OutlinedButton(
-                        onPressed: (_loading || !_isLoggedIn || _selectedQuizId == null)
-                            ? null
-                            : _deleteSelectedQuiz,
-                        child: Text(appText(AppText.deleteSelectedButton)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _quizTitleController,
-                    decoration: InputDecoration(labelText: appText(AppText.quizTitleLabel)),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _quizDescriptionController,
-                    maxLines: 2,
-                    decoration: InputDecoration(labelText: appText(AppText.quizDescriptionOptionalLabel)),
-                  ),
-                  const SizedBox(height: 12),
-                  ..._draftQuestions.asMap().entries.map((questionEntry) {
-                    final questionIndex = questionEntry.key;
-                    final question = questionEntry.value;
-
-                    return TeacherQuizQuestionCard(
-                      question: question,
-                      questionIndex: questionIndex,
-                      loading: _loading,
-                      onRemoveQuestion: () => _removeDraftQuestion(questionIndex),
-                      onSetCorrectChoice: (choiceIndex) =>
-                          _setDraftCorrectChoice(question, choiceIndex),
-                      onRemoveChoice: (choiceIndex) =>
-                          _removeDraftChoice(question, choiceIndex),
-                      onAddChoice: () => _addDraftChoice(question),
-                    );
-                  }),
-                  FilledButton.tonalIcon(
-                    onPressed: (_loading || !_isLoggedIn) ? null : _addDraftQuestion,
-                    icon: const Icon(Icons.add_circle_outline),
-                    label: Text(appText(AppText.addQuestionButton)),
-                  ),
-                ],
-              ),
-            ),
+          TeacherQuizBuilderCard(
+            quizzes: _quizzes,
+            selectedQuizId: _selectedQuizId,
+            editingQuizId: _editingQuizId,
+            loading: _loading,
+            isLoggedIn: _isLoggedIn,
+            titleController: _quizTitleController,
+            descriptionController: _quizDescriptionController,
+            questions: _draftQuestions,
+            onSelectedQuizChanged: (value) {
+              setState(() {
+                _selectedQuizId = value;
+              });
+            },
+            onLoadSelectedQuiz: _loadSelectedQuizIntoDraft,
+            onSaveQuiz: _saveQuizDraft,
+            onResetDraft: () => _resetQuizDraft(),
+            onRefreshQuizzes: () => _refreshQuizzes(),
+            onDeleteSelectedQuiz: _deleteSelectedQuiz,
+            onRemoveQuestion: _removeDraftQuestion,
+            onSetCorrectChoice: _setDraftCorrectChoice,
+            onRemoveChoice: _removeDraftChoice,
+            onAddChoice: _addDraftChoice,
+            onAddQuestion: _addDraftQuestion,
           ),
           const SizedBox(height: 12),
           TeacherSessionSetupCard(
