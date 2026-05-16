@@ -14,6 +14,7 @@ import '../../shared/widgets/app_surfaces.dart';
 import 'quiz_draft.dart';
 import 'quiz_draft_mapper.dart';
 import 'teacher_auth_session.dart';
+import 'widgets/teacher_auth_card.dart';
 
 class TeacherPanel extends StatefulWidget {
   const TeacherPanel({super.key});
@@ -1197,76 +1198,20 @@ class _TeacherPanelState extends State<TeacherPanel> {
             ),
           ),
           const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(appText(AppText.teacherAuthTitle), style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _usernameController,
-                    decoration: InputDecoration(labelText: appText(AppText.usernameLabel)),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _passwordController,
-                    obscureText: true,
-                    decoration: InputDecoration(labelText: appText(AppText.passwordLabel)),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _emailController,
-                    decoration: InputDecoration(labelText: appText(AppText.emailOptionalLabel)),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _signupCodeController,
-                    decoration: InputDecoration(
-                      labelText: appText(AppText.signupCodeOptionalLabel),
-                      helperText: appText(AppText.signupCodeHelper),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      FilledButton(
-                        onPressed: _loading ? null : _registerTeacher,
-                        child: Text(appText(AppText.registerButton)),
-                      ),
-                      FilledButton.tonal(
-                        onPressed: _loading ? null : _loginTeacher,
-                        child: Text(appText(AppText.loginButton)),
-                      ),
-                      OutlinedButton(
-                        onPressed: _loading ? null : _loadMe,
-                        child: Text(appText(AppText.teacherProfileButton)),
-                      ),
-                      OutlinedButton(
-                        onPressed: _loading ? null : _logout,
-                        child: Text(appText(AppText.logoutButton)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  if (_restoringSession)
-                    Text(appText(AppText.restoringTeacherSession)),
-                  Text(
-                    _isLoggedIn
-                        ? appText(
-                            AppText.loggedInTeacher,
-                            args: {'suffix': _teacher != null ? ': ${_teacher!['username']}' : ''},
-                          )
-                        : appText(AppText.notAuthenticated),
-                  ),
-                  if (_refreshToken != null && _refreshToken!.isNotEmpty)
-                    Text(appText(AppText.refreshTokenStored)),
-                ],
-              ),
-            ),
+          TeacherAuthCard(
+            usernameController: _usernameController,
+            passwordController: _passwordController,
+            emailController: _emailController,
+            signupCodeController: _signupCodeController,
+            loading: _loading,
+            restoringSession: _restoringSession,
+            isLoggedIn: _isLoggedIn,
+            hasRefreshToken: _refreshToken != null && _refreshToken!.isNotEmpty,
+            teacher: _teacher,
+            onRegister: _registerTeacher,
+            onLogin: _loginTeacher,
+            onLoadProfile: _loadMe,
+            onLogout: _logout,
           ),
           const SizedBox(height: 12),
           Card(
