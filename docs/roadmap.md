@@ -34,6 +34,7 @@
 - Карточка вопроса участника вынесена в отдельный feature-widget `frontend/lib/features/participant/widgets/question_card.dart`.
 - Разбор join-ссылки участника (`api`, `token`, `pin`) вынесен в тестируемую модель `frontend/lib/features/participant/models/join_source.dart`.
 - Форматирование и ограничение live-событий вынесены в общий helper `frontend/lib/core/live_event_log.dart` для участника и преподавателя.
+- Общая логика countdown-таймера вынесена в `frontend/lib/core/countdown_ticker.dart` и подключена к экранам участника/преподавателя.
 - Первые пользовательские подсказки в интерфейсе.
 - Начат Kahoot-like редизайн экрана участника: игровой hero-блок, карточки подключения/регистрации, live-блок раунда и крупные цветные варианты ответов.
 - Начат редизайн панели преподавателя под live-ведение: отдельный блок сессии, PIN/QR, метрики, управление раундом и события.

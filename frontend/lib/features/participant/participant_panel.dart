@@ -6,6 +6,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../api/api_client.dart';
 import '../../core/app_config.dart';
+import '../../core/countdown_ticker.dart';
 import '../../core/live_event_log.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
@@ -52,6 +53,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   StreamSubscription? _socketSubscription;
   bool _socketConnected = false;
   Timer? _countdownTimer;
+  final _countdownTicker = const CountdownTicker();
   final _eventLog = const LiveEventLog();
   final List<String> _events = [];
 
@@ -231,36 +233,17 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   }
 
   void _startCountdown(DateTime? endsAt) {
-    _countdownTimer?.cancel();
-    if (endsAt == null) {
-      setState(() {
-        _timeLeftLabel = '--:--';
-        _isQuestionExpired = false;
-      });
-      return;
-    }
-
-    void tick() {
-      final remaining = endsAt.difference(DateTime.now());
-      if (remaining.inMilliseconds <= 0) {
-        _countdownTimer?.cancel();
-        if (!mounted) return;
+    _countdownTimer = _countdownTicker.restart(
+      currentTimer: _countdownTimer,
+      endsAt: endsAt,
+      isActive: () => mounted,
+      onTick: (tick) {
         setState(() {
-          _timeLeftLabel = '00:00';
-          _isQuestionExpired = true;
+          _timeLeftLabel = tick.label;
+          _isQuestionExpired = tick.isExpired;
         });
-        return;
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _timeLeftLabel = formatRemaining(remaining);
-        _isQuestionExpired = false;
-      });
-    }
-
-    tick();
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+      },
+    );
   }
 
   void _applyQuestionState(Map<String, dynamic>? question, dynamic endsAtRaw) {

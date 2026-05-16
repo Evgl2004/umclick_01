@@ -8,6 +8,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../api/api_client.dart';
 import '../../core/app_config.dart';
+import '../../core/countdown_ticker.dart';
 import '../../core/live_event_log.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
@@ -48,6 +49,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   WebSocketChannel? _sessionSocket;
   StreamSubscription? _sessionSubscription;
   bool _wsConnected = false;
+  final _countdownTicker = const CountdownTicker();
   final _eventLog = const LiveEventLog();
   final List<String> _events = [];
 
@@ -478,33 +480,16 @@ class _TeacherPanelState extends State<TeacherPanel> {
   }
 
   void _startTeacherTimer(DateTime? endsAt) {
-    _questionTimer?.cancel();
-    if (endsAt == null) {
-      setState(() {
-        _questionTimeLeftLabel = '--:--';
-      });
-      return;
-    }
-
-    void tick() {
-      final remaining = endsAt.difference(DateTime.now());
-      if (remaining.inMilliseconds <= 0) {
-        _questionTimer?.cancel();
-        if (!mounted) return;
+    _questionTimer = _countdownTicker.restart(
+      currentTimer: _questionTimer,
+      endsAt: endsAt,
+      isActive: () => mounted,
+      onTick: (tick) {
         setState(() {
-          _questionTimeLeftLabel = '00:00';
+          _questionTimeLeftLabel = tick.label;
         });
-        return;
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _questionTimeLeftLabel = formatRemaining(remaining);
-      });
-    }
-
-    tick();
-    _questionTimer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+      },
+    );
   }
 
   Future<void> _connectSessionSocket(int sessionId) async {
