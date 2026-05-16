@@ -15,6 +15,7 @@ import 'quiz_draft_mapper.dart';
 import 'teacher_auth_session.dart';
 import 'widgets/teacher_auth_card.dart';
 import 'widgets/teacher_live_session_header.dart';
+import 'widgets/teacher_reveal_results_card.dart';
 import 'widgets/teacher_round_controls.dart';
 import 'widgets/teacher_session_setup_card.dart';
 
@@ -939,61 +940,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
           ),
           if (_revealPayload != null) ...[
             const SizedBox(height: 16),
-            _buildTeacherRevealResultsCard(context),
+            TeacherRevealResultsCard(revealPayload: _revealPayload!),
           ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTeacherRevealResultsCard(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withOpacity(0.18)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            appText(AppText.revealResultsTitle),
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            appText(AppText.totalAnswers, args: {'count': _revealPayload!['total_answers'] ?? 0}),
-            style: const TextStyle(color: Colors.white),
-          ),
-          Text(
-            appText(AppText.pointsAwarded, args: {'points': _revealPayload!['total_points_awarded'] ?? 0}),
-            style: const TextStyle(color: Colors.white),
-          ),
-          Text(
-            appText(AppText.revealedBy, args: {'value': _revealPayload!['revealed_by'] ?? 'teacher'}),
-            style: const TextStyle(color: Colors.white),
-          ),
-          const SizedBox(height: 8),
-          ...((_revealPayload!['choices'] as List<dynamic>? ?? <dynamic>[]).map((rawChoice) {
-            final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
-            final correct = choice['is_correct'] == true;
-            return ListTile(
-              dense: true,
-              textColor: Colors.white,
-              iconColor: Colors.white,
-              leading: Icon(correct ? Icons.check_circle : Icons.circle_outlined),
-              title: Text('${choice['text']}'),
-              trailing: Text(appText(
-                AppText.choiceStats,
-                args: {
-                  'votes': choice['answers_count'] ?? 0,
-                  'points': choice['points_awarded'] ?? 0,
-                },
-              )),
-            );
-          })),
         ],
       ),
     );
