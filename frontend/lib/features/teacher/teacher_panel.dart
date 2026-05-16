@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../api/api_client.dart';
 import '../../core/app_config.dart';
@@ -13,6 +12,7 @@ import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
 import '../../shared/widgets/app_surfaces.dart';
 import 'quiz_draft.dart';
+import 'teacher_auth_session.dart';
 
 class TeacherPanel extends StatefulWidget {
   const TeacherPanel({super.key});
@@ -29,6 +29,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   final _signupCodeController = TextEditingController();
   final _quizTitleController = TextEditingController();
   final _quizDescriptionController = TextEditingController();
+  final _authSessionStore = const TeacherAuthSessionStore();
 
   final List<QuizDraftQuestion> _draftQuestions = [];
   int? _editingQuizId;
@@ -331,53 +332,33 @@ class _TeacherPanelState extends State<TeacherPanel> {
       'questions': questions,
     };
   }
+
   Future<void> _persistAuthSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (_accessToken != null && _accessToken!.isNotEmpty) {
-      await prefs.setString(prefsAccessTokenKey, _accessToken!);
-    } else {
-      await prefs.remove(prefsAccessTokenKey);
-    }
-
-    if (_refreshToken != null && _refreshToken!.isNotEmpty) {
-      await prefs.setString(prefsRefreshTokenKey, _refreshToken!);
-    } else {
-      await prefs.remove(prefsRefreshTokenKey);
-    }
-
-    final apiBase = _apiController.text.trim();
-    if (apiBase.isNotEmpty) {
-      await prefs.setString(prefsApiBaseUrlKey, apiBase);
-    }
-
-    final username = _usernameController.text.trim();
-    if (username.isNotEmpty) {
-      await prefs.setString(prefsUsernameKey, username);
-    }
+    await _authSessionStore.persist(
+      accessToken: _accessToken,
+      refreshToken: _refreshToken,
+      apiBaseUrl: _apiController.text.trim(),
+      username: _usernameController.text.trim(),
+    );
   }
 
   Future<void> _clearPersistedAuthSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(prefsAccessTokenKey);
-    await prefs.remove(prefsRefreshTokenKey);
+    await _authSessionStore.clearTokens();
   }
 
   Future<void> _restoreAuthSession() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final savedApiBase = prefs.getString(prefsApiBaseUrlKey);
-      final savedUsername = prefs.getString(prefsUsernameKey);
-      final savedAccess = prefs.getString(prefsAccessTokenKey);
-      final savedRefresh = prefs.getString(prefsRefreshTokenKey);
+      final savedSession = await _authSessionStore.restore();
 
-      if (savedApiBase != null && savedApiBase.isNotEmpty) {
-        _apiController.text = savedApiBase;
+      if (savedSession.apiBaseUrl != null &&
+          savedSession.apiBaseUrl!.isNotEmpty) {
+        _apiController.text = savedSession.apiBaseUrl!;
       }
-      if (savedUsername != null && savedUsername.isNotEmpty) {
-        _usernameController.text = savedUsername;
+      if (savedSession.username != null && savedSession.username!.isNotEmpty) {
+        _usernameController.text = savedSession.username!;
       }
 
-      if (savedAccess == null || savedAccess.isEmpty) {
+      if (!savedSession.hasAccessToken) {
         if (mounted) {
           setState(() {
             _restoringSession = false;
@@ -388,8 +369,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
       if (mounted) {
         setState(() {
-          _accessToken = savedAccess;
-          _refreshToken = savedRefresh;
+          _accessToken = savedSession.accessToken;
+          _refreshToken = savedSession.refreshToken;
         });
       }
 

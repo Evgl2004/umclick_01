@@ -40,6 +40,7 @@
 - Hero-блок участника вынесен в `frontend/lib/features/participant/widgets/participant_hero.dart`.
 - Карточка подключения участника и preview сессии вынесены в `frontend/lib/features/participant/widgets/join_connection_card.dart`.
 - Карточка профиля/согласия участника вынесена в `frontend/lib/features/participant/widgets/profile_card.dart`.
+- Хранение auth-сессии преподавателя вынесено из панели в `frontend/lib/features/teacher/teacher_auth_session.dart`.
 - Первые пользовательские подсказки в интерфейсе.
 - Начат Kahoot-like редизайн экрана участника: игровой hero-блок, карточки подключения/регистрации, live-блок раунда и крупные цветные варианты ответов.
 - Начат редизайн панели преподавателя под live-ведение: отдельный блок сессии, PIN/QR, метрики, управление раундом и события.
