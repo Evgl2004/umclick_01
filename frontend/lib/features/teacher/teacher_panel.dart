@@ -15,6 +15,7 @@ import 'teacher_auth_session.dart';
 import 'widgets/teacher_auth_card.dart';
 import 'widgets/teacher_live_events_card.dart';
 import 'widgets/teacher_live_session_header.dart';
+import 'widgets/teacher_quiz_question_card.dart';
 import 'widgets/teacher_reveal_results_card.dart';
 import 'widgets/teacher_round_controls.dart';
 import 'widgets/teacher_session_setup_card.dart';
@@ -1071,89 +1072,17 @@ class _TeacherPanelState extends State<TeacherPanel> {
                   ..._draftQuestions.asMap().entries.map((questionEntry) {
                     final questionIndex = questionEntry.key;
                     final question = questionEntry.value;
-                    final correctChoiceIndex = question.choices.indexWhere((choice) => choice.isCorrect);
 
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  appText(AppText.questionNumber, args: {'number': questionIndex + 1}),
-                                  style: Theme.of(context).textTheme.titleSmall,
-                                ),
-                                const Spacer(),
-                                IconButton(
-                                  onPressed: _loading ? null : () => _removeDraftQuestion(questionIndex),
-                                  icon: const Icon(Icons.delete_outline),
-                                  tooltip: appText(AppText.removeQuestionTooltip),
-                                ),
-                              ],
-                            ),
-                            TextField(
-                              controller: question.textController,
-                              decoration: InputDecoration(labelText: appText(AppText.questionTextLabel)),
-                            ),
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: question.timeLimitController,
-                              keyboardType: TextInputType.number,
-                              decoration: InputDecoration(
-                                labelText: appText(AppText.timeLimitSecLabel),
-                                hintText: '5-180',
-                                helperText: appText(AppText.timeLimitHelper),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            ...question.choices.asMap().entries.map((choiceEntry) {
-                              final choiceIndex = choiceEntry.key;
-                              final choice = choiceEntry.value;
-
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: Row(
-                                  children: [
-                                    Radio<int>(
-                                      value: choiceIndex,
-                                      groupValue: correctChoiceIndex >= 0 ? correctChoiceIndex : null,
-                                      onChanged: _loading
-                                          ? null
-                                          : (_) => _setDraftCorrectChoice(question, choiceIndex),
-                                    ),
-                                    Expanded(
-                                      child: TextField(
-                                        controller: choice.textController,
-                                        decoration: InputDecoration(
-                                          labelText: appText(AppText.choiceNumber, args: {'number': choiceIndex + 1}),
-                                        ),
-                                      ),
-                                    ),
-                                    IconButton(
-                                      onPressed: _loading
-                                          ? null
-                                          : () => _removeDraftChoice(question, choiceIndex),
-                                      icon: const Icon(Icons.close),
-                                      tooltip: appText(AppText.removeChoiceTooltip),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: OutlinedButton.icon(
-                                onPressed: _loading ? null : () => _addDraftChoice(question),
-                                icon: const Icon(Icons.add),
-                                label: Text(appText(AppText.addChoiceButton)),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    return TeacherQuizQuestionCard(
+                      question: question,
+                      questionIndex: questionIndex,
+                      loading: _loading,
+                      onRemoveQuestion: () => _removeDraftQuestion(questionIndex),
+                      onSetCorrectChoice: (choiceIndex) =>
+                          _setDraftCorrectChoice(question, choiceIndex),
+                      onRemoveChoice: (choiceIndex) =>
+                          _removeDraftChoice(question, choiceIndex),
+                      onAddChoice: () => _addDraftChoice(question),
                     );
                   }),
                   FilledButton.tonalIcon(
