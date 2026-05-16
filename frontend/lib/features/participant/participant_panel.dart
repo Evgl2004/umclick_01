@@ -15,6 +15,7 @@ import 'models/join_source.dart';
 import 'widgets/join_connection_card.dart';
 import 'widgets/live_session_widgets.dart';
 import 'widgets/participant_hero.dart';
+import 'widgets/profile_card.dart';
 import 'widgets/question_card.dart';
 
 class ParticipantPanel extends StatefulWidget {
@@ -453,81 +454,6 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     }
   }
 
-  Widget _buildParticipantProfileCard(BuildContext context) {
-    return AppSectionCard(
-      color: Theme.of(context).colorScheme.surface.withOpacity(0.94),
-      borderRadius: 28,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(appText(AppText.participantProfileCardTitle), style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _nameController,
-            decoration: InputDecoration(
-              labelText: appText(AppText.participantNameLabel),
-              prefixIcon: const Icon(Icons.badge_outlined),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _phoneController,
-            decoration: InputDecoration(
-              labelText: appText(AppText.participantPhoneLabel),
-              helperText: appText(AppText.participantPhoneHelper),
-              prefixIcon: const Icon(Icons.phone_outlined),
-            ),
-          ),
-          const SizedBox(height: 12),
-          CheckboxListTile(
-            value: _consent,
-            onChanged: (value) {
-              setState(() {
-                _consent = value ?? false;
-              });
-            },
-            title: Text(_consentCheckboxLabel),
-            contentPadding: EdgeInsets.zero,
-            controlAffinity: ListTileControlAffinity.leading,
-          ),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              OutlinedButton.icon(
-                onPressed: (_loading || _loadingLegalDocuments) ? null : _openLegalDocumentsPage,
-                icon: const Icon(Icons.policy_outlined),
-                label: Text(appText(AppText.legalDocumentsButton)),
-              ),
-              OutlinedButton.icon(
-                onPressed: (_loading || _loadingLegalDocuments) ? null : () => _loadLegalDocuments(),
-                icon: const Icon(Icons.refresh),
-                label: Text(appText(AppText.refreshLegalDocsButton)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _loading ? null : _join,
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: Text(appText(AppText.joinSessionButton)),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 18),
-                textStyle: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-            ),
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          ],
-        ],
-      ),
-    );
-  }
-
   Widget _buildLiveSessionArea(BuildContext context) {
     return AppSectionCard(
       color: Theme.of(context).colorScheme.surface.withOpacity(0.94),
@@ -637,7 +563,23 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                         },
                       ),
                       const SizedBox(height: 14),
-                      _buildParticipantProfileCard(context),
+                      ParticipantProfileCard(
+                        nameController: _nameController,
+                        phoneController: _phoneController,
+                        consent: _consent,
+                        consentLabel: _consentCheckboxLabel,
+                        loading: _loading,
+                        loadingLegalDocuments: _loadingLegalDocuments,
+                        error: _error,
+                        onConsentChanged: (value) {
+                          setState(() {
+                            _consent = value;
+                          });
+                        },
+                        onOpenLegalDocuments: _openLegalDocumentsPage,
+                        onRefreshLegalDocuments: () => _loadLegalDocuments(),
+                        onJoin: _join,
+                      ),
                     ] else ...[
                       _buildLiveSessionArea(context),
                     ],
