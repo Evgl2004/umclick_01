@@ -1,15 +1,14 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../api/api_client.dart';
 import '../../core/app_config.dart';
 import '../../core/countdown_ticker.dart';
 import '../../core/live_event_log.dart';
+import '../../core/live_socket_connection.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
 import '../../shared/widgets/app_surfaces.dart';
@@ -46,8 +45,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   String? _error;
   int _answeredCount = 0;
 
-  WebSocketChannel? _sessionSocket;
-  StreamSubscription? _sessionSubscription;
+  LiveSocketConnection? _sessionSocketConnection;
   bool _wsConnected = false;
   final _countdownTicker = const CountdownTicker();
   final _eventLog = const LiveEventLog();
@@ -497,55 +495,40 @@ class _TeacherPanelState extends State<TeacherPanel> {
     final url = _client().sessionWebSocketUrl(sessionId);
 
     try {
-      final channel = WebSocketChannel.connect(Uri.parse(url));
-      _sessionSocket = channel;
-      _sessionSubscription = channel.stream.listen(
-        (raw) {
-          try {
-            final decoded = jsonDecode(raw as String);
-            final message = mapOrNull(decoded);
-            if (message == null) return;
-            _handleTeacherSocketEvent(message);
-          } catch (_) {
-            _appendEvent('Invalid socket payload.');
-          }
-        },
+      _sessionSocketConnection = LiveSocketConnection.connect(
+        url: url,
+        isActive: () => mounted,
+        onMessage: _handleTeacherSocketEvent,
+        onInvalidPayload: () => _appendEvent('Invalid socket payload.'),
         onError: (error) {
           _appendEvent('Socket error: $error');
-          setState(() {
-            _wsConnected = false;
-          });
+          _setSessionSocketConnected(false);
         },
         onDone: () {
           _appendEvent('Socket disconnected.');
-          setState(() {
-            _wsConnected = false;
-          });
+          _setSessionSocketConnected(false);
         },
       );
 
-      setState(() {
-        _wsConnected = true;
-      });
+      _setSessionSocketConnected(true);
       _appendEvent('Connected to session socket.');
     } catch (e) {
-      setState(() {
-        _wsConnected = false;
-      });
+      _setSessionSocketConnected(false);
       _appendEvent('Failed to connect socket: $e');
     }
   }
 
   Future<void> _closeSessionSocket() async {
-    await _sessionSubscription?.cancel();
-    _sessionSubscription = null;
-    await _sessionSocket?.sink.close();
-    _sessionSocket = null;
-    if (mounted) {
-      setState(() {
-        _wsConnected = false;
-      });
-    }
+    await _sessionSocketConnection?.close();
+    _sessionSocketConnection = null;
+    _setSessionSocketConnected(false);
+  }
+
+  void _setSessionSocketConnected(bool connected) {
+    if (!mounted) return;
+    setState(() {
+      _wsConnected = connected;
+    });
   }
 
   void _patchSession(Map<String, dynamic> patch) {

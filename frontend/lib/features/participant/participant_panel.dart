@@ -1,13 +1,12 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../api/api_client.dart';
 import '../../core/app_config.dart';
 import '../../core/countdown_ticker.dart';
 import '../../core/live_event_log.dart';
+import '../../core/live_socket_connection.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
 import '../../shared/widgets/app_surfaces.dart';
@@ -49,8 +48,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   String? _joinTokenFromLink;
   bool _useJoinTokenFromLink = false;
 
-  WebSocketChannel? _socket;
-  StreamSubscription? _socketSubscription;
+  LiveSocketConnection? _socketConnection;
   bool _socketConnected = false;
   Timer? _countdownTimer;
   final _countdownTicker = const CountdownTicker();
@@ -262,55 +260,40 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     final url = _client().sessionWebSocketUrl(sessionId);
 
     try {
-      final channel = WebSocketChannel.connect(Uri.parse(url));
-      _socket = channel;
-      _socketSubscription = channel.stream.listen(
-        (raw) {
-          try {
-            final decoded = jsonDecode(raw as String);
-            final message = mapOrNull(decoded);
-            if (message == null) return;
-            _handleParticipantSocketEvent(message);
-          } catch (_) {
-            _appendEvent('Invalid socket payload.');
-          }
-        },
+      _socketConnection = LiveSocketConnection.connect(
+        url: url,
+        isActive: () => mounted,
+        onMessage: _handleParticipantSocketEvent,
+        onInvalidPayload: () => _appendEvent('Invalid socket payload.'),
         onError: (error) {
           _appendEvent('Socket error: $error');
-          setState(() {
-            _socketConnected = false;
-          });
+          _setSocketConnected(false);
         },
         onDone: () {
           _appendEvent('Socket disconnected.');
-          setState(() {
-            _socketConnected = false;
-          });
+          _setSocketConnected(false);
         },
       );
 
-      setState(() {
-        _socketConnected = true;
-      });
+      _setSocketConnected(true);
       _appendEvent('Connected to live session.');
     } catch (e) {
-      setState(() {
-        _socketConnected = false;
-      });
+      _setSocketConnected(false);
       _appendEvent('Failed to connect socket: $e');
     }
   }
 
   Future<void> _closeSocket() async {
-    await _socketSubscription?.cancel();
-    _socketSubscription = null;
-    await _socket?.sink.close();
-    _socket = null;
-    if (mounted) {
-      setState(() {
-        _socketConnected = false;
-      });
-    }
+    await _socketConnection?.close();
+    _socketConnection = null;
+    _setSocketConnected(false);
+  }
+
+  void _setSocketConnected(bool connected) {
+    if (!mounted) return;
+    setState(() {
+      _socketConnected = connected;
+    });
   }
 
   void _handleParticipantSocketEvent(Map<String, dynamic> message) {
