@@ -15,7 +15,7 @@ from apps.session.autoreveal import (
     schedule_auto_reveal,
 )
 from apps.session.legal import get_current_legal_documents
-from apps.session.models import LiveSession, ParticipantAnswer
+from apps.session.models import LiveSession, ParticipantAnswer, SessionParticipant
 from apps.session.realtime import (
     broadcast_session_event,
     build_public_session_state,
@@ -286,7 +286,7 @@ class JoinSessionAPIView(APIView):
         participant = payload["participant"]
 
         session_state = build_public_session_state(session)
-        participants_count = session.participants.count()
+        participants_count = SessionParticipant.objects.filter(session=session).count()
         broadcast_session_event(
             session.id,
             "participant_joined",

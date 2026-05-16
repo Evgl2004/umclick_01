@@ -5,7 +5,7 @@ from channels.layers import get_channel_layer
 from django.db.models import Count, Sum
 from django.db.models.functions import Coalesce
 
-from apps.session.models import LiveSession, ParticipantAnswer
+from apps.session.models import LiveSession, ParticipantAnswer, SessionParticipant
 
 
 def session_group_name(session_id: int) -> str:
@@ -44,7 +44,7 @@ def build_public_session_state(session: LiveSession) -> dict:
         "session_id": session.id,
         "status": session.status,
         "pin": session.pin,
-        "participants_count": session.participants.count(),
+        "participants_count": SessionParticipant.objects.filter(session=session).count(),
         "current_question": serialize_question_for_participants(session.current_question),
         "question_started_at": session.question_started_at.isoformat() if session.question_started_at else None,
         "question_ends_at": question_ends_at.isoformat() if question_ends_at else None,
