@@ -14,10 +14,8 @@ import 'quiz_draft_mapper.dart';
 import 'teacher_auth_session.dart';
 import 'widgets/teacher_auth_card.dart';
 import 'widgets/teacher_live_events_card.dart';
-import 'widgets/teacher_live_session_header.dart';
+import 'widgets/teacher_live_session_card.dart';
 import 'widgets/teacher_quiz_builder_card.dart';
-import 'widgets/teacher_reveal_results_card.dart';
-import 'widgets/teacher_round_controls.dart';
 import 'widgets/teacher_session_setup_card.dart';
 
 class TeacherPanel extends StatefulWidget {
@@ -891,63 +889,6 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
   }
 
-  Widget _buildTeacherLiveSessionCard(BuildContext context) {
-    final session = _session!;
-    final joinUrl = session['join_url'] as String;
-    final exportUrl = '${_apiController.text}/sessions/${session['id']}/results/export/';
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(30),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF023047), Color(0xFF005F73), Color(0xFF0A9396)],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF023047).withOpacity(0.2),
-            blurRadius: 26,
-            offset: const Offset(0, 18),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TeacherLiveSessionHeader(
-            session: session,
-            joinUrl: joinUrl,
-            wsConnected: _wsConnected,
-            activeQuestion: _activeQuestion,
-            questionTimeLeftLabel: _questionTimeLeftLabel,
-            answeredCount: _answeredCount,
-          ),
-          const SizedBox(height: 16),
-          SelectableText(
-            appText(AppText.joinUrl, args: {'url': joinUrl}),
-            style: TextStyle(color: Colors.white.withOpacity(0.88)),
-          ),
-          const SizedBox(height: 16),
-          TeacherRoundControls(
-            onStart: () => _startSession(),
-            onNextQuestion: () => _nextQuestion(),
-            onRevealAnswers: () => _revealAnswers(),
-            onFinish: () => _finishSession(),
-            onShowLeaderboard: () => _showLeaderboard(),
-            onExportCsv: () => _showExportUrlSnack(exportUrl),
-          ),
-          if (_revealPayload != null) ...[
-            const SizedBox(height: 16),
-            TeacherRevealResultsCard(revealPayload: _revealPayload!),
-          ],
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -1018,7 +959,21 @@ class _TeacherPanelState extends State<TeacherPanel> {
           ],
           if (_session != null) ...[
             const SizedBox(height: 20),
-            _buildTeacherLiveSessionCard(context),
+            TeacherLiveSessionCard(
+              session: _session!,
+              apiBaseUrl: _apiController.text,
+              wsConnected: _wsConnected,
+              activeQuestion: _activeQuestion,
+              questionTimeLeftLabel: _questionTimeLeftLabel,
+              answeredCount: _answeredCount,
+              revealPayload: _revealPayload,
+              onStart: _startSession,
+              onNextQuestion: _nextQuestion,
+              onRevealAnswers: _revealAnswers,
+              onFinish: _finishSession,
+              onShowLeaderboard: _showLeaderboard,
+              onExportCsv: _showExportUrlSnack,
+            ),
             const SizedBox(height: 12),
             TeacherLiveEventsCard(events: _events),
           ],

@@ -50,6 +50,7 @@
 - Карточка live-событий преподавателя вынесена в `frontend/lib/features/teacher/widgets/teacher_live_events_card.dart`.
 - Карточка редактирования вопроса викторины вынесена в `frontend/lib/features/teacher/widgets/teacher_quiz_question_card.dart`.
 - Карточка конструктора викторины преподавателя вынесена в `frontend/lib/features/teacher/widgets/teacher_quiz_builder_card.dart`.
+- Оболочка live-сессии преподавателя вынесена в `frontend/lib/features/teacher/widgets/teacher_live_session_card.dart`.
 - Первые пользовательские подсказки в интерфейсе.
 - Начат Kahoot-like редизайн экрана участника: игровой hero-блок, карточки подключения/регистрации, live-блок раунда и крупные цветные варианты ответов.
 - Начат редизайн панели преподавателя под live-ведение: отдельный блок сессии, PIN/QR, метрики, управление раундом и события.
