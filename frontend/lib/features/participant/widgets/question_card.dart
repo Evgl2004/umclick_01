@@ -33,12 +33,13 @@ class ParticipantQuestionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final choices = (question['choices'] as List<dynamic>? ?? <dynamic>[]).toList()
-      ..sort((a, b) {
-        final aMap = mapOrNull(a) ?? <String, dynamic>{};
-        final bMap = mapOrNull(b) ?? <String, dynamic>{};
-        return asInt(aMap['order']).compareTo(asInt(bMap['order']));
-      });
+    final choices =
+        (question['choices'] as List<dynamic>? ?? <dynamic>[]).toList()
+          ..sort((a, b) {
+            final aMap = mapOrNull(a) ?? <String, dynamic>{};
+            final bMap = mapOrNull(b) ?? <String, dynamic>{};
+            return asInt(aMap['order']).compareTo(asInt(bMap['order']));
+          });
 
     return Container(
       width: double.infinity,
@@ -51,7 +52,7 @@ class ParticipantQuestionCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF111827).withOpacity(0.22),
+            color: const Color(0xFF111827).withValues(alpha: 0.22),
             blurRadius: 26,
             offset: const Offset(0, 18),
           ),
@@ -68,26 +69,31 @@ class ParticipantQuestionCard extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.12),
+                    color: Colors.white.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
-                    appText(AppText.questionTimeLimitLabel, args: {'seconds': question['time_limit_sec'] ?? '-'}),
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                    appText(AppText.questionTimeLimitLabel,
+                        args: {'seconds': question['time_limit_sec'] ?? '-'}),
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w700),
                   ),
                 ),
                 if (questionLocked)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.12),
+                      color: Colors.white.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
                       appText(AppText.answerLockedMessage),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w700),
                     ),
                   ),
               ],
@@ -105,7 +111,9 @@ class ParticipantQuestionCard extends StatelessWidget {
             LayoutBuilder(
               builder: (context, constraints) {
                 final useTwoColumns = constraints.maxWidth >= 680;
-                final itemWidth = useTwoColumns ? (constraints.maxWidth - 12) / 2 : constraints.maxWidth;
+                final itemWidth = useTwoColumns
+                    ? (constraints.maxWidth - 12) / 2
+                    : constraints.maxWidth;
 
                 return Wrap(
                   spacing: 12,
@@ -116,8 +124,10 @@ class ParticipantQuestionCard extends StatelessWidget {
                     final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
                     final choiceId = asInt(choice['id'], -1);
                     final isSelected = selectedChoiceId == choiceId;
-                    final color = _answerColors[choiceIndex % _answerColors.length];
-                    final icon = _answerIcons[choiceIndex % _answerIcons.length];
+                    final color =
+                        _answerColors[choiceIndex % _answerColors.length];
+                    final icon =
+                        _answerIcons[choiceIndex % _answerIcons.length];
 
                     return SizedBox(
                       width: itemWidth,
@@ -163,19 +173,21 @@ class ParticipantQuestionCard extends StatelessWidget {
           borderRadius: radius,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
-            minHeight: 88,
+            constraints: const BoxConstraints(minHeight: 88),
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: color,
               borderRadius: radius,
               border: Border.all(
-                color: isSelected ? Colors.white : Colors.white.withOpacity(0.18),
+                color: isSelected
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.18),
                 width: isSelected ? 4 : 1,
               ),
               boxShadow: [
                 if (isSelected)
                   BoxShadow(
-                    color: Colors.white.withOpacity(0.28),
+                    color: Colors.white.withValues(alpha: 0.28),
                     blurRadius: 18,
                     offset: const Offset(0, 8),
                   ),
@@ -187,7 +199,7 @@ class ParticipantQuestionCard extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.18),
+                    color: Colors.white.withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Icon(icon, color: Colors.white, size: 28),

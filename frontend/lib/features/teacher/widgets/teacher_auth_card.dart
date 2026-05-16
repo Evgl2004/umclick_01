@@ -100,12 +100,16 @@ class TeacherAuthCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            if (restoringSession) Text(appText(AppText.restoringTeacherSession)),
+            if (restoringSession)
+              Text(appText(AppText.restoringTeacherSession)),
             Text(
               isLoggedIn
                   ? appText(
                       AppText.loggedInTeacher,
-                      args: {'suffix': teacher != null ? ': ${teacher!['username']}' : ''},
+                      args: {
+                        'suffix':
+                            teacher != null ? ': ${teacher!['username']}' : ''
+                      },
                     )
                   : appText(AppText.notAuthenticated),
             ),

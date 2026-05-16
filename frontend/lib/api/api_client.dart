@@ -61,7 +61,8 @@ class ApiClient {
       'username': username,
       'password': password,
       if (email != null && email.isNotEmpty) 'email': email,
-      if (signupCode != null && signupCode.isNotEmpty) 'signup_code': signupCode,
+      if (signupCode != null && signupCode.isNotEmpty)
+        'signup_code': signupCode,
     };
 
     final response = await http.post(
@@ -138,7 +139,8 @@ class ApiClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> updateQuiz(int quizId, Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> updateQuiz(
+      int quizId, Map<String, dynamic> payload) async {
     final response = await http.put(
       _uri('/quizzes/$quizId/'),
       headers: _headers(jsonBody: true, auth: true),

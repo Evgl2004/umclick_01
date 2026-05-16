@@ -60,7 +60,8 @@ class CountdownTicker {
         return;
       }
 
-      notify(CountdownTick(label: formatRemaining(remaining), isExpired: false));
+      notify(
+          CountdownTick(label: formatRemaining(remaining), isExpired: false));
     }
 
     tick();

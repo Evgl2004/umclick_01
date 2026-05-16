@@ -21,9 +21,9 @@ class ParticipantRoundMessage extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.11),
+        color: color.withValues(alpha: 0.11),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: color.withOpacity(0.24)),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
       ),
       child: Row(
         children: [
@@ -50,24 +50,33 @@ class ParticipantRevealResultsCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.55),
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(22),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(appText(AppText.revealResultsTitle), style: Theme.of(context).textTheme.titleMedium),
+          Text(appText(AppText.revealResultsTitle),
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          Text(appText(AppText.totalAnswers, args: {'count': revealPayload['total_answers'] ?? 0})),
-          Text(appText(AppText.pointsAwarded, args: {'points': revealPayload['total_points_awarded'] ?? 0})),
-          Text(appText(AppText.revealedBy, args: {'value': revealPayload['revealed_by'] ?? 'teacher'})),
+          Text(appText(AppText.totalAnswers,
+              args: {'count': revealPayload['total_answers'] ?? 0})),
+          Text(appText(AppText.pointsAwarded,
+              args: {'points': revealPayload['total_points_awarded'] ?? 0})),
+          Text(appText(AppText.revealedBy,
+              args: {'value': revealPayload['revealed_by'] ?? 'teacher'})),
           const SizedBox(height: 8),
-          ...((revealPayload['choices'] as List<dynamic>? ?? <dynamic>[]).map((rawChoice) {
+          ...((revealPayload['choices'] as List<dynamic>? ?? <dynamic>[])
+              .map((rawChoice) {
             final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
             final isCorrect = choice['is_correct'] == true;
             return ListTile(
               dense: true,
-              leading: Icon(isCorrect ? Icons.check_circle : Icons.circle_outlined),
+              leading:
+                  Icon(isCorrect ? Icons.check_circle : Icons.circle_outlined),
               title: Text('${choice['text']}'),
               trailing: Text(appText(
                 AppText.choiceStats,
@@ -98,13 +107,17 @@ class ParticipantLiveEventsCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.35),
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(22),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(appText(AppText.liveEventsTitle), style: Theme.of(context).textTheme.titleMedium),
+          Text(appText(AppText.liveEventsTitle),
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           if (events.isEmpty)
             Text(appText(AppText.noEventsYet))

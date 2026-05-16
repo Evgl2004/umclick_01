@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../l10n/app_strings.dart';
@@ -104,7 +104,7 @@ class _LiveSessionSummary extends StatelessWidget {
                 AppText.statusValue,
                 args: {'status': session['status']},
               ),
-              background: Colors.white.withOpacity(0.16),
+              background: Colors.white.withValues(alpha: 0.16),
               foreground: Colors.white,
             ),
             AppStatusChip(
@@ -113,7 +113,7 @@ class _LiveSessionSummary extends StatelessWidget {
                 AppText.participantsCount,
                 args: {'count': session['participants_count'] ?? 0},
               ),
-              background: Colors.white.withOpacity(0.16),
+              background: Colors.white.withValues(alpha: 0.16),
               foreground: Colors.white,
             ),
             AppStatusChip(
@@ -126,7 +126,7 @@ class _LiveSessionSummary extends StatelessWidget {
                       : appText(AppText.webSocketDisconnected),
                 },
               ),
-              background: Colors.white.withOpacity(0.16),
+              background: Colors.white.withValues(alpha: 0.16),
               foreground: Colors.white,
             ),
             if (activeQuestion != null)
@@ -136,7 +136,7 @@ class _LiveSessionSummary extends StatelessWidget {
                   AppText.timeLeft,
                   args: {'time': questionTimeLeftLabel},
                 ),
-                background: Colors.white.withOpacity(0.16),
+                background: Colors.white.withValues(alpha: 0.16),
                 foreground: Colors.white,
               ),
             if (answeredCount > 0)
@@ -146,7 +146,7 @@ class _LiveSessionSummary extends StatelessWidget {
                   AppText.answersReceived,
                   args: {'count': answeredCount},
                 ),
-                background: Colors.white.withOpacity(0.16),
+                background: Colors.white.withValues(alpha: 0.16),
                 foreground: Colors.white,
               ),
           ],

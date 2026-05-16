@@ -88,9 +88,11 @@ class UmclickApp extends StatelessWidget {
           title: 'umclick',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0E7C7B)),
+            colorScheme:
+                ColorScheme.fromSeed(seedColor: const Color(0xFF0E7C7B)),
             useMaterial3: true,
-            tooltipTheme: const TooltipThemeData(waitDuration: Duration(milliseconds: 350)),
+            tooltipTheme: const TooltipThemeData(
+                waitDuration: Duration(milliseconds: 350)),
           ),
           home: _buildHomeForEntryPoint(),
         );

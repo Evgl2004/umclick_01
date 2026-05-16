@@ -21,7 +21,8 @@ class AppSectionCard extends StatelessWidget {
     return Card(
       elevation: elevation,
       color: color ?? Theme.of(context).colorScheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(borderRadius)),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(borderRadius)),
       child: Padding(
         padding: padding,
         child: child,
@@ -57,7 +58,8 @@ class AppStatusChip extends StatelessWidget {
         children: [
           Icon(icon, size: 18, color: foreground),
           const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: foreground, fontWeight: FontWeight.w700)),
+          Text(label,
+              style: TextStyle(color: foreground, fontWeight: FontWeight.w700)),
         ],
       ),
     );

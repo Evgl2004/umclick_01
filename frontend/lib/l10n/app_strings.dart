@@ -175,10 +175,12 @@ const _strings = <AppText, LocalizedString>{
     ru: 'Адрес backend. В обычном сценарии уже заполнен из ссылки.',
     en: 'Backend URL. Usually already provided by the join link.',
   ),
-  AppText.teacherAuthTitle: LocalizedString(ru: 'Вход преподавателя', en: 'Teacher Auth'),
+  AppText.teacherAuthTitle:
+      LocalizedString(ru: 'Вход преподавателя', en: 'Teacher Auth'),
   AppText.usernameLabel: LocalizedString(ru: 'Логин', en: 'Username'),
   AppText.passwordLabel: LocalizedString(ru: 'Пароль', en: 'Password'),
-  AppText.emailOptionalLabel: LocalizedString(ru: 'Email (необязательно)', en: 'Email (optional)'),
+  AppText.emailOptionalLabel:
+      LocalizedString(ru: 'Email (необязательно)', en: 'Email (optional)'),
   AppText.signupCodeOptionalLabel: LocalizedString(
     ru: 'Код регистрации (необязательно)',
     en: 'Signup code (optional)',
@@ -187,7 +189,8 @@ const _strings = <AppText, LocalizedString>{
     ru: 'Если в .env задан TEACHER_SIGNUP_CODE, без него регистрация закрыта.',
     en: 'Required only when TEACHER_SIGNUP_CODE is configured in .env.',
   ),
-  AppText.registerButton: LocalizedString(ru: 'Зарегистрироваться', en: 'Register'),
+  AppText.registerButton:
+      LocalizedString(ru: 'Зарегистрироваться', en: 'Register'),
   AppText.loginButton: LocalizedString(ru: 'Войти', en: 'Login'),
   AppText.teacherProfileButton: LocalizedString(ru: 'Профиль', en: 'Who am I'),
   AppText.logoutButton: LocalizedString(ru: 'Выйти', en: 'Logout'),
@@ -195,49 +198,70 @@ const _strings = <AppText, LocalizedString>{
     ru: 'Восстанавливаем сессию преподавателя...',
     en: 'Restoring saved teacher session...',
   ),
-  AppText.loggedInTeacher: LocalizedString(ru: 'Вход выполнен{suffix}', en: 'Logged in{suffix}'),
-  AppText.notAuthenticated: LocalizedString(ru: 'Не авторизован', en: 'Not authenticated'),
+  AppText.loggedInTeacher:
+      LocalizedString(ru: 'Вход выполнен{suffix}', en: 'Logged in{suffix}'),
+  AppText.notAuthenticated:
+      LocalizedString(ru: 'Не авторизован', en: 'Not authenticated'),
   AppText.refreshTokenStored: LocalizedString(
     ru: 'Refresh token сохранен локально в этом браузере.',
     en: 'Refresh token is stored locally for this browser profile.',
   ),
-  AppText.quizBuilderTitle: LocalizedString(ru: 'Конструктор викторины', en: 'Quiz Builder'),
-  AppText.quizDraftMode: LocalizedString(ru: 'Режим: новая викторина', en: 'Mode: new quiz draft'),
+  AppText.quizBuilderTitle:
+      LocalizedString(ru: 'Конструктор викторины', en: 'Quiz Builder'),
+  AppText.quizDraftMode:
+      LocalizedString(ru: 'Режим: новая викторина', en: 'Mode: new quiz draft'),
   AppText.quizEditMode: LocalizedString(
     ru: 'Режим: редактирование викторины #{id}',
     en: 'Mode: editing quiz #{id}',
   ),
   AppText.untitledQuiz: LocalizedString(ru: 'Без названия', en: 'Untitled'),
-  AppText.untitledQuizLong: LocalizedString(ru: 'Викторина без названия', en: 'Untitled quiz'),
-  AppText.noQuizzesYet: LocalizedString(ru: 'Викторин пока нет', en: 'No quizzes yet'),
+  AppText.untitledQuizLong:
+      LocalizedString(ru: 'Викторина без названия', en: 'Untitled quiz'),
+  AppText.noQuizzesYet:
+      LocalizedString(ru: 'Викторин пока нет', en: 'No quizzes yet'),
   AppText.loadButton: LocalizedString(ru: 'Загрузить', en: 'Load'),
-  AppText.saveNewQuizButton: LocalizedString(ru: 'Сохранить новую', en: 'Save new quiz'),
-  AppText.saveQuizChangesButton: LocalizedString(ru: 'Сохранить изменения', en: 'Save changes'),
-  AppText.newDraftButton: LocalizedString(ru: 'Новый черновик', en: 'New draft'),
-  AppText.refreshQuizzesButton: LocalizedString(ru: 'Обновить список', en: 'Refresh quizzes'),
-  AppText.deleteSelectedButton: LocalizedString(ru: 'Удалить выбранную', en: 'Delete selected'),
-  AppText.quizTitleLabel: LocalizedString(ru: 'Название викторины', en: 'Quiz title'),
+  AppText.saveNewQuizButton:
+      LocalizedString(ru: 'Сохранить новую', en: 'Save new quiz'),
+  AppText.saveQuizChangesButton:
+      LocalizedString(ru: 'Сохранить изменения', en: 'Save changes'),
+  AppText.newDraftButton:
+      LocalizedString(ru: 'Новый черновик', en: 'New draft'),
+  AppText.refreshQuizzesButton:
+      LocalizedString(ru: 'Обновить список', en: 'Refresh quizzes'),
+  AppText.deleteSelectedButton:
+      LocalizedString(ru: 'Удалить выбранную', en: 'Delete selected'),
+  AppText.quizTitleLabel:
+      LocalizedString(ru: 'Название викторины', en: 'Quiz title'),
   AppText.quizDescriptionOptionalLabel: LocalizedString(
     ru: 'Описание (необязательно)',
     en: 'Description (optional)',
   ),
-  AppText.questionNumber: LocalizedString(ru: 'Вопрос {number}', en: 'Question {number}'),
-  AppText.removeQuestionTooltip: LocalizedString(ru: 'Удалить вопрос', en: 'Remove question'),
-  AppText.questionTextLabel: LocalizedString(ru: 'Текст вопроса', en: 'Question text'),
-  AppText.timeLimitSecLabel: LocalizedString(ru: 'Лимит времени (сек)', en: 'Time limit (sec)'),
+  AppText.questionNumber:
+      LocalizedString(ru: 'Вопрос {number}', en: 'Question {number}'),
+  AppText.removeQuestionTooltip:
+      LocalizedString(ru: 'Удалить вопрос', en: 'Remove question'),
+  AppText.questionTextLabel:
+      LocalizedString(ru: 'Текст вопроса', en: 'Question text'),
+  AppText.timeLimitSecLabel:
+      LocalizedString(ru: 'Лимит времени (сек)', en: 'Time limit (sec)'),
   AppText.timeLimitHelper: LocalizedString(
     ru: 'Участник должен ответить до окончания таймера.',
     en: 'Participant must answer before the timer expires.',
   ),
-  AppText.choiceNumber: LocalizedString(ru: 'Вариант {number}', en: 'Choice {number}'),
-  AppText.removeChoiceTooltip: LocalizedString(ru: 'Удалить вариант', en: 'Remove choice'),
-  AppText.addChoiceButton: LocalizedString(ru: 'Добавить вариант', en: 'Add choice'),
-  AppText.addQuestionButton: LocalizedString(ru: 'Добавить вопрос', en: 'Add question'),
+  AppText.choiceNumber:
+      LocalizedString(ru: 'Вариант {number}', en: 'Choice {number}'),
+  AppText.removeChoiceTooltip:
+      LocalizedString(ru: 'Удалить вариант', en: 'Remove choice'),
+  AppText.addChoiceButton:
+      LocalizedString(ru: 'Добавить вариант', en: 'Add choice'),
+  AppText.addQuestionButton:
+      LocalizedString(ru: 'Добавить вопрос', en: 'Add question'),
   AppText.selectQuizForSession: LocalizedString(
     ru: 'Выберите викторину, чтобы создать live-сессию.',
     en: 'Select a quiz in builder to create a live session.',
   ),
-  AppText.sessionQuiz: LocalizedString(ru: 'Викторина сессии: #{id}', en: 'Session quiz: #{id}'),
+  AppText.sessionQuiz:
+      LocalizedString(ru: 'Викторина сессии: #{id}', en: 'Session quiz: #{id}'),
   AppText.teacherSessionSetupTitle: LocalizedString(
     ru: 'Live-сессия',
     en: 'Live session',
@@ -258,48 +282,72 @@ const _strings = <AppText, LocalizedString>{
     ru: 'Управление раундом',
     en: 'Round controls',
   ),
-  AppText.createSessionButton: LocalizedString(ru: 'Создать сессию', en: 'Create session'),
-  AppText.statusValue: LocalizedString(ru: 'Статус: {status}', en: 'Status: {status}'),
-  AppText.participantsCount: LocalizedString(ru: 'Участники: {count}', en: 'Participants: {count}'),
-  AppText.webSocketState: LocalizedString(ru: 'WebSocket: {state}', en: 'WebSocket: {state}'),
+  AppText.createSessionButton:
+      LocalizedString(ru: 'Создать сессию', en: 'Create session'),
+  AppText.statusValue:
+      LocalizedString(ru: 'Статус: {status}', en: 'Status: {status}'),
+  AppText.participantsCount:
+      LocalizedString(ru: 'Участники: {count}', en: 'Participants: {count}'),
+  AppText.webSocketState:
+      LocalizedString(ru: 'WebSocket: {state}', en: 'WebSocket: {state}'),
   AppText.webSocketConnected: LocalizedString(ru: 'подключен', en: 'connected'),
-  AppText.webSocketDisconnected: LocalizedString(ru: 'отключен', en: 'disconnected'),
-  AppText.currentQuestion: LocalizedString(ru: 'Текущий вопрос: {text}', en: 'Current question: {text}'),
-  AppText.timeLeft: LocalizedString(ru: 'Осталось времени: {time}', en: 'Time left: {time}'),
-  AppText.answersReceived: LocalizedString(ru: 'Получено ответов: {count}', en: 'Answers received: {count}'),
-  AppText.joinUrl: LocalizedString(ru: 'Ссылка для участников: {url}', en: 'Join URL: {url}'),
+  AppText.webSocketDisconnected:
+      LocalizedString(ru: 'отключен', en: 'disconnected'),
+  AppText.currentQuestion: LocalizedString(
+      ru: 'Текущий вопрос: {text}', en: 'Current question: {text}'),
+  AppText.timeLeft:
+      LocalizedString(ru: 'Осталось времени: {time}', en: 'Time left: {time}'),
+  AppText.answersReceived: LocalizedString(
+      ru: 'Получено ответов: {count}', en: 'Answers received: {count}'),
+  AppText.joinUrl: LocalizedString(
+      ru: 'Ссылка для участников: {url}', en: 'Join URL: {url}'),
   AppText.startButton: LocalizedString(ru: 'Старт', en: 'Start'),
-  AppText.nextQuestionButton: LocalizedString(ru: 'Следующий вопрос', en: 'Next question'),
-  AppText.revealAnswersButton: LocalizedString(ru: 'Показать ответы', en: 'Reveal answers'),
+  AppText.nextQuestionButton:
+      LocalizedString(ru: 'Следующий вопрос', en: 'Next question'),
+  AppText.revealAnswersButton:
+      LocalizedString(ru: 'Показать ответы', en: 'Reveal answers'),
   AppText.finishButton: LocalizedString(ru: 'Завершить', en: 'Finish'),
   AppText.leaderboardButton: LocalizedString(ru: 'Рейтинг', en: 'Leaderboard'),
   AppText.exportCsvButton: LocalizedString(ru: 'Экспорт CSV', en: 'Export CSV'),
-  AppText.exportUrlSnack: LocalizedString(ru: 'Ссылка экспорта: {url}', en: 'Export URL: {url}'),
-  AppText.revealResultsTitle: LocalizedString(ru: 'Результаты раунда', en: 'Round results'),
-  AppText.totalAnswers: LocalizedString(ru: 'Всего ответов: {count}', en: 'Total answers: {count}'),
-  AppText.pointsAwarded: LocalizedString(ru: 'Начислено очков: {points}', en: 'Points awarded: {points}'),
-  AppText.revealedBy: LocalizedString(ru: 'Раскрыто: {value}', en: 'Revealed by: {value}'),
+  AppText.exportUrlSnack:
+      LocalizedString(ru: 'Ссылка экспорта: {url}', en: 'Export URL: {url}'),
+  AppText.revealResultsTitle:
+      LocalizedString(ru: 'Результаты раунда', en: 'Round results'),
+  AppText.totalAnswers: LocalizedString(
+      ru: 'Всего ответов: {count}', en: 'Total answers: {count}'),
+  AppText.pointsAwarded: LocalizedString(
+      ru: 'Начислено очков: {points}', en: 'Points awarded: {points}'),
+  AppText.revealedBy:
+      LocalizedString(ru: 'Раскрыто: {value}', en: 'Revealed by: {value}'),
   AppText.choiceStats: LocalizedString(
     ru: 'Голоса: {votes} | Очки: {points}',
     en: 'Votes: {votes} | Pts: {points}',
   ),
   AppText.liveEventsTitle: LocalizedString(ru: 'События', en: 'Live events'),
-  AppText.noEventsYet: LocalizedString(ru: 'Событий пока нет.', en: 'No events yet.'),
+  AppText.noEventsYet:
+      LocalizedString(ru: 'Событий пока нет.', en: 'No events yet.'),
   AppText.joinLinkDetected: LocalizedString(
     ru: 'Обнаружена ссылка входа. PIN вводить не нужно.',
     en: 'Join link detected. Session PIN is not required.',
   ),
-  AppText.joinTokenLabel: LocalizedString(ru: 'Токен: {token}', en: 'Token: {token}'),
-  AppText.refreshPreviewButton: LocalizedString(ru: 'Обновить предпросмотр', en: 'Refresh preview'),
-  AppText.usePinInsteadButton: LocalizedString(ru: 'Ввести PIN вручную', en: 'Use PIN instead'),
-  AppText.participantHeroJoinBadge: LocalizedString(ru: 'Игровой вход', en: 'Game join'),
-  AppText.participantHeroJoinTitle: LocalizedString(ru: 'Готовимся к квизу', en: 'Get ready to play'),
+  AppText.joinTokenLabel:
+      LocalizedString(ru: 'Токен: {token}', en: 'Token: {token}'),
+  AppText.refreshPreviewButton:
+      LocalizedString(ru: 'Обновить предпросмотр', en: 'Refresh preview'),
+  AppText.usePinInsteadButton:
+      LocalizedString(ru: 'Ввести PIN вручную', en: 'Use PIN instead'),
+  AppText.participantHeroJoinBadge:
+      LocalizedString(ru: 'Игровой вход', en: 'Game join'),
+  AppText.participantHeroJoinTitle:
+      LocalizedString(ru: 'Готовимся к квизу', en: 'Get ready to play'),
   AppText.participantHeroJoinSubtitle: LocalizedString(
     ru: 'Введите PIN с экрана преподавателя или откройте QR-ссылку, чтобы попасть в live-сессию.',
     en: 'Enter the PIN from the teacher screen or open the QR link to join the live session.',
   ),
-  AppText.participantHeroLiveBadge: LocalizedString(ru: 'Live-игра', en: 'Live game'),
-  AppText.participantHeroLiveTitle: LocalizedString(ru: 'Вы в игре', en: 'You are in'),
+  AppText.participantHeroLiveBadge:
+      LocalizedString(ru: 'Live-игра', en: 'Live game'),
+  AppText.participantHeroLiveTitle:
+      LocalizedString(ru: 'Вы в игре', en: 'You are in'),
   AppText.participantHeroLiveSubtitle: LocalizedString(
     ru: 'Следите за вопросом, отвечайте быстро и ждите раскрытия результатов преподавателем.',
     en: 'Follow the question, answer quickly, and wait for the teacher to reveal results.',
@@ -312,13 +360,15 @@ const _strings = <AppText, LocalizedString>{
     ru: 'Быстрая регистрация',
     en: 'Quick registration',
   ),
-  AppText.participantLiveCardTitle: LocalizedString(ru: 'Игровой раунд', en: 'Game round'),
+  AppText.participantLiveCardTitle:
+      LocalizedString(ru: 'Игровой раунд', en: 'Game round'),
   AppText.sessionPinLabel: LocalizedString(ru: 'PIN сессии', en: 'Session PIN'),
   AppText.sessionPinHelper: LocalizedString(
     ru: '6 цифр с экрана преподавателя. По QR-ссылке PIN не нужен.',
     en: '6 digits from teacher screen. QR links do not require PIN.',
   ),
-  AppText.previewSessionButton: LocalizedString(ru: 'Предпросмотр сессии', en: 'Preview session'),
+  AppText.previewSessionButton:
+      LocalizedString(ru: 'Предпросмотр сессии', en: 'Preview session'),
   AppText.useJoinTokenButton: LocalizedString(
     ru: 'Использовать токен из ссылки',
     en: 'Use token from join link',
@@ -329,11 +379,16 @@ const _strings = <AppText, LocalizedString>{
     ru: 'Используется для быстрой регистрации и выгрузки результатов.',
     en: 'Used for quick registration and result export.',
   ),
-  AppText.legalDocumentsButton: LocalizedString(ru: 'Документы и согласие', en: 'Privacy & consent'),
-  AppText.refreshLegalDocsButton: LocalizedString(ru: 'Обновить документы', en: 'Refresh legal docs'),
-  AppText.joinSessionButton: LocalizedString(ru: 'Войти в сессию', en: 'Join session'),
-  AppText.participantPoints: LocalizedString(ru: 'Очки: {points}', en: 'Points: {points}'),
-  AppText.participantLastAnswer: LocalizedString(ru: 'Последний ответ: +{points}', en: 'Last answer: +{points} pts'),
+  AppText.legalDocumentsButton:
+      LocalizedString(ru: 'Документы и согласие', en: 'Privacy & consent'),
+  AppText.refreshLegalDocsButton:
+      LocalizedString(ru: 'Обновить документы', en: 'Refresh legal docs'),
+  AppText.joinSessionButton:
+      LocalizedString(ru: 'Войти в сессию', en: 'Join session'),
+  AppText.participantPoints:
+      LocalizedString(ru: 'Очки: {points}', en: 'Points: {points}'),
+  AppText.participantLastAnswer: LocalizedString(
+      ru: 'Последний ответ: +{points}', en: 'Last answer: +{points} pts'),
   AppText.sessionFinishedMessage: LocalizedString(
     ru: 'Сессия завершена. Спасибо за участие!',
     en: 'Session finished. Thanks for playing!',
@@ -352,7 +407,8 @@ const _strings = <AppText, LocalizedString>{
     en: 'I consent to personal data processing and privacy policy '
         '(privacy v{privacyVersion}, consent v{consentVersion})',
   ),
-  AppText.privacyConsentTitle: LocalizedString(ru: 'Документы и согласие', en: 'Privacy & Consent'),
+  AppText.privacyConsentTitle:
+      LocalizedString(ru: 'Документы и согласие', en: 'Privacy & Consent'),
   AppText.currentLegalVersionsTitle: LocalizedString(
     ru: 'Актуальные версии документов',
     en: 'Current legal versions',
@@ -373,14 +429,16 @@ const _strings = <AppText, LocalizedString>{
     ru: 'URL согласия: {url}',
     en: 'Consent URL: {url}',
   ),
-  AppText.legalContactLabel: LocalizedString(ru: 'Контакт: {email}', en: 'Contact: {email}'),
+  AppText.legalContactLabel:
+      LocalizedString(ru: 'Контакт: {email}', en: 'Contact: {email}'),
   AppText.legalConsentNotice: LocalizedString(
     ru: 'Перед входом в викторину участник подтверждает согласие на обработку персональных данных '
         'и принимает политику конфиденциальности. Эти версии сохраняются вместе с согласием.',
     en: 'Before joining a quiz, participant agrees to personal data processing '
         'and acknowledges the privacy policy. Versions above are saved with consent.',
   ),
-  AppText.privacyPolicyTitle: LocalizedString(ru: 'Политика конфиденциальности', en: 'Privacy Policy'),
+  AppText.privacyPolicyTitle:
+      LocalizedString(ru: 'Политика конфиденциальности', en: 'Privacy Policy'),
   AppText.personalDataConsentTitle: LocalizedString(
     ru: 'Согласие на обработку персональных данных',
     en: 'Personal Data Processing Consent',
@@ -451,38 +509,44 @@ const _strings = <AppText, LocalizedString>{
     en: 'Participants may request access, correction, restriction, deletion, or withdrawal of consent '
         'by contacting the legal email listed on this page.',
   ),
-  AppText.consentScopeTitle: LocalizedString(ru: '1. Объем согласия', en: '1. Scope of Consent'),
+  AppText.consentScopeTitle:
+      LocalizedString(ru: '1. Объем согласия', en: '1. Scope of Consent'),
   AppText.consentScopeBody: LocalizedString(
     ru: 'Входя в сессию, участник соглашается на обработку телефона, имени, ответов, очков и времени участия.',
     en: 'By joining a session, participant consents to processing of phone number, name, '
         'quiz answers, score values, and participation timestamps.',
   ),
-  AppText.consentActionsTitle: LocalizedString(ru: '2. Действия с данными', en: '2. Processing Actions'),
+  AppText.consentActionsTitle:
+      LocalizedString(ru: '2. Действия с данными', en: '2. Processing Actions'),
   AppText.consentActionsBody: LocalizedString(
     ru: 'Согласие включает сбор, запись, систематизацию, хранение, обновление, извлечение, '
         'передачу авторизованному преподавателю и удаление после срока хранения.',
     en: 'Consent covers collection, recording, systematization, storage, updating, extraction, '
         'transfer to authorized teacher accounts, and deletion after retention period.',
   ),
-  AppText.consentPurposeTitle: LocalizedString(ru: '3. Цель обработки', en: '3. Purpose of Processing'),
+  AppText.consentPurposeTitle:
+      LocalizedString(ru: '3. Цель обработки', en: '3. Purpose of Processing'),
   AppText.consentPurposeBody: LocalizedString(
     ru: 'Обработка нужна для входа участника, прохождения викторины, расчета очков, показа рейтинга и экспорта отчета преподавателю.',
     en: 'Processing is required for participant authorization, quiz gameplay, score calculation, '
         'leaderboard display, and teacher report export.',
   ),
-  AppText.consentPeriodTitle: LocalizedString(ru: '4. Срок действия', en: '4. Consent Period'),
+  AppText.consentPeriodTitle:
+      LocalizedString(ru: '4. Срок действия', en: '4. Consent Period'),
   AppText.consentPeriodBody: LocalizedString(
     ru: 'Согласие действует с момента принятия до отзыва или до достижения целей обработки.',
     en: 'Consent is valid from the moment of acceptance and remains active until withdrawal '
         'or until processing purposes are fully achieved.',
   ),
-  AppText.consentWithdrawalTitle: LocalizedString(ru: '5. Отзыв согласия', en: '5. Withdrawal Procedure'),
+  AppText.consentWithdrawalTitle:
+      LocalizedString(ru: '5. Отзыв согласия', en: '5. Withdrawal Procedure'),
   AppText.consentWithdrawalBody: LocalizedString(
     ru: 'Участник может отозвать согласие через юридический контакт. Отзыв может ограничить дальнейшее участие в викторинах.',
     en: 'Participant can withdraw consent by contacting legal support. Withdrawal may limit ability '
         'to continue using quiz participation features.',
   ),
-  AppText.consentConfirmationTitle: LocalizedString(ru: '6. Подтверждение', en: '6. Confirmation'),
+  AppText.consentConfirmationTitle:
+      LocalizedString(ru: '6. Подтверждение', en: '6. Confirmation'),
   AppText.consentConfirmationBody: LocalizedString(
     ru: 'Продолжая регистрацию, участник подтверждает, что прочитал и принял этот текст согласия '
         'и связанную версию политики конфиденциальности.',
@@ -493,15 +557,20 @@ const _strings = <AppText, LocalizedString>{
     ru: 'Не удалось обновить юридические данные: {error}',
     en: 'Failed to refresh legal metadata: {error}',
   ),
-  AppText.publicLegalVersionLabel: LocalizedString(ru: 'Версия: {version}', en: 'Version: {version}'),
-  AppText.publicLegalUrlLabel: LocalizedString(ru: 'Публичный URL: {url}', en: 'Public URL: {url}'),
+  AppText.publicLegalVersionLabel:
+      LocalizedString(ru: 'Версия: {version}', en: 'Version: {version}'),
+  AppText.publicLegalUrlLabel:
+      LocalizedString(ru: 'Публичный URL: {url}', en: 'Public URL: {url}'),
   AppText.publicLegalContactLabel: LocalizedString(
     ru: 'Юридический контакт: {email}',
     en: 'Legal contact: {email}',
   ),
-  AppText.openPrivacyPolicyButton: LocalizedString(ru: 'Открыть политику', en: 'Open privacy policy'),
-  AppText.openConsentButton: LocalizedString(ru: 'Открыть согласие', en: 'Open consent form'),
-  AppText.openAppButton: LocalizedString(ru: 'Открыть приложение', en: 'Open app'),
+  AppText.openPrivacyPolicyButton:
+      LocalizedString(ru: 'Открыть политику', en: 'Open privacy policy'),
+  AppText.openConsentButton:
+      LocalizedString(ru: 'Открыть согласие', en: 'Open consent form'),
+  AppText.openAppButton:
+      LocalizedString(ru: 'Открыть приложение', en: 'Open app'),
   AppText.retryButton: LocalizedString(ru: 'Повторить', en: 'Retry'),
   AppText.questionTimeLimitLabel: LocalizedString(
     ru: 'Лимит времени: {seconds} сек',

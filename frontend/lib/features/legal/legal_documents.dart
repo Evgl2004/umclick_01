@@ -48,15 +48,21 @@ class LegalDocumentsPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(appText(AppText.currentLegalVersionsTitle), style: Theme.of(context).textTheme.titleMedium),
+                  Text(appText(AppText.currentLegalVersionsTitle),
+                      style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
-                  Text(appText(AppText.privacyVersionLabel, args: {'version': privacyVersion})),
-                  SelectableText(appText(AppText.privacyUrlLabel, args: {'url': _url('privacy_policy')})),
+                  Text(appText(AppText.privacyVersionLabel,
+                      args: {'version': privacyVersion})),
+                  SelectableText(appText(AppText.privacyUrlLabel,
+                      args: {'url': _url('privacy_policy')})),
                   const SizedBox(height: 6),
-                  Text(appText(AppText.personalDataConsentVersionLabel, args: {'version': consentVersion})),
-                  SelectableText(appText(AppText.personalDataConsentUrlLabel, args: {'url': _url('personal_data_consent')})),
+                  Text(appText(AppText.personalDataConsentVersionLabel,
+                      args: {'version': consentVersion})),
+                  SelectableText(appText(AppText.personalDataConsentUrlLabel,
+                      args: {'url': _url('personal_data_consent')})),
                   const SizedBox(height: 6),
-                  SelectableText(appText(AppText.legalContactLabel, args: {'email': contactEmail})),
+                  SelectableText(appText(AppText.legalContactLabel,
+                      args: {'email': contactEmail})),
                 ],
               ),
             ),
@@ -95,7 +101,8 @@ class LegalDocumentsPage extends StatelessWidget {
                   Navigator.of(context).push<void>(
                     MaterialPageRoute(
                       builder: (_) => PublicLegalDocumentPage(
-                        documentType: PublicLegalDocumentType.personalDataConsent,
+                        documentType:
+                            PublicLegalDocumentType.personalDataConsent,
                         initialDocuments: documents,
                         apiBaseUrl: apiBaseUrl,
                       ),
@@ -128,7 +135,8 @@ class PublicLegalDocumentPage extends StatefulWidget {
   final WidgetBuilder? appHomeBuilder;
 
   @override
-  State<PublicLegalDocumentPage> createState() => _PublicLegalDocumentPageState();
+  State<PublicLegalDocumentPage> createState() =>
+      _PublicLegalDocumentPageState();
 }
 
 class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
@@ -200,22 +208,34 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
   List<MapEntry<String, String>> get _sections {
     if (widget.documentType == PublicLegalDocumentType.privacyPolicy) {
       return [
-        MapEntry(appText(AppText.privacyDataCollectedTitle), appText(AppText.privacyDataCollectedBody)),
-        MapEntry(appText(AppText.privacyPurposeTitle), appText(AppText.privacyPurposeBody)),
-        MapEntry(appText(AppText.privacyLegalBasisTitle), appText(AppText.privacyLegalBasisBody)),
-        MapEntry(appText(AppText.privacyRetentionTitle), appText(AppText.privacyRetentionBody)),
-        MapEntry(appText(AppText.privacySharingTitle), appText(AppText.privacySharingBody)),
-        MapEntry(appText(AppText.privacyRightsTitle), appText(AppText.privacyRightsBody)),
+        MapEntry(appText(AppText.privacyDataCollectedTitle),
+            appText(AppText.privacyDataCollectedBody)),
+        MapEntry(appText(AppText.privacyPurposeTitle),
+            appText(AppText.privacyPurposeBody)),
+        MapEntry(appText(AppText.privacyLegalBasisTitle),
+            appText(AppText.privacyLegalBasisBody)),
+        MapEntry(appText(AppText.privacyRetentionTitle),
+            appText(AppText.privacyRetentionBody)),
+        MapEntry(appText(AppText.privacySharingTitle),
+            appText(AppText.privacySharingBody)),
+        MapEntry(appText(AppText.privacyRightsTitle),
+            appText(AppText.privacyRightsBody)),
       ];
     }
 
     return [
-      MapEntry(appText(AppText.consentScopeTitle), appText(AppText.consentScopeBody)),
-      MapEntry(appText(AppText.consentActionsTitle), appText(AppText.consentActionsBody)),
-      MapEntry(appText(AppText.consentPurposeTitle), appText(AppText.consentPurposeBody)),
-      MapEntry(appText(AppText.consentPeriodTitle), appText(AppText.consentPeriodBody)),
-      MapEntry(appText(AppText.consentWithdrawalTitle), appText(AppText.consentWithdrawalBody)),
-      MapEntry(appText(AppText.consentConfirmationTitle), appText(AppText.consentConfirmationBody)),
+      MapEntry(appText(AppText.consentScopeTitle),
+          appText(AppText.consentScopeBody)),
+      MapEntry(appText(AppText.consentActionsTitle),
+          appText(AppText.consentActionsBody)),
+      MapEntry(appText(AppText.consentPurposeTitle),
+          appText(AppText.consentPurposeBody)),
+      MapEntry(appText(AppText.consentPeriodTitle),
+          appText(AppText.consentPeriodBody)),
+      MapEntry(appText(AppText.consentWithdrawalTitle),
+          appText(AppText.consentWithdrawalBody)),
+      MapEntry(appText(AppText.consentConfirmationTitle),
+          appText(AppText.consentConfirmationBody)),
     ];
   }
 
@@ -230,7 +250,8 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
     });
 
     try {
-      final docs = await ApiClient(widget.apiBaseUrl).getCurrentLegalDocuments();
+      final docs =
+          await ApiClient(widget.apiBaseUrl).getCurrentLegalDocuments();
       if (!mounted) return;
       setState(() {
         _documents = docs;
@@ -285,7 +306,8 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(appText(AppText.legalMetadataRefreshError, args: {'error': _error})),
+                    Text(appText(AppText.legalMetadataRefreshError,
+                        args: {'error': _error})),
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
                       onPressed: _loadLegalDocuments,
@@ -304,11 +326,15 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_shortDescription, style: Theme.of(context).textTheme.titleMedium),
+                  Text(_shortDescription,
+                      style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
-                  Text(appText(AppText.publicLegalVersionLabel, args: {'version': _version})),
-                  SelectableText(appText(AppText.publicLegalUrlLabel, args: {'url': _documentUrl})),
-                  SelectableText(appText(AppText.publicLegalContactLabel, args: {'email': _contactEmail})),
+                  Text(appText(AppText.publicLegalVersionLabel,
+                      args: {'version': _version})),
+                  SelectableText(appText(AppText.publicLegalUrlLabel,
+                      args: {'url': _documentUrl})),
+                  SelectableText(appText(AppText.publicLegalContactLabel,
+                      args: {'email': _contactEmail})),
                 ],
               ),
             ),
@@ -323,7 +349,8 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(section.key, style: Theme.of(context).textTheme.titleSmall),
+                      Text(section.key,
+                          style: Theme.of(context).textTheme.titleSmall),
                       const SizedBox(height: 6),
                       Text(section.value),
                     ],

@@ -70,43 +70,49 @@ class TeacherQuizQuestionCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            ...question.choices.asMap().entries.map((choiceEntry) {
-              final choiceIndex = choiceEntry.key;
-              final choice = choiceEntry.value;
+            RadioGroup<int>(
+              groupValue: correctChoiceIndex >= 0 ? correctChoiceIndex : null,
+              onChanged: (choiceIndex) {
+                if (loading || choiceIndex == null) return;
+                onSetCorrectChoice(choiceIndex);
+              },
+              child: Column(
+                children: question.choices.asMap().entries.map((choiceEntry) {
+                  final choiceIndex = choiceEntry.key;
+                  final choice = choiceEntry.value;
 
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    Radio<int>(
-                      value: choiceIndex,
-                      groupValue: correctChoiceIndex >= 0
-                          ? correctChoiceIndex
-                          : null,
-                      onChanged: loading
-                          ? null
-                          : (_) => onSetCorrectChoice(choiceIndex),
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: choice.textController,
-                        decoration: InputDecoration(
-                          labelText: appText(
-                            AppText.choiceNumber,
-                            args: {'number': choiceIndex + 1},
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Radio<int>(
+                          value: choiceIndex,
+                          enabled: !loading,
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: choice.textController,
+                            decoration: InputDecoration(
+                              labelText: appText(
+                                AppText.choiceNumber,
+                                args: {'number': choiceIndex + 1},
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                        IconButton(
+                          onPressed: loading
+                              ? null
+                              : () => onRemoveChoice(choiceIndex),
+                          icon: const Icon(Icons.close),
+                          tooltip: appText(AppText.removeChoiceTooltip),
+                        ),
+                      ],
                     ),
-                    IconButton(
-                      onPressed: loading ? null : () => onRemoveChoice(choiceIndex),
-                      icon: const Icon(Icons.close),
-                      tooltip: appText(AppText.removeChoiceTooltip),
-                    ),
-                  ],
-                ),
-              );
-            }),
+                  );
+                }).toList(),
+              ),
+            ),
             Align(
               alignment: Alignment.centerLeft,
               child: OutlinedButton.icon(

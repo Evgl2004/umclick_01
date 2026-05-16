@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../../l10n/app_strings.dart';
 import '../../../shared/widgets/app_surfaces.dart';
@@ -23,11 +23,14 @@ class ParticipantHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusText = appText(AppText.statusValue, args: {'status': sessionStatus});
+    final statusText =
+        appText(AppText.statusValue, args: {'status': sessionStatus});
     final socketText = appText(
       AppText.webSocketState,
       args: {
-        'state': socketConnected ? appText(AppText.webSocketConnected) : appText(AppText.webSocketDisconnected),
+        'state': socketConnected
+            ? appText(AppText.webSocketConnected)
+            : appText(AppText.webSocketDisconnected),
       },
     );
 
@@ -43,7 +46,7 @@ class ParticipantHero extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF023047).withOpacity(0.22),
+            color: const Color(0xFF023047).withValues(alpha: 0.22),
             blurRadius: 28,
             offset: const Offset(0, 18),
           ),
@@ -54,13 +57,17 @@ class ParticipantHero extends StatelessWidget {
         children: [
           AppStatusChip(
             icon: isLive ? Icons.bolt : Icons.qr_code_2,
-            label: isLive ? appText(AppText.participantHeroLiveBadge) : appText(AppText.participantHeroJoinBadge),
-            background: Colors.white.withOpacity(0.18),
+            label: isLive
+                ? appText(AppText.participantHeroLiveBadge)
+                : appText(AppText.participantHeroJoinBadge),
+            background: Colors.white.withValues(alpha: 0.18),
             foreground: Colors.white,
           ),
           const SizedBox(height: 18),
           Text(
-            isLive ? appText(AppText.participantHeroLiveTitle) : appText(AppText.participantHeroJoinTitle),
+            isLive
+                ? appText(AppText.participantHeroLiveTitle)
+                : appText(AppText.participantHeroJoinTitle),
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w900,
@@ -68,9 +75,11 @@ class ParticipantHero extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            isLive ? appText(AppText.participantHeroLiveSubtitle) : appText(AppText.participantHeroJoinSubtitle),
+            isLive
+                ? appText(AppText.participantHeroLiveSubtitle)
+                : appText(AppText.participantHeroJoinSubtitle),
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withValues(alpha: 0.9),
                   height: 1.35,
                 ),
           ),
@@ -82,27 +91,29 @@ class ParticipantHero extends StatelessWidget {
               children: [
                 AppStatusChip(
                   icon: Icons.emoji_events_outlined,
-                  label: appText(AppText.participantPoints, args: {'points': totalPoints}),
+                  label: appText(AppText.participantPoints,
+                      args: {'points': totalPoints}),
                   background: Colors.white,
                   foreground: const Color(0xFF023047),
                 ),
                 AppStatusChip(
                   icon: Icons.flag_outlined,
                   label: statusText,
-                  background: Colors.white.withOpacity(0.18),
+                  background: Colors.white.withValues(alpha: 0.18),
                   foreground: Colors.white,
                 ),
                 AppStatusChip(
                   icon: socketConnected ? Icons.wifi : Icons.wifi_off,
                   label: socketText,
-                  background: Colors.white.withOpacity(0.18),
+                  background: Colors.white.withValues(alpha: 0.18),
                   foreground: Colors.white,
                 ),
                 if (hasActiveQuestion)
                   AppStatusChip(
                     icon: Icons.timer_outlined,
-                    label: appText(AppText.timeLeft, args: {'time': timeLeftLabel}),
-                    background: Colors.white.withOpacity(0.18),
+                    label: appText(AppText.timeLeft,
+                        args: {'time': timeLeftLabel}),
+                    background: Colors.white.withValues(alpha: 0.18),
                     foreground: Colors.white,
                   ),
               ],

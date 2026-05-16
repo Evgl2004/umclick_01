@@ -94,7 +94,8 @@ class _SessionSetupDetails extends StatelessWidget {
               Text(
                 selectedQuizId == null
                     ? appText(AppText.selectQuizForSession)
-                    : appText(AppText.sessionQuiz, args: {'id': selectedQuizId}),
+                    : appText(AppText.sessionQuiz,
+                        args: {'id': selectedQuizId}),
               ),
             ],
           ),

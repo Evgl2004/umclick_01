@@ -167,7 +167,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
     if (_draftQuestions.length <= 1) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Quiz must contain at least one question.')),
+        const SnackBar(
+            content: Text('Quiz must contain at least one question.')),
       );
       return;
     }
@@ -188,7 +189,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
     if (question.choices.length <= 2) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Each question needs at least two answer choices.')),
+        const SnackBar(
+            content: Text('Each question needs at least two answer choices.')),
       );
       return;
     }
@@ -202,7 +204,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
   }
 
-  void _setDraftCorrectChoice(QuizDraftQuestion question, int selectedChoiceIndex) {
+  void _setDraftCorrectChoice(
+      QuizDraftQuestion question, int selectedChoiceIndex) {
     setState(() {
       for (var i = 0; i < question.choices.length; i++) {
         question.choices[i].isCorrect = i == selectedChoiceIndex;
@@ -319,7 +322,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
     }
   }
 
-  Future<T> _runTeacherRequest<T>(Future<T> Function(ApiClient client) request) async {
+  Future<T> _runTeacherRequest<T>(
+      Future<T> Function(ApiClient client) request) async {
     try {
       return await request(_client());
     } on ApiException catch (e) {
@@ -407,7 +411,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
       case 'session_started':
         _patchSession({
           'status': payload['status'],
-          'participants_count': payload['participants_count'] ?? (_session?['participants_count'] ?? 0),
+          'participants_count': payload['participants_count'] ??
+              (_session?['participants_count'] ?? 0),
         });
         setState(() {
           _activeQuestion = mapOrNull(payload['current_question']);
@@ -424,7 +429,10 @@ class _TeacherPanelState extends State<TeacherPanel> {
         }
         break;
       case 'participant_joined':
-        _patchSession({'participants_count': payload['participants_count'] ?? (_session?['participants_count'] ?? 0)});
+        _patchSession({
+          'participants_count': payload['participants_count'] ??
+              (_session?['participants_count'] ?? 0)
+        });
         break;
       case 'question_started':
         setState(() {
@@ -555,7 +563,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
       int? nextSelectedQuizId;
       if (quizzes.isNotEmpty) {
         final hasPreferred = preferredQuizId != null &&
-            quizzes.any((rawQuiz) => asInt(mapOrNull(rawQuiz)?['id'], -1) == preferredQuizId);
+            quizzes.any((rawQuiz) =>
+                asInt(mapOrNull(rawQuiz)?['id'], -1) == preferredQuizId);
         nextSelectedQuizId = hasPreferred
             ? preferredQuizId
             : asInt(mapOrNull(quizzes.first)?['id'], 0);
@@ -603,7 +612,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
       final savedQuiz = editingQuizId == null
           ? await _runTeacherRequest((client) => client.createQuiz(payload))
-          : await _runTeacherRequest((client) => client.updateQuiz(editingQuizId, payload));
+          : await _runTeacherRequest(
+              (client) => client.updateQuiz(editingQuizId, payload));
 
       final savedQuizId = asInt(savedQuiz['id'], 0);
       await _refreshQuizzes(selectQuizId: savedQuizId);
@@ -650,13 +660,15 @@ class _TeacherPanelState extends State<TeacherPanel> {
       return;
     }
 
-    final quizTitle = _quizById(quizId)?['title']?.toString() ?? 'selected quiz';
+    final quizTitle =
+        _quizById(quizId)?['title']?.toString() ?? 'selected quiz';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('Delete quiz?'),
-          content: Text('Delete "$quizTitle" permanently? This action cannot be undone.'),
+          content: Text(
+              'Delete "$quizTitle" permanently? This action cannot be undone.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -710,7 +722,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
 
     try {
-      final session = await _runTeacherRequest((client) => client.createSession(_selectedQuizId!));
+      final session = await _runTeacherRequest(
+          (client) => client.createSession(_selectedQuizId!));
       setState(() {
         _session = session;
         _activeQuestion = mapOrNull(session['current_question']);
@@ -733,7 +746,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _startSession() async {
     if (_session == null) return;
     try {
-      final started = await _runTeacherRequest((client) => client.startSession(_session!['id'] as int));
+      final started = await _runTeacherRequest(
+          (client) => client.startSession(_session!['id'] as int));
       setState(() {
         _session = started;
         _activeQuestion = mapOrNull(started['current_question']);
@@ -751,7 +765,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _nextQuestion() async {
     if (_session == null) return;
     try {
-      final payload = await _runTeacherRequest((client) => client.nextQuestion(_session!['id'] as int));
+      final payload = await _runTeacherRequest(
+          (client) => client.nextQuestion(_session!['id'] as int));
       if (payload.containsKey('session')) {
         final session = mapOrNull(payload['session']);
         if (session != null) {
@@ -783,7 +798,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _revealAnswers() async {
     if (_session == null) return;
     try {
-      final payload = await _runTeacherRequest((client) => client.revealAnswer(_session!['id'] as int));
+      final payload = await _runTeacherRequest(
+          (client) => client.revealAnswer(_session!['id'] as int));
       setState(() {
         _revealPayload = payload;
       });
@@ -798,7 +814,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _finishSession() async {
     if (_session == null) return;
     try {
-      final finished = await _runTeacherRequest((client) => client.finishSession(_session!['id'] as int));
+      final finished = await _runTeacherRequest(
+          (client) => client.finishSession(_session!['id'] as int));
       _questionTimer?.cancel();
       setState(() {
         _session = finished;
@@ -816,7 +833,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _showLeaderboard() async {
     if (_session == null) return;
     try {
-      final rows = await _runTeacherRequest((client) => client.getLeaderboard(_session!['id'] as int));
+      final rows = await _runTeacherRequest(
+          (client) => client.getLeaderboard(_session!['id'] as int));
       if (!mounted) return;
 
       showDialog<void>(
@@ -832,13 +850,15 @@ class _TeacherPanelState extends State<TeacherPanel> {
                       shrinkWrap: true,
                       itemCount: rows.length,
                       itemBuilder: (context, index) {
-                        final row = mapOrNull(rows[index]) ?? <String, dynamic>{};
+                        final row =
+                            mapOrNull(rows[index]) ?? <String, dynamic>{};
                         return ListTile(
                           dense: true,
                           leading: Text('#${index + 1}'),
                           title: Text('${row['participant_name']}'),
                           subtitle: Text('${row['phone']}'),
-                          trailing: Text('Pts: ${row['points']} | Correct: ${row['correct_answers']}'),
+                          trailing: Text(
+                              'Pts: ${row['points']} | Correct: ${row['correct_answers']}'),
                         );
                       },
                     ),
@@ -862,7 +882,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
   void _showExportUrlSnack(String exportUrl) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(appText(AppText.exportUrlSnack, args: {'url': exportUrl})),
+        content:
+            Text(appText(AppText.exportUrlSnack, args: {'url': exportUrl})),
       ),
     );
   }
@@ -955,7 +976,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(_error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ],
           if (_session != null) ...[
             const SizedBox(height: 20),

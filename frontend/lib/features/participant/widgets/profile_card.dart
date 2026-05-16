@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../../l10n/app_strings.dart';
 import '../../../shared/widgets/app_surfaces.dart';
@@ -34,12 +34,13 @@ class ParticipantProfileCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppSectionCard(
-      color: Theme.of(context).colorScheme.surface.withOpacity(0.94),
+      color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.94),
       borderRadius: 28,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(appText(AppText.participantProfileCardTitle), style: Theme.of(context).textTheme.titleLarge),
+          Text(appText(AppText.participantProfileCardTitle),
+              style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 14),
           TextField(
             controller: nameController,
@@ -70,12 +71,16 @@ class ParticipantProfileCard extends StatelessWidget {
             runSpacing: 10,
             children: [
               OutlinedButton.icon(
-                onPressed: (loading || loadingLegalDocuments) ? null : onOpenLegalDocuments,
+                onPressed: (loading || loadingLegalDocuments)
+                    ? null
+                    : onOpenLegalDocuments,
                 icon: const Icon(Icons.policy_outlined),
                 label: Text(appText(AppText.legalDocumentsButton)),
               ),
               OutlinedButton.icon(
-                onPressed: (loading || loadingLegalDocuments) ? null : onRefreshLegalDocuments,
+                onPressed: (loading || loadingLegalDocuments)
+                    ? null
+                    : onRefreshLegalDocuments,
                 icon: const Icon(Icons.refresh),
                 label: Text(appText(AppText.refreshLegalDocsButton)),
               ),
@@ -90,13 +95,17 @@ class ParticipantProfileCard extends StatelessWidget {
               label: Text(appText(AppText.joinSessionButton)),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 18),
-                textStyle: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                textStyle: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w800),
               ),
             ),
           ),
           if (error != null) ...[
             const SizedBox(height: 12),
-            Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ],
         ],
       ),

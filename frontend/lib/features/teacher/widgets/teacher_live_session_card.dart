@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../../l10n/app_strings.dart';
 import 'teacher_live_session_header.dart';
@@ -54,7 +54,7 @@ class TeacherLiveSessionCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF023047).withOpacity(0.2),
+            color: const Color(0xFF023047).withValues(alpha: 0.2),
             blurRadius: 26,
             offset: const Offset(0, 18),
           ),
@@ -74,7 +74,7 @@ class TeacherLiveSessionCard extends StatelessWidget {
           const SizedBox(height: 16),
           SelectableText(
             appText(AppText.joinUrl, args: {'url': joinUrl}),
-            style: TextStyle(color: Colors.white.withOpacity(0.88)),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.88)),
           ),
           const SizedBox(height: 16),
           TeacherRoundControls(

@@ -33,12 +33,13 @@ class ParticipantJoinConnectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppSectionCard(
-      color: Theme.of(context).colorScheme.surface.withOpacity(0.94),
+      color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.94),
       borderRadius: 28,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(appText(AppText.participantJoinCardTitle), style: Theme.of(context).textTheme.titleLarge),
+          Text(appText(AppText.participantJoinCardTitle),
+              style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 14),
           TextField(
             controller: apiController,
@@ -101,7 +102,8 @@ class _JoinTokenNotice extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFE0F7FA),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF0A9396).withOpacity(0.32)),
+        border:
+            Border.all(color: const Color(0xFF0A9396).withValues(alpha: 0.32)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -114,14 +116,16 @@ class _JoinTokenNotice extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          SelectableText(appText(AppText.joinTokenLabel, args: {'token': joinToken})),
+          SelectableText(
+              appText(AppText.joinTokenLabel, args: {'token': joinToken})),
           const SizedBox(height: 10),
           Wrap(
             spacing: 10,
             runSpacing: 10,
             children: [
               OutlinedButton.icon(
-                onPressed: (loading || loadingJoinPreview) ? null : onLoadJoinPreview,
+                onPressed:
+                    (loading || loadingJoinPreview) ? null : onLoadJoinPreview,
                 icon: const Icon(Icons.refresh),
                 label: Text(appText(AppText.refreshPreviewButton)),
               ),
@@ -163,7 +167,10 @@ class _PinJoinForm extends StatelessWidget {
         TextField(
           controller: pinController,
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+          style: Theme.of(context)
+              .textTheme
+              .headlineSmall
+              ?.copyWith(fontWeight: FontWeight.w900),
           decoration: InputDecoration(
             labelText: appText(AppText.sessionPinLabel),
             helperText: appText(AppText.sessionPinHelper),
@@ -178,7 +185,8 @@ class _PinJoinForm extends StatelessWidget {
             runSpacing: 10,
             children: [
               FilledButton.tonalIcon(
-                onPressed: (loading || loadingJoinPreview) ? null : onLoadJoinPreview,
+                onPressed:
+                    (loading || loadingJoinPreview) ? null : onLoadJoinPreview,
                 icon: const Icon(Icons.visibility_outlined),
                 label: Text(appText(AppText.previewSessionButton)),
               ),
@@ -216,7 +224,8 @@ class _JoinPreviewCard extends StatelessWidget {
     }
 
     final quiz = mapOrNull(preview['quiz']) ?? <String, dynamic>{};
-    final title = quiz['title']?.toString() ?? appText(AppText.untitledQuizLong);
+    final title =
+        quiz['title']?.toString() ?? appText(AppText.untitledQuizLong);
     final description = quiz['description']?.toString() ?? '';
     final statusLabel = preview['session_status']?.toString() ?? 'unknown';
     final participantsCount = asInt(preview['participants_count']);
@@ -227,10 +236,14 @@ class _JoinPreviewCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: canJoin ? const Color(0xFFFFF4D6) : Theme.of(context).colorScheme.errorContainer,
+        color: canJoin
+            ? const Color(0xFFFFF4D6)
+            : Theme.of(context).colorScheme.errorContainer,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: canJoin ? const Color(0xFFFFB703).withOpacity(0.42) : Theme.of(context).colorScheme.error,
+          color: canJoin
+              ? const Color(0xFFFFB703).withValues(alpha: 0.42)
+              : Theme.of(context).colorScheme.error,
         ),
       ),
       child: Column(
@@ -243,7 +256,10 @@ class _JoinPreviewCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w800),
                 ),
               ),
             ],
@@ -259,21 +275,24 @@ class _JoinPreviewCard extends StatelessWidget {
             children: [
               AppStatusChip(
                 icon: Icons.flag_outlined,
-                label: appText(AppText.statusValue, args: {'status': statusLabel}),
-                background: Colors.white.withOpacity(0.66),
+                label:
+                    appText(AppText.statusValue, args: {'status': statusLabel}),
+                background: Colors.white.withValues(alpha: 0.66),
                 foreground: const Color(0xFF023047),
               ),
               AppStatusChip(
                 icon: Icons.group_outlined,
-                label: appText(AppText.participantsCount, args: {'count': participantsCount}),
-                background: Colors.white.withOpacity(0.66),
+                label: appText(AppText.participantsCount,
+                    args: {'count': participantsCount}),
+                background: Colors.white.withValues(alpha: 0.66),
                 foreground: const Color(0xFF023047),
               ),
             ],
           ),
           if (!canJoin && closedReason.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text(closedReason, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(closedReason,
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ],
           if (loadingJoinPreview) ...[
             const SizedBox(height: 10),

@@ -44,8 +44,10 @@ class TeacherQuizBuilderCard extends StatelessWidget {
   final VoidCallback onRefreshQuizzes;
   final VoidCallback onDeleteSelectedQuiz;
   final ValueChanged<int> onRemoveQuestion;
-  final void Function(QuizDraftQuestion question, int choiceIndex) onSetCorrectChoice;
-  final void Function(QuizDraftQuestion question, int choiceIndex) onRemoveChoice;
+  final void Function(QuizDraftQuestion question, int choiceIndex)
+      onSetCorrectChoice;
+  final void Function(QuizDraftQuestion question, int choiceIndex)
+      onRemoveChoice;
   final ValueChanged<QuizDraftQuestion> onAddChoice;
   final VoidCallback onAddQuestion;
 

@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -61,7 +61,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
 
   ApiClient _client() => ApiClient(_apiController.text.trim());
 
-  String? get _activeJoinToken => _useJoinTokenFromLink ? _joinTokenFromLink : null;
+  String? get _activeJoinToken =>
+      _useJoinTokenFromLink ? _joinTokenFromLink : null;
 
   String? get _activePin {
     if (_useJoinTokenFromLink) {
@@ -124,7 +125,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
 
     final joinToken = _activeJoinToken;
     final pin = _activePin;
-    if ((joinToken == null || joinToken.isEmpty) && (pin == null || pin.isEmpty)) {
+    if ((joinToken == null || joinToken.isEmpty) &&
+        (pin == null || pin.isEmpty)) {
       if (showError) {
         setState(() {
           _error = 'Enter a PIN or open a tokenized join link first.';
@@ -148,7 +150,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
       if (!mounted) return;
       setState(() {
         _joinPreview = preview;
-        _legalDocuments = mapOrNull(preview['legal_documents']) ?? _legalDocuments;
+        _legalDocuments =
+            mapOrNull(preview['legal_documents']) ?? _legalDocuments;
       });
     } catch (e) {
       if (!mounted) return;
@@ -229,7 +232,9 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
 
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => LegalDocumentsPage(documents: _legalDocuments!, apiBaseUrl: _apiController.text.trim()),
+        builder: (_) => LegalDocumentsPage(
+            documents: _legalDocuments!,
+            apiBaseUrl: _apiController.text.trim()),
       ),
     );
   }
@@ -317,7 +322,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
           _sessionFinished = _sessionStatus == 'finished';
         });
 
-        if (incomingQuestionId != activeQuestionId || incomingQuestion == null) {
+        if (incomingQuestionId != activeQuestionId ||
+            incomingQuestion == null) {
           _applyQuestionState(incomingQuestion, payload['question_ends_at']);
         } else {
           _startCountdown(parseDateTimeLocal(payload['question_ends_at']));
@@ -337,7 +343,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
           _sessionFinished = false;
           _lastAnswerPoints = 0;
         });
-        _applyQuestionState(mapOrNull(payload['question']), payload['question_ends_at']);
+        _applyQuestionState(
+            mapOrNull(payload['question']), payload['question_ends_at']);
         break;
       case 'answer_revealed':
         _countdownTimer?.cancel();
@@ -373,7 +380,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     try {
       if (_joinPreview?['can_join'] == false) {
         throw StateError(
-          _joinPreview?['closed_reason']?.toString() ?? 'Session is not available for joining.',
+          _joinPreview?['closed_reason']?.toString() ??
+              'Session is not available for joining.',
         );
       }
 
@@ -402,7 +410,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         _selectedChoiceId = null;
         _isQuestionExpired = isAnswerRevealed;
         _timeLeftLabel = isAnswerRevealed ? '00:00' : '--:--';
-        _legalDocuments = mapOrNull(payload['legal_documents']) ?? _legalDocuments;
+        _legalDocuments =
+            mapOrNull(payload['legal_documents']) ?? _legalDocuments;
         _events.clear();
       });
 
@@ -428,7 +437,10 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   }
 
   Future<void> _answer(int choiceId) async {
-    if (_joinPayload == null || _activeQuestion == null || _questionAnswered || _isQuestionExpired) {
+    if (_joinPayload == null ||
+        _activeQuestion == null ||
+        _questionAnswered ||
+        _isQuestionExpired) {
       return;
     }
 
@@ -456,15 +468,17 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
 
   Widget _buildLiveSessionArea(BuildContext context) {
     return AppSectionCard(
-      color: Theme.of(context).colorScheme.surface.withOpacity(0.94),
+      color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.94),
       borderRadius: 28,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(appText(AppText.participantLiveCardTitle), style: Theme.of(context).textTheme.titleLarge),
+          Text(appText(AppText.participantLiveCardTitle),
+              style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 10),
-          Text(appText(AppText.participantLastAnswer, args: {'points': _lastAnswerPoints})),
+          Text(appText(AppText.participantLastAnswer,
+              args: {'points': _lastAnswerPoints})),
           const SizedBox(height: 14),
           if (_sessionFinished)
             ParticipantRoundMessage(
@@ -485,7 +499,9 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
               questionLocked: _questionAnswered || _isQuestionExpired,
               selectedChoiceId: _selectedChoiceId,
             ),
-          if (_isQuestionExpired && !_questionAnswered && !_sessionFinished) ...[
+          if (_isQuestionExpired &&
+              !_questionAnswered &&
+              !_sessionFinished) ...[
             const SizedBox(height: 10),
             ParticipantRoundMessage(
               icon: Icons.timer_off_outlined,
@@ -522,7 +538,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
               child: ConstrainedBox(
                 constraints: BoxConstraints(
                   maxWidth: 920,
-                  minHeight: constraints.maxHeight.isFinite && constraints.maxHeight > 32
+                  minHeight: constraints.maxHeight.isFinite &&
+                          constraints.maxHeight > 32
                       ? constraints.maxHeight - 32
                       : 0,
                 ),
@@ -592,5 +609,4 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
       },
     );
   }
-
 }

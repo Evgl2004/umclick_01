@@ -11,7 +11,8 @@ class LiveEventLog {
   }
 
   String format(String message, {DateTime? now}) {
-    final timestamp = (now ?? DateTime.now()).toIso8601String().substring(11, 19);
+    final timestamp =
+        (now ?? DateTime.now()).toIso8601String().substring(11, 19);
     return '[$timestamp] $message';
   }
 }

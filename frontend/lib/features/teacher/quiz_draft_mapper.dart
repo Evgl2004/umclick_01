@@ -47,20 +47,20 @@ class QuizDraftMapper {
     final parsedQuizId = asInt(quiz['id'], -1);
     final questions = <QuizDraftQuestion>[];
     final questionMaps = ((quiz['questions'] as List<dynamic>? ?? <dynamic>[])
-            .map(mapOrNull)
-            .whereType<Map<String, dynamic>>()
-            .toList())
-          ..sort((a, b) => asInt(a['order']).compareTo(asInt(b['order'])));
+        .map(mapOrNull)
+        .whereType<Map<String, dynamic>>()
+        .toList())
+      ..sort((a, b) => asInt(a['order']).compareTo(asInt(b['order'])));
 
     for (final questionMap in questionMaps) {
-      final choiceMaps =
-          ((questionMap['choices'] as List<dynamic>? ?? <dynamic>[])
-              .map(mapOrNull)
-              .whereType<Map<String, dynamic>>()
-              .toList())
-            ..sort(
-              (a, b) => asInt(a['order']).compareTo(asInt(b['order'])),
-            );
+      final choiceMaps = ((questionMap['choices'] as List<dynamic>? ??
+              <dynamic>[])
+          .map(mapOrNull)
+          .whereType<Map<String, dynamic>>()
+          .toList())
+        ..sort(
+          (a, b) => asInt(a['order']).compareTo(asInt(b['order'])),
+        );
 
       final draftChoices = choiceMaps
           .map(
