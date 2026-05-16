@@ -12,6 +12,7 @@ import '../../l10n/app_strings.dart';
 import '../../shared/widgets/app_surfaces.dart';
 import '../legal/legal_documents.dart';
 import 'models/join_source.dart';
+import 'widgets/join_connection_card.dart';
 import 'widgets/live_session_widgets.dart';
 import 'widgets/participant_hero.dart';
 import 'widgets/question_card.dart';
@@ -452,196 +453,6 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     }
   }
 
-  Widget _buildJoinPreviewCard() {
-    final preview = _joinPreview;
-    if (_loadingJoinPreview && preview == null) {
-      return const LinearProgressIndicator();
-    }
-    if (preview == null) {
-      return const SizedBox.shrink();
-    }
-
-    final quiz = mapOrNull(preview['quiz']) ?? <String, dynamic>{};
-    final title = quiz['title']?.toString() ?? appText(AppText.untitledQuizLong);
-    final description = quiz['description']?.toString() ?? '';
-    final statusLabel = preview['session_status']?.toString() ?? 'unknown';
-    final participantsCount = asInt(preview['participants_count']);
-    final canJoin = preview['can_join'] != false;
-    final closedReason = preview['closed_reason']?.toString() ?? '';
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: canJoin ? const Color(0xFFFFF4D6) : Theme.of(context).colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: canJoin ? const Color(0xFFFFB703).withOpacity(0.42) : Theme.of(context).colorScheme.error,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(canJoin ? Icons.fact_check_outlined : Icons.lock_outline),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                ),
-              ),
-            ],
-          ),
-          if (description.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(description),
-          ],
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              AppStatusChip(
-                icon: Icons.flag_outlined,
-                label: appText(AppText.statusValue, args: {'status': statusLabel}),
-                background: Colors.white.withOpacity(0.66),
-                foreground: const Color(0xFF023047),
-              ),
-              AppStatusChip(
-                icon: Icons.group_outlined,
-                label: appText(AppText.participantsCount, args: {'count': participantsCount}),
-                background: Colors.white.withOpacity(0.66),
-                foreground: const Color(0xFF023047),
-              ),
-            ],
-          ),
-          if (!canJoin && closedReason.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(closedReason, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          ],
-          if (_loadingJoinPreview) ...[
-            const SizedBox(height: 10),
-            const LinearProgressIndicator(),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildJoinConnectionCard(BuildContext context) {
-    return AppSectionCard(
-      color: Theme.of(context).colorScheme.surface.withOpacity(0.94),
-      borderRadius: 28,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(appText(AppText.participantJoinCardTitle), style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _apiController,
-            decoration: InputDecoration(
-              labelText: appText(AppText.apiBaseUrlLabel),
-              helperText: appText(AppText.participantApiBaseUrlHelper),
-            ),
-          ),
-          const SizedBox(height: 14),
-          if (_useJoinTokenFromLink && _joinTokenFromLink != null) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE0F7FA),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFF0A9396).withOpacity(0.32)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.link, color: Color(0xFF005F73)),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(appText(AppText.joinLinkDetected))),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  SelectableText(appText(AppText.joinTokenLabel, args: {'token': _joinTokenFromLink})),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: (_loading || _loadingJoinPreview) ? null : () => _loadJoinPreview(),
-                        icon: const Icon(Icons.refresh),
-                        label: Text(appText(AppText.refreshPreviewButton)),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _loading
-                            ? null
-                            : () {
-                                setState(() {
-                                  _useJoinTokenFromLink = false;
-                                  _joinPreview = null;
-                                });
-                              },
-                        icon: const Icon(Icons.pin_outlined),
-                        label: Text(appText(AppText.usePinInsteadButton)),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ] else ...[
-            TextField(
-              controller: _pinController,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-              decoration: InputDecoration(
-                labelText: appText(AppText.sessionPinLabel),
-                helperText: appText(AppText.sessionPinHelper),
-                prefixIcon: const Icon(Icons.pin_outlined),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                FilledButton.tonalIcon(
-                  onPressed: (_loading || _loadingJoinPreview) ? null : () => _loadJoinPreview(),
-                  icon: const Icon(Icons.visibility_outlined),
-                  label: Text(appText(AppText.previewSessionButton)),
-                ),
-                if (_joinTokenFromLink != null)
-                  TextButton.icon(
-                    onPressed: _loading
-                        ? null
-                        : () {
-                            setState(() {
-                              _useJoinTokenFromLink = true;
-                              _joinPreview = null;
-                            });
-                            _loadJoinPreview(showError: false);
-                          },
-                    icon: const Icon(Icons.link),
-                    label: Text(appText(AppText.useJoinTokenButton)),
-                  ),
-              ],
-            ),
-          ],
-          if (_loadingJoinPreview || _joinPreview != null) ...[
-            const SizedBox(height: 14),
-            _buildJoinPreviewCard(),
-          ],
-        ],
-      ),
-    );
-  }
-
   Widget _buildParticipantProfileCard(BuildContext context) {
     return AppSectionCard(
       color: Theme.of(context).colorScheme.surface.withOpacity(0.94),
@@ -802,7 +613,29 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                     ),
                     const SizedBox(height: 16),
                     if (_joinPayload == null) ...[
-                      _buildJoinConnectionCard(context),
+                      ParticipantJoinConnectionCard(
+                        apiController: _apiController,
+                        pinController: _pinController,
+                        useJoinTokenFromLink: _useJoinTokenFromLink,
+                        joinTokenFromLink: _joinTokenFromLink,
+                        loading: _loading,
+                        loadingJoinPreview: _loadingJoinPreview,
+                        joinPreview: _joinPreview,
+                        onLoadJoinPreview: () => _loadJoinPreview(),
+                        onUsePinInstead: () {
+                          setState(() {
+                            _useJoinTokenFromLink = false;
+                            _joinPreview = null;
+                          });
+                        },
+                        onUseJoinToken: () {
+                          setState(() {
+                            _useJoinTokenFromLink = true;
+                            _joinPreview = null;
+                          });
+                          _loadJoinPreview(showError: false);
+                        },
+                      ),
                       const SizedBox(height: 14),
                       _buildParticipantProfileCard(context),
                     ] else ...[
