@@ -8,6 +8,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../api/api_client.dart';
 import '../../core/app_config.dart';
+import '../../core/live_event_log.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
 import '../../shared/widgets/app_surfaces.dart';
@@ -47,6 +48,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   WebSocketChannel? _sessionSocket;
   StreamSubscription? _sessionSubscription;
   bool _wsConnected = false;
+  final _eventLog = const LiveEventLog();
   final List<String> _events = [];
 
   Timer? _questionTimer;
@@ -86,12 +88,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
   void _appendEvent(String text) {
     if (!mounted) return;
-    final timestamp = DateTime.now().toIso8601String().substring(11, 19);
     setState(() {
-      _events.insert(0, '[$timestamp] $text');
-      if (_events.length > 25) {
-        _events.removeRange(25, _events.length);
-      }
+      _eventLog.prepend(_events, text);
     });
   }
 

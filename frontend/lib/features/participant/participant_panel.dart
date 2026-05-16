@@ -6,6 +6,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../api/api_client.dart';
 import '../../core/app_config.dart';
+import '../../core/live_event_log.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
 import '../../shared/widgets/app_surfaces.dart';
@@ -51,6 +52,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   StreamSubscription? _socketSubscription;
   bool _socketConnected = false;
   Timer? _countdownTimer;
+  final _eventLog = const LiveEventLog();
   final List<String> _events = [];
 
   ApiClient _client() => ApiClient(_apiController.text.trim());
@@ -106,12 +108,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
 
   void _appendEvent(String text) {
     if (!mounted) return;
-    final timestamp = DateTime.now().toIso8601String().substring(11, 19);
     setState(() {
-      _events.insert(0, '[$timestamp] $text');
-      if (_events.length > 25) {
-        _events.removeRange(25, _events.length);
-      }
+      _eventLog.prepend(_events, text);
     });
   }
 
