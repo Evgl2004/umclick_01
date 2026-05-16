@@ -37,6 +37,7 @@
 - Общая логика countdown-таймера вынесена в `frontend/lib/core/countdown_ticker.dart` и подключена к экранам участника/преподавателя.
 - Техническое WebSocket-подключение и JSON-парсинг вынесены в `frontend/lib/core/live_socket_connection.dart`, обработка событий осталась в feature-экранах.
 - Live UI-блоки участника вынесены в `frontend/lib/features/participant/widgets/live_session_widgets.dart`.
+- Hero-блок участника вынесен в `frontend/lib/features/participant/widgets/participant_hero.dart`.
 - Первые пользовательские подсказки в интерфейсе.
 - Начат Kahoot-like редизайн экрана участника: игровой hero-блок, карточки подключения/регистрации, live-блок раунда и крупные цветные варианты ответов.
 - Начат редизайн панели преподавателя под live-ведение: отдельный блок сессии, PIN/QR, метрики, управление раундом и события.

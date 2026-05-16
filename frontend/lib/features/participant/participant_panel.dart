@@ -13,6 +13,7 @@ import '../../shared/widgets/app_surfaces.dart';
 import '../legal/legal_documents.dart';
 import 'models/join_source.dart';
 import 'widgets/live_session_widgets.dart';
+import 'widgets/participant_hero.dart';
 import 'widgets/question_card.dart';
 
 class ParticipantPanel extends StatefulWidget {
@@ -529,98 +530,6 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     );
   }
 
-  Widget _buildParticipantHero(BuildContext context) {
-    final isLive = _joinPayload != null;
-    final statusText = appText(AppText.statusValue, args: {'status': _sessionStatus});
-    final socketText = appText(
-      AppText.webSocketState,
-      args: {
-        'state': _socketConnected ? appText(AppText.webSocketConnected) : appText(AppText.webSocketDisconnected),
-      },
-    );
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(32),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF023047), Color(0xFF0A9396), Color(0xFFFFB703)],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF023047).withOpacity(0.22),
-            blurRadius: 28,
-            offset: const Offset(0, 18),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AppStatusChip(
-            icon: isLive ? Icons.bolt : Icons.qr_code_2,
-            label: isLive ? appText(AppText.participantHeroLiveBadge) : appText(AppText.participantHeroJoinBadge),
-            background: Colors.white.withOpacity(0.18),
-            foreground: Colors.white,
-          ),
-          const SizedBox(height: 18),
-          Text(
-            isLive ? appText(AppText.participantHeroLiveTitle) : appText(AppText.participantHeroJoinTitle),
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            isLive ? appText(AppText.participantHeroLiveSubtitle) : appText(AppText.participantHeroJoinSubtitle),
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.white.withOpacity(0.9),
-                  height: 1.35,
-                ),
-          ),
-          if (isLive) ...[
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                AppStatusChip(
-                  icon: Icons.emoji_events_outlined,
-                  label: appText(AppText.participantPoints, args: {'points': _totalPoints}),
-                  background: Colors.white,
-                  foreground: const Color(0xFF023047),
-                ),
-                AppStatusChip(
-                  icon: Icons.flag_outlined,
-                  label: statusText,
-                  background: Colors.white.withOpacity(0.18),
-                  foreground: Colors.white,
-                ),
-                AppStatusChip(
-                  icon: _socketConnected ? Icons.wifi : Icons.wifi_off,
-                  label: socketText,
-                  background: Colors.white.withOpacity(0.18),
-                  foreground: Colors.white,
-                ),
-                if (_activeQuestion != null)
-                  AppStatusChip(
-                    icon: Icons.timer_outlined,
-                    label: appText(AppText.timeLeft, args: {'time': _timeLeftLabel}),
-                    background: Colors.white.withOpacity(0.18),
-                    foreground: Colors.white,
-                  ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
   Widget _buildJoinConnectionCard(BuildContext context) {
     return AppSectionCard(
       color: Theme.of(context).colorScheme.surface.withOpacity(0.94),
@@ -883,7 +792,14 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _buildParticipantHero(context),
+                    ParticipantHero(
+                      isLive: _joinPayload != null,
+                      totalPoints: _totalPoints,
+                      sessionStatus: _sessionStatus,
+                      socketConnected: _socketConnected,
+                      hasActiveQuestion: _activeQuestion != null,
+                      timeLeftLabel: _timeLeftLabel,
+                    ),
                     const SizedBox(height: 16),
                     if (_joinPayload == null) ...[
                       _buildJoinConnectionCard(context),
