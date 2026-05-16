@@ -15,6 +15,7 @@ import 'quiz_draft_mapper.dart';
 import 'teacher_auth_session.dart';
 import 'widgets/teacher_auth_card.dart';
 import 'widgets/teacher_live_session_header.dart';
+import 'widgets/teacher_round_controls.dart';
 import 'widgets/teacher_session_setup_card.dart';
 
 class TeacherPanel extends StatefulWidget {
@@ -858,6 +859,14 @@ class _TeacherPanelState extends State<TeacherPanel> {
     }
   }
 
+  void _showExportUrlSnack(String exportUrl) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(appText(AppText.exportUrlSnack, args: {'url': exportUrl})),
+      ),
+    );
+  }
+
   Future<void> _logout() async {
     _questionTimer?.cancel();
     await _closeSessionSocket();
@@ -920,55 +929,13 @@ class _TeacherPanelState extends State<TeacherPanel> {
             style: TextStyle(color: Colors.white.withOpacity(0.88)),
           ),
           const SizedBox(height: 16),
-          Text(
-            appText(AppText.teacherRoundControlsTitle),
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              FilledButton.icon(
-                onPressed: _startSession,
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: Text(appText(AppText.startButton)),
-              ),
-              FilledButton.tonalIcon(
-                onPressed: _nextQuestion,
-                icon: const Icon(Icons.skip_next_outlined),
-                label: Text(appText(AppText.nextQuestionButton)),
-              ),
-              FilledButton.tonalIcon(
-                onPressed: _revealAnswers,
-                icon: const Icon(Icons.visibility_outlined),
-                label: Text(appText(AppText.revealAnswersButton)),
-              ),
-              FilledButton.tonalIcon(
-                onPressed: _finishSession,
-                icon: const Icon(Icons.flag_outlined),
-                label: Text(appText(AppText.finishButton)),
-              ),
-              OutlinedButton.icon(
-                onPressed: _showLeaderboard,
-                icon: const Icon(Icons.leaderboard_outlined),
-                label: Text(appText(AppText.leaderboardButton)),
-                style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
-              ),
-              OutlinedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(appText(AppText.exportUrlSnack, args: {'url': exportUrl}))),
-                  );
-                },
-                icon: const Icon(Icons.download_outlined),
-                label: Text(appText(AppText.exportCsvButton)),
-                style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
-              ),
-            ],
+          TeacherRoundControls(
+            onStart: () => _startSession(),
+            onNextQuestion: () => _nextQuestion(),
+            onRevealAnswers: () => _revealAnswers(),
+            onFinish: () => _finishSession(),
+            onShowLeaderboard: () => _showLeaderboard(),
+            onExportCsv: () => _showExportUrlSnack(exportUrl),
           ),
           if (_revealPayload != null) ...[
             const SizedBox(height: 16),
