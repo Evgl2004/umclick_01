@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../api/api_client.dart';
 import '../../core/app_config.dart';
@@ -15,6 +14,7 @@ import 'quiz_draft.dart';
 import 'quiz_draft_mapper.dart';
 import 'teacher_auth_session.dart';
 import 'widgets/teacher_auth_card.dart';
+import 'widgets/teacher_live_session_header.dart';
 import 'widgets/teacher_session_setup_card.dart';
 
 class TeacherPanel extends StatefulWidget {
@@ -906,105 +906,13 @@ class _TeacherPanelState extends State<TeacherPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      appText(AppText.teacherLivePanelTitle),
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                          ),
-                    ),
-                    const SizedBox(height: 14),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        AppStatusChip(
-                          icon: Icons.pin_outlined,
-                          label: 'PIN: ${session['pin']}',
-                          background: Colors.white,
-                          foreground: const Color(0xFF023047),
-                        ),
-                        AppStatusChip(
-                          icon: Icons.flag_outlined,
-                          label: appText(AppText.statusValue, args: {'status': session['status']}),
-                          background: Colors.white.withOpacity(0.16),
-                          foreground: Colors.white,
-                        ),
-                        AppStatusChip(
-                          icon: Icons.group_outlined,
-                          label: appText(
-                            AppText.participantsCount,
-                            args: {'count': session['participants_count'] ?? 0},
-                          ),
-                          background: Colors.white.withOpacity(0.16),
-                          foreground: Colors.white,
-                        ),
-                        AppStatusChip(
-                          icon: _wsConnected ? Icons.wifi : Icons.wifi_off,
-                          label: appText(
-                            AppText.webSocketState,
-                            args: {
-                              'state': _wsConnected
-                                  ? appText(AppText.webSocketConnected)
-                                  : appText(AppText.webSocketDisconnected),
-                            },
-                          ),
-                          background: Colors.white.withOpacity(0.16),
-                          foreground: Colors.white,
-                        ),
-                        if (_activeQuestion != null)
-                          AppStatusChip(
-                            icon: Icons.timer_outlined,
-                            label: appText(AppText.timeLeft, args: {'time': _questionTimeLeftLabel}),
-                            background: Colors.white.withOpacity(0.16),
-                            foreground: Colors.white,
-                          ),
-                        if (_answeredCount > 0)
-                          AppStatusChip(
-                            icon: Icons.how_to_vote_outlined,
-                            label: appText(AppText.answersReceived, args: {'count': _answeredCount}),
-                            background: Colors.white.withOpacity(0.16),
-                            foreground: Colors.white,
-                          ),
-                      ],
-                    ),
-                    if (_activeQuestion != null) ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        appText(AppText.currentQuestion, args: {'text': _activeQuestion!['text']}),
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 18),
-              Container(
-                width: 220,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Column(
-                  children: [
-                    Text(appText(AppText.teacherQrCodeTitle), style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 10),
-                    QrImageView(data: joinUrl, size: 170),
-                  ],
-                ),
-              ),
-            ],
+          TeacherLiveSessionHeader(
+            session: session,
+            joinUrl: joinUrl,
+            wsConnected: _wsConnected,
+            activeQuestion: _activeQuestion,
+            questionTimeLeftLabel: _questionTimeLeftLabel,
+            answeredCount: _answeredCount,
           ),
           const SizedBox(height: 16),
           SelectableText(
