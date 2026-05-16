@@ -12,6 +12,7 @@ import '../../l10n/app_strings.dart';
 import '../../shared/widgets/app_surfaces.dart';
 import '../legal/legal_documents.dart';
 import 'models/join_source.dart';
+import 'widgets/live_session_widgets.dart';
 import 'widgets/question_card.dart';
 
 class ParticipantPanel extends StatefulWidget {
@@ -820,15 +821,13 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
           Text(appText(AppText.participantLastAnswer, args: {'points': _lastAnswerPoints})),
           const SizedBox(height: 14),
           if (_sessionFinished)
-            _buildRoundMessage(
-              context,
+            ParticipantRoundMessage(
               icon: Icons.flag_circle_outlined,
               message: appText(AppText.sessionFinishedMessage),
               color: const Color(0xFF0A9396),
             )
           else if (_activeQuestion == null)
-            _buildRoundMessage(
-              context,
+            ParticipantRoundMessage(
               icon: Icons.hourglass_top_outlined,
               message: appText(AppText.waitingForQuestionMessage),
               color: const Color(0xFF005F73),
@@ -842,8 +841,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
             ),
           if (_isQuestionExpired && !_questionAnswered && !_sessionFinished) ...[
             const SizedBox(height: 10),
-            _buildRoundMessage(
-              context,
+            ParticipantRoundMessage(
               icon: Icons.timer_off_outlined,
               message: appText(AppText.timeOverMessage),
               color: Theme.of(context).colorScheme.error,
@@ -851,94 +849,10 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
           ],
           if (_revealPayload != null) ...[
             const SizedBox(height: 14),
-            _buildRevealResultsCard(context),
+            ParticipantRevealResultsCard(revealPayload: _revealPayload!),
           ],
           const SizedBox(height: 14),
-          _buildLiveEventsCard(context),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRoundMessage(
-    BuildContext context, {
-    required IconData icon,
-    required String message,
-    required Color color,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.11),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: color.withOpacity(0.24)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(width: 10),
-          Expanded(child: Text(message)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRevealResultsCard(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.55),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(appText(AppText.revealResultsTitle), style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Text(appText(AppText.totalAnswers, args: {'count': _revealPayload!['total_answers'] ?? 0})),
-          Text(appText(AppText.pointsAwarded, args: {'points': _revealPayload!['total_points_awarded'] ?? 0})),
-          Text(appText(AppText.revealedBy, args: {'value': _revealPayload!['revealed_by'] ?? 'teacher'})),
-          const SizedBox(height: 8),
-          ...((_revealPayload!['choices'] as List<dynamic>? ?? <dynamic>[]).map((rawChoice) {
-            final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
-            final isCorrect = choice['is_correct'] == true;
-            return ListTile(
-              dense: true,
-              leading: Icon(isCorrect ? Icons.check_circle : Icons.circle_outlined),
-              title: Text('${choice['text']}'),
-              trailing: Text(appText(
-                AppText.choiceStats,
-                args: {
-                  'votes': choice['answers_count'] ?? 0,
-                  'points': choice['points_awarded'] ?? 0,
-                },
-              )),
-            );
-          })),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLiveEventsCard(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.35),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(appText(AppText.liveEventsTitle), style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          if (_events.isEmpty)
-            Text(appText(AppText.noEventsYet))
-          else
-            ..._events.map((event) => Text(event)),
+          ParticipantLiveEventsCard(events: _events),
         ],
       ),
     );
