@@ -43,6 +43,7 @@
 - Хранение auth-сессии преподавателя вынесено из панели в `frontend/lib/features/teacher/teacher_auth_session.dart`.
 - Загрузка, создание и API-payload черновика викторины вынесены в `frontend/lib/features/teacher/quiz_draft_mapper.dart`.
 - Карточка авторизации преподавателя вынесена в `frontend/lib/features/teacher/widgets/teacher_auth_card.dart`.
+- Карточка настройки live-сессии преподавателя вынесена в `frontend/lib/features/teacher/widgets/teacher_session_setup_card.dart`.
 - Первые пользовательские подсказки в интерфейсе.
 - Начат Kahoot-like редизайн экрана участника: игровой hero-блок, карточки подключения/регистрации, live-блок раунда и крупные цветные варианты ответов.
 - Начат редизайн панели преподавателя под live-ведение: отдельный блок сессии, PIN/QR, метрики, управление раундом и события.

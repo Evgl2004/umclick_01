@@ -15,6 +15,7 @@ import 'quiz_draft.dart';
 import 'quiz_draft_mapper.dart';
 import 'teacher_auth_session.dart';
 import 'widgets/teacher_auth_card.dart';
+import 'widgets/teacher_session_setup_card.dart';
 
 class TeacherPanel extends StatefulWidget {
   const TeacherPanel({super.key});
@@ -879,48 +880,6 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
   }
 
-  Widget _buildSessionSetupCard(BuildContext context) {
-    return AppSectionCard(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE0F7FA),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: const Icon(Icons.cast_for_education_outlined, color: Color(0xFF005F73)),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(appText(AppText.teacherSessionSetupTitle), style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 4),
-                Text(appText(AppText.teacherSessionSetupSubtitle)),
-                const SizedBox(height: 8),
-                Text(
-                  _selectedQuizId == null
-                      ? appText(AppText.selectQuizForSession)
-                      : appText(AppText.sessionQuiz, args: {'id': _selectedQuizId}),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          FilledButton.icon(
-            onPressed: (_loading || !_isLoggedIn || _selectedQuizId == null) ? null : _createSession,
-            icon: const Icon(Icons.playlist_add_check_circle_outlined),
-            label: Text(appText(AppText.createSessionButton)),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildTeacherLiveSessionCard(BuildContext context) {
     final session = _session!;
     final joinUrl = session['join_url'] as String;
@@ -1401,7 +1360,12 @@ class _TeacherPanelState extends State<TeacherPanel> {
             ),
           ),
           const SizedBox(height: 12),
-          _buildSessionSetupCard(context),
+          TeacherSessionSetupCard(
+            loading: _loading,
+            isLoggedIn: _isLoggedIn,
+            selectedQuizId: _selectedQuizId,
+            onCreateSession: _createSession,
+          ),
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
