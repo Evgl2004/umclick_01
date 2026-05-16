@@ -9,11 +9,11 @@ import '../../core/live_event_log.dart';
 import '../../core/live_socket_connection.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
-import '../../shared/widgets/app_surfaces.dart';
 import 'quiz_draft.dart';
 import 'quiz_draft_mapper.dart';
 import 'teacher_auth_session.dart';
 import 'widgets/teacher_auth_card.dart';
+import 'widgets/teacher_live_events_card.dart';
 import 'widgets/teacher_live_session_header.dart';
 import 'widgets/teacher_reveal_results_card.dart';
 import 'widgets/teacher_round_controls.dart';
@@ -947,23 +947,6 @@ class _TeacherPanelState extends State<TeacherPanel> {
     );
   }
 
-  Widget _buildTeacherLiveEventsCard(BuildContext context) {
-    return AppSectionCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(appText(AppText.liveEventsTitle), style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          if (_events.isEmpty)
-            Text(appText(AppText.noEventsYet))
-          else
-            ..._events.map((event) => Text(event)),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -1197,7 +1180,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
             const SizedBox(height: 20),
             _buildTeacherLiveSessionCard(context),
             const SizedBox(height: 12),
-            _buildTeacherLiveEventsCard(context),
+            TeacherLiveEventsCard(events: _events),
           ],
         ],
       ),
