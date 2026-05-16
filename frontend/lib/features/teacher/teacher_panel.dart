@@ -12,6 +12,7 @@ import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
 import '../../shared/widgets/app_surfaces.dart';
 import 'quiz_draft.dart';
+import 'quiz_draft_mapper.dart';
 import 'teacher_auth_session.dart';
 
 class TeacherPanel extends StatefulWidget {
@@ -30,6 +31,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   final _quizTitleController = TextEditingController();
   final _quizDescriptionController = TextEditingController();
   final _authSessionStore = const TeacherAuthSessionStore();
+  final _quizDraftMapper = const QuizDraftMapper();
 
   final List<QuizDraftQuestion> _draftQuestions = [];
   int? _editingQuizId;
@@ -94,29 +96,6 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
   }
 
-  QuizDraftQuestion _newDraftQuestion({
-    String text = '',
-    int timeLimitSec = 20,
-    List<QuizDraftChoice>? choices,
-  }) {
-    final resolvedChoices = choices ?? [
-      QuizDraftChoice(isCorrect: true),
-      QuizDraftChoice(),
-      QuizDraftChoice(),
-      QuizDraftChoice(),
-    ];
-
-    if (resolvedChoices.isNotEmpty && !resolvedChoices.any((choice) => choice.isCorrect)) {
-      resolvedChoices.first.isCorrect = true;
-    }
-
-    return QuizDraftQuestion(
-      text: text,
-      timeLimitSec: timeLimitSec,
-      choices: resolvedChoices,
-    );
-  }
-
   void _disposeQuizDraft() {
     for (final question in _draftQuestions) {
       question.dispose();
@@ -130,7 +109,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       _editingQuizId = null;
       _quizTitleController.clear();
       _quizDescriptionController.clear();
-      _draftQuestions.add(_newDraftQuestion());
+      _draftQuestions.add(_quizDraftMapper.createQuestion());
     }
 
     if (withState && mounted) {
@@ -155,52 +134,14 @@ class _TeacherPanelState extends State<TeacherPanel> {
     setState(() {
       _disposeQuizDraft();
 
-      final parsedQuizId = asInt(quiz['id'], -1);
-      _editingQuizId = parsedQuizId > 0 ? parsedQuizId : null;
+      final draft = _quizDraftMapper.fromMap(quiz);
+      _editingQuizId = draft.quizId;
       if (_editingQuizId != null) {
         _selectedQuizId = _editingQuizId;
       }
-      _quizTitleController.text = quiz['title']?.toString() ?? '';
-      _quizDescriptionController.text = quiz['description']?.toString() ?? '';
-
-      final questionMaps = ((quiz['questions'] as List<dynamic>? ?? <dynamic>[])
-              .map(mapOrNull)
-              .whereType<Map<String, dynamic>>()
-              .toList())
-            ..sort((a, b) => asInt(a['order']).compareTo(asInt(b['order'])));
-
-      for (final questionMap in questionMaps) {
-        final choiceMaps = ((questionMap['choices'] as List<dynamic>? ?? <dynamic>[])
-                .map(mapOrNull)
-                .whereType<Map<String, dynamic>>()
-                .toList())
-              ..sort((a, b) => asInt(a['order']).compareTo(asInt(b['order'])));
-
-        final draftChoices = choiceMaps
-            .map(
-              (choice) => QuizDraftChoice(
-                text: choice['text']?.toString() ?? '',
-                isCorrect: choice['is_correct'] == true,
-              ),
-            )
-            .toList();
-
-        while (draftChoices.length < 2) {
-          draftChoices.add(QuizDraftChoice());
-        }
-
-        _draftQuestions.add(
-          _newDraftQuestion(
-            text: questionMap['text']?.toString() ?? '',
-            timeLimitSec: asInt(questionMap['time_limit_sec'], 20),
-            choices: draftChoices,
-          ),
-        );
-      }
-
-      if (_draftQuestions.isEmpty) {
-        _draftQuestions.add(_newDraftQuestion());
-      }
+      _quizTitleController.text = draft.title;
+      _quizDescriptionController.text = draft.description;
+      _draftQuestions.addAll(draft.questions);
     });
   }
 
@@ -215,7 +156,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
   void _addDraftQuestion() {
     setState(() {
-      _draftQuestions.add(_newDraftQuestion());
+      _draftQuestions.add(_quizDraftMapper.createQuestion());
     });
   }
 
@@ -264,73 +205,6 @@ class _TeacherPanelState extends State<TeacherPanel> {
         question.choices[i].isCorrect = i == selectedChoiceIndex;
       }
     });
-  }
-
-  Map<String, dynamic> _buildQuizPayload() {
-    final title = _quizTitleController.text.trim();
-    if (title.isEmpty) {
-      throw const FormatException('Quiz title is required.');
-    }
-
-    if (_draftQuestions.isEmpty) {
-      throw const FormatException('Add at least one question.');
-    }
-
-    final questions = <Map<String, dynamic>>[];
-
-    for (var questionIndex = 0; questionIndex < _draftQuestions.length; questionIndex++) {
-      final question = _draftQuestions[questionIndex];
-      final questionNumber = questionIndex + 1;
-      final questionText = question.textController.text.trim();
-      if (questionText.isEmpty) {
-        throw FormatException('Question $questionNumber text is required.');
-      }
-
-      final timeLimit = int.tryParse(question.timeLimitController.text.trim());
-      if (timeLimit == null || timeLimit < 5 || timeLimit > 180) {
-        throw FormatException('Question $questionNumber time limit must be between 5 and 180 seconds.');
-      }
-
-      final choices = <Map<String, dynamic>>[];
-      var correctCount = 0;
-
-      for (final choice in question.choices) {
-        final choiceText = choice.textController.text.trim();
-        if (choiceText.isEmpty) {
-          continue;
-        }
-
-        if (choice.isCorrect) {
-          correctCount += 1;
-        }
-
-        choices.add({
-          'text': choiceText,
-          'order': choices.length + 1,
-          'is_correct': choice.isCorrect,
-        });
-      }
-
-      if (choices.length < 2) {
-        throw FormatException('Question $questionNumber must have at least two non-empty choices.');
-      }
-      if (correctCount != 1) {
-        throw FormatException('Question $questionNumber must have exactly one correct choice.');
-      }
-
-      questions.add({
-        'text': questionText,
-        'order': questionNumber,
-        'time_limit_sec': timeLimit,
-        'choices': choices,
-      });
-    }
-
-    return {
-      'title': title,
-      'description': _quizDescriptionController.text.trim(),
-      'questions': questions,
-    };
   }
 
   Future<void> _persistAuthSession() async {
@@ -717,7 +591,11 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
 
     try {
-      final payload = _buildQuizPayload();
+      final payload = _quizDraftMapper.toPayload(
+        title: _quizTitleController.text,
+        description: _quizDescriptionController.text,
+        questions: _draftQuestions,
+      );
       final editingQuizId = _editingQuizId;
 
       final savedQuiz = editingQuizId == null
