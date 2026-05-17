@@ -4,6 +4,12 @@ This document keeps the local quality checks in one place.
 
 ## Frontend
 
+Run all frontend checks from the repository root:
+
+```powershell
+.\scripts\check-frontend.ps1
+```
+
 Run from `frontend/`:
 
 ```bash
@@ -15,6 +21,12 @@ flutter build web
 ```
 
 ## Backend
+
+Run all backend checks from the repository root:
+
+```powershell
+.\scripts\check-backend.ps1
+```
 
 Create a local virtual environment once from the repository root:
 
@@ -30,6 +42,22 @@ Run from `backend/`:
 .venv/Scripts/python.exe manage.py test
 ```
 
+## All Local Checks
+
+Run from the repository root:
+
+```powershell
+.\scripts\check-all.ps1
+```
+
+Useful options:
+
+```powershell
+.\scripts\check-backend.ps1 -Install
+.\scripts\check-frontend.ps1 -SkipBuild
+.\scripts\check-all.ps1 -InstallBackend -SkipFrontendBuild
+```
+
 ## Current Test Focus
 
 - Frontend pure logic: value parsing, event log formatting, join-link parsing, language selection, quiz draft payload mapping.
@@ -38,4 +66,4 @@ Run from `backend/`:
 - Backend pure logic: legal document version resolution and Kahoot-style scoring helpers.
 - Backend API flow: teacher quiz/session creation, public preview, join by PIN/token, consent enforcement, answer submission, duplicate/late-answer rejection, public state safety, leaderboard, CSV export.
 - Backend API regressions: teacher permission checks, missing/invalid join targets, finished-session joins, invalid round controls, inactive/wrong/revealed question answers.
-- Next layer: widget interaction tests for key form states and broader end-to-end checks through Docker/CI.
+- Next layer: broader end-to-end checks through Docker/local orchestration.
