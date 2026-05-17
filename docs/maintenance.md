@@ -1,0 +1,153 @@
+﻿# Поддержка проекта umclick
+
+Этот документ описывает правила, которые помогают не потерять управляемость проекта по мере роста.
+
+## Главный принцип
+
+Документация, тесты и код должны двигаться вместе. Если меняется архитектура, flow, API contract или способ запуска, соответствующий документ обновляется в том же логическом изменении.
+
+## Когда обновлять документацию
+
+Обновляй документацию, если изменилось хотя бы одно из следующего:
+
+- структура backend/frontend модулей;
+- public или teacher API;
+- WebSocket event или payload;
+- live-flow преподавателя/участника;
+- правила scoring;
+- обработка персональных данных или legal versions;
+- способ запуска проекта;
+- локальные проверки;
+- тестовая стратегия;
+- Docker Compose сервисы или environment variables.
+
+## Карта документов
+
+| Документ | Когда обновлять |
+| --- | --- |
+| `README.md` | Меняется входная информация, быстрый старт, ссылки на документы |
+| `docs/architecture.md` | Меняются слои, границы ответственности, инфраструктура |
+| `docs/backend.md` | Меняются backend apps, models, endpoints, tests, migrations |
+| `docs/frontend.md` | Меняются frontend modules, widgets, state, localization, tests |
+| `docs/live-flow.md` | Меняется игровой сценарий, WebSocket events, session lifecycle |
+| `docs/testing.md` | Меняются команды проверок или тестовое покрытие |
+| `docs/viewing.md` | Меняется способ просмотра UI |
+| `docs/roadmap.md` | Меняется статус проекта или ближайшие шаги |
+
+## Quality gate
+
+Перед коммитом значимых изменений запускаем:
+
+```powershell
+.\scripts\check-all.ps1
+```
+
+Для быстрых частичных проверок:
+
+```powershell
+.\scripts\check-backend.ps1
+.\scripts\check-frontend.ps1 -SkipBuild
+```
+
+## Git правила
+
+- Основная ветка разработки: `develop-cai`.
+- `main` держим как стабильную ветку.
+- Один коммит - один логический шаг.
+- Сообщения коммитов пишем на русском или в принятом conventional style с русским описанием.
+- Не смешиваем продуктовый код, тесты и документацию без причины. Исключение: документация обновляется вместе с изменением flow/API.
+
+## Backend правила
+
+- Новые модели требуют migration.
+- Новые endpoints требуют API tests.
+- Новые edge cases live-flow требуют regression tests.
+- Teacher-only endpoints должны быть защищены `IsTeacher`.
+- Public endpoints должны явно валидировать входные данные.
+- Для counters после записи в БД не полагаться на устаревший prefetch cache.
+- Персональные данные должны быть явно отражены в legal flow.
+
+## Frontend правила
+
+- API calls идут через `ApiClient`.
+- Новые UI strings добавляются в `app_strings.dart`.
+- Форма должна иметь loading/error/success или понятные disabled states.
+- Сложная логика по возможности выносится в helper/model и покрывается unit tests.
+- Крупные widgets выносятся при явной пользе, а не механически.
+- Для нового пользовательского сценария добавляем smoke или interaction test.
+
+## Тестовая стратегия
+
+Текущие уровни:
+
+- backend unit tests;
+- backend API flow tests;
+- backend API regression tests;
+- frontend pure logic tests;
+- frontend widget smoke tests;
+- frontend widget interaction/regression tests.
+
+Следующий уровень: e2e smoke через Docker/local orchestration.
+
+## Работа с зависимостями
+
+Backend:
+
+- зависимости в `backend/requirements.txt`;
+- установка в `backend/.venv`;
+- после обновления зависимостей запускаем backend tests.
+
+Frontend:
+
+- зависимости в `frontend/pubspec.yaml`;
+- lockfile `frontend/pubspec.lock` хранится в репозитории;
+- после обновления зависимостей запускаем frontend checks.
+
+## Environment variables
+
+`.env` не коммитим. Новые переменные добавляем в `.env.example` и описываем в документации, если они влияют на запуск или поведение.
+
+Важные группы:
+
+- Django settings;
+- PostgreSQL;
+- Redis/Celery;
+- legal metadata;
+- teacher signup restriction.
+
+## Персональные данные
+
+Проект обрабатывает телефон и имя участника. Поэтому изменения в этой области требуют особой аккуратности.
+
+Правила:
+
+- согласие должно быть явным;
+- версии документов сохраняются;
+- export должен быть ожидаемым и контролируемым;
+- будущие изменения retention/deletion/anonymization должны быть документированы.
+
+## Release checklist для будущего
+
+Перед стабилизацией версии:
+
+- `check-all.ps1` проходит;
+- Docker Compose поднимается с нуля;
+- teacher создает quiz;
+- teacher запускает session;
+- participant joins по PIN и token;
+- participant submits answer;
+- reveal работает вручную и auto;
+- leaderboard корректен;
+- CSV export открывается;
+- legal screens доступны;
+- README и docs актуальны.
+
+## Как не потеряться при новой задаче
+
+1. Найти нужный документ из карты выше.
+2. Проверить, какой слой меняется: backend, frontend, live-flow, infra.
+3. Добавить или обновить тест на ожидаемое поведение.
+4. Внести код.
+5. Обновить документацию, если изменился контракт или flow.
+6. Запустить локальные проверки.
+7. Сделать отдельный коммит.

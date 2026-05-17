@@ -1,101 +1,129 @@
-# umclick
+﻿# umclick
 
-MVP-платформа для интерактивных викторин в стиле Kahoot.
+umclick - MVP платформы интерактивных викторин в стиле Kahoot.
+
+Проект строится как публичный, поддерживаемый продукт: backend, frontend, тесты, документация и локальные проверки должны развиваться вместе.
 
 ## Текущий стек
-- Backend: Django + DRF + Channels (WebSocket) + Celery
-- Frontend: Flutter Web
-- Database: PostgreSQL
-- Messaging/Tasks: Redis + Celery (worker + beat)
-- Orchestration: Docker Compose
 
-## Ветки
-- `main`
-- `develop-cai`
+- Backend: Django + Django REST Framework + Channels + Celery.
+- Frontend: Flutter Web.
+- Database: PostgreSQL.
+- Messaging/tasks: Redis + Celery worker + Celery beat.
+- Local orchestration: Docker Compose.
+- Local quality gate: PowerShell scripts in `scripts/`.
 
-## Что реализовано (MVP-8)
-- JWT-аутентификация преподавателя.
-- CRUD викторин (teacher-only).
-- Создание live-сессий, PIN и QR для подключения.
-- Быстрая регистрация участника: `phone + name + consent`.
-- Real-time события через WebSocket:
-  - `session_started`
-  - `question_started`
-  - `answer_submitted`
-  - `answer_revealed`
-  - `participant_joined`
-  - `session_finished`
-  - `session_state`
-- Управление раундом преподавателем:
-  - старт сессии
-  - следующий вопрос
-  - ручное раскрытие правильного ответа
-  - завершение сессии
-- Таймер вопроса:
-  - сервер проверяет дедлайн на отправку ответа
-  - клиент показывает обратный отсчёт
-  - результаты автоматически раскрываются по истечении таймера
-- Multi-instance таймер с Redis + Celery beat:
-  - in-process `threading.Timer` заменён на периодическую Celery задачу
-  - авто-раскрытие выполняется атомарно и только один раз на вопрос (`revealed_question_id`)
-  - `docker compose` поднимает `redis`, `celery-worker`, `celery-beat`
-- Скоринговая модель (Kahoot-style):
-  - очки за правильный ответ зависят от скорости
-  - в leaderboard ранжирование по `points`, затем по `correct_answers`
-- Персистентная сессия преподавателя во Flutter:
-  - access/refresh токены сохраняются локально в браузере
-  - при перезагрузке UI пробует восстановить teacher-сессию автоматически
-  - при ответе 401 Unauthorized UI пытается обновить access token через refresh token и повторяет teacher-запрос
-- Визуальный конструктор викторин во Flutter:
-  - создание/редактирование квиза (title + description)
-  - динамическое добавление/удаление вопросов и вариантов
-  - валидация: минимум 2 варианта и ровно 1 правильный ответ на вопрос
-- Экспорт результатов в CSV (`points`, `correct_answers`).
+## Что уже реализовано
 
-## Структура
-- `backend/` - Django API + WebSocket + Celery tasks
-- `frontend/` - Flutter Web клиент
-- `docker-compose.yml` - локальная инфраструктура
+- Регистрация и JWT-вход преподавателя.
+- CRUD викторин для преподавателя.
+- Конструктор викторин во Flutter Web.
+- Live-сессии с PIN, QR и `join_token`.
+- Быстрая регистрация участника: телефон, имя, согласие.
+- Preview сессии до регистрации участника.
+- Подключение участника по PIN или token-ссылке.
+- WebSocket события live-сессии.
+- Управление раундом: start, next question, reveal answer, finish.
+- Таймер вопроса и auto-reveal через Celery beat.
+- Kahoot-style scoring по скорости ответа.
+- Leaderboard и CSV export результатов.
+- Legal metadata, версии согласий и публичные legal screens.
+- RU/EN переключение интерфейса, русский по умолчанию.
+- Локальные backend/frontend тесты и regression-покрытие.
+- Windows scripts для единой локальной проверки проекта.
 
-## Быстрый старт
-1. Создать `.env`:
-```bash
-cp .env.example .env
+## Быстрый старт через Docker Compose
+
+Создать `.env` из примера:
+
+```powershell
+Copy-Item .env.example .env
 ```
-2. (Опционально) Ограничить регистрацию преподавателя:
-```bash
-# в .env
-TEACHER_SIGNUP_CODE=my-private-code
-```
-3. Запуск:
-```bash
+
+Запустить инфраструктуру:
+
+```powershell
 docker compose up --build
 ```
-4. Доступ:
+
+Открыть:
+
+- Frontend: `http://localhost:3000`
 - Backend API: `http://localhost:8000/api`
 - WebSocket: `ws://localhost:8000/ws/sessions/<session_id>/`
-- Frontend: `http://localhost:3000`
 
-## Auth API
+## Локальные проверки
+
+Полная проверка проекта:
+
+```powershell
+.\scripts\check-all.ps1
+```
+
+Только backend:
+
+```powershell
+.\scripts\check-backend.ps1
+```
+
+Только frontend:
+
+```powershell
+.\scripts\check-frontend.ps1
+```
+
+Быстрая frontend-проверка без web build:
+
+```powershell
+.\scripts\check-frontend.ps1 -SkipBuild
+```
+
+## Как посмотреть UI
+
+Самый удобный способ - запустить Flutter Web:
+
+```powershell
+cd frontend
+C:\Users\admin_eas\flutter\bin\flutter.bat run -d chrome --web-port 3000
+```
+
+Полная инструкция: `docs/viewing.md`.
+
+## Документация
+
+| Документ | Назначение |
+| --- | --- |
+| `docs/architecture.md` | Общая архитектура, границы слоев, компоненты |
+| `docs/backend.md` | Backend apps, models, endpoints, WebSocket, tests |
+| `docs/frontend.md` | Flutter структура, features, widgets, state, tests |
+| `docs/live-flow.md` | Полный игровой сценарий teacher/participant |
+| `docs/maintenance.md` | Правила поддержки проекта и документации |
+| `docs/testing.md` | Локальные проверки и текущая тестовая стратегия |
+| `docs/viewing.md` | Как смотреть реализованные экраны |
+| `docs/roadmap.md` | Дорожная карта и статус работ |
+
+## Структура репозитория
+
+```text
+backend/          Django API, WebSocket, Celery
+frontend/         Flutter Web client
+docs/             Project documentation
+scripts/          Local Windows quality-gate scripts
+infra/            Infrastructure notes/placeholders
+docker-compose.yml
+```
+
+## Основные API группы
+
+Teacher API требует JWT и `is_staff=True`.
+
 - `POST /api/auth/register/`
 - `POST /api/auth/token/`
 - `POST /api/auth/token/refresh/`
 - `GET /api/auth/me/`
-
-Для teacher API нужен заголовок:
-```text
-Authorization: Bearer <access_token>
-```
-
-## Teacher API (JWT)
-- `GET /api/quizzes/`
-- `POST /api/quizzes/`
-- `GET /api/quizzes/{id}/`
-- `PUT /api/quizzes/{id}/`
-- `DELETE /api/quizzes/{id}/`
-
+- `GET|POST /api/quizzes/`
+- `GET|PUT|DELETE /api/quizzes/{id}/`
 - `POST /api/sessions/`
-- `GET /api/sessions/{id}/`
 - `POST /api/sessions/{id}/start/`
 - `POST /api/sessions/{id}/next-question/`
 - `POST /api/sessions/{id}/reveal-answer/`
@@ -103,17 +131,24 @@ Authorization: Bearer <access_token>
 - `GET /api/sessions/{id}/leaderboard/`
 - `GET /api/sessions/{id}/results/export/`
 
-## Participant API (публичные)
+Public participant API:
+
+- `GET /api/sessions/join/preview/`
 - `POST /api/sessions/join/`
 - `POST /api/sessions/answer/`
 - `GET /api/sessions/{id}/state/`
+- `GET /api/sessions/legal/current/`
 
-## Следующая итерация
-- Privacy/personal data страницы и версионирование согласий.
+## Ветки
 
-## What Is Implemented (MVP-9)
-- Privacy/personal-data consent versioning is stored per participant (`consent_given_at`, `privacy_policy_version`, `personal_data_consent_version`).
-- Public legal endpoint added: `GET /api/sessions/legal/current/`.
-- Join API now returns legal metadata and saved participant consent fields.
-- Flutter participant flow loads legal metadata, shows consent versions in UI, and opens a dedicated legal details screen.
-- Legal document versions/links/contact are configurable via environment variables.
+- `main` - стабильная ветка.
+- `develop-cai` - текущая ветка разработки.
+
+## Правила развития
+
+- Сначала сохраняем рабочий MVP, затем улучшаем архитектуру.
+- Один логический шаг - один коммит.
+- Новые backend endpoints покрываем API tests.
+- Новые live-flow edge cases покрываем regression tests.
+- Новые frontend формы покрываем widget interaction tests.
+- Изменения архитектуры, API или flow отражаем в `docs/`.
