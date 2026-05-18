@@ -943,107 +943,126 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFF3FBF9), Color(0xFFEAF4F2), Color(0xFFFFF7E8)],
-        ),
-      ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _TeacherHero(isLoggedIn: _isLoggedIn, teacher: _teacher),
-            const SizedBox(height: 14),
-            _TeacherAdvancedSettings(apiController: _apiController),
-            const SizedBox(height: 14),
-            TeacherAuthCard(
-              usernameController: _usernameController,
-              passwordController: _passwordController,
-              emailController: _emailController,
-              signupCodeController: _signupCodeController,
-              loading: _loading,
-              restoringSession: _restoringSession,
-              isLoggedIn: _isLoggedIn,
-              hasRefreshToken:
-                  _refreshToken != null && _refreshToken!.isNotEmpty,
-              teacher: _teacher,
-              onRegister: _registerTeacher,
-              onLogin: _loginTeacher,
-              onLoadProfile: _loadMe,
-              onLogout: _logout,
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              _TeacherErrorBanner(error: _error!),
-            ],
-            if (!_isLoggedIn) ...[
-              const SizedBox(height: 14),
-              const _TeacherLockedCard(),
-            ] else ...[
-              const SizedBox(height: 14),
-              const _TeacherFlowSteps(),
-              const SizedBox(height: 14),
-              _TeacherWorkspaceHeader(quizzesCount: _quizzes.length),
-              const SizedBox(height: 14),
-              TeacherQuizBuilderCard(
-                quizzes: _quizzes,
-                selectedQuizId: _selectedQuizId,
-                editingQuizId: _editingQuizId,
-                loading: _loading,
-                isLoggedIn: _isLoggedIn,
-                titleController: _quizTitleController,
-                descriptionController: _quizDescriptionController,
-                questions: _draftQuestions,
-                onSelectedQuizChanged: (value) {
-                  setState(() {
-                    _selectedQuizId = value;
-                  });
-                },
-                onLoadSelectedQuiz: _loadSelectedQuizIntoDraft,
-                onSaveQuiz: _saveQuizDraft,
-                onResetDraft: () => _resetQuizDraft(),
-                onRefreshQuizzes: () => _refreshQuizzes(),
-                onDeleteSelectedQuiz: _deleteSelectedQuiz,
-                onRemoveQuestion: _removeDraftQuestion,
-                onSetCorrectChoice: _setDraftCorrectChoice,
-                onRemoveChoice: _removeDraftChoice,
-                onAddChoice: _addDraftChoice,
-                onAddQuestion: _addDraftQuestion,
-              ),
-              const SizedBox(height: 14),
-              TeacherSessionSetupCard(
-                loading: _loading,
-                isLoggedIn: _isLoggedIn,
-                selectedQuizId: _selectedQuizId,
-                onCreateSession: _createSession,
-              ),
-              if (_session != null) ...[
-                const SizedBox(height: 20),
-                TeacherLiveSessionCard(
-                  session: _session!,
-                  wsConnected: _wsConnected,
-                  activeQuestion: _activeQuestion,
-                  questionTimeLeftLabel: _questionTimeLeftLabel,
-                  answeredCount: _answeredCount,
-                  revealPayload: _revealPayload,
-                  onStart: _startSession,
-                  onNextQuestion: _nextQuestion,
-                  onRevealAnswers: _revealAnswers,
-                  onFinish: _finishSession,
-                  onShowLeaderboard: _showLeaderboard,
-                  onExportCsv: _exportCsv,
-                ),
-                const SizedBox(height: 12),
-                TeacherLiveEventsCard(events: _events),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFFF3FBF9),
+                Color(0xFFEAF4F2),
+                Color(0xFFFFF7E8),
               ],
-            ],
-          ],
-        ),
-      ),
+            ),
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 1120,
+                  minHeight: constraints.maxHeight.isFinite &&
+                          constraints.maxHeight > 32
+                      ? constraints.maxHeight - 32
+                      : 0,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _TeacherHero(isLoggedIn: _isLoggedIn, teacher: _teacher),
+                    const SizedBox(height: 14),
+                    _TeacherAdvancedSettings(apiController: _apiController),
+                    const SizedBox(height: 14),
+                    TeacherAuthCard(
+                      usernameController: _usernameController,
+                      passwordController: _passwordController,
+                      emailController: _emailController,
+                      signupCodeController: _signupCodeController,
+                      loading: _loading,
+                      restoringSession: _restoringSession,
+                      isLoggedIn: _isLoggedIn,
+                      hasRefreshToken:
+                          _refreshToken != null && _refreshToken!.isNotEmpty,
+                      teacher: _teacher,
+                      onRegister: _registerTeacher,
+                      onLogin: _loginTeacher,
+                      onLoadProfile: _loadMe,
+                      onLogout: _logout,
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      _TeacherErrorBanner(error: _error!),
+                    ],
+                    if (!_isLoggedIn) ...[
+                      const SizedBox(height: 14),
+                      const _TeacherLockedCard(),
+                    ] else ...[
+                      const SizedBox(height: 14),
+                      const _TeacherFlowSteps(),
+                      const SizedBox(height: 14),
+                      _TeacherWorkspaceHeader(quizzesCount: _quizzes.length),
+                      const SizedBox(height: 14),
+                      TeacherQuizBuilderCard(
+                        quizzes: _quizzes,
+                        selectedQuizId: _selectedQuizId,
+                        editingQuizId: _editingQuizId,
+                        loading: _loading,
+                        isLoggedIn: _isLoggedIn,
+                        titleController: _quizTitleController,
+                        descriptionController: _quizDescriptionController,
+                        questions: _draftQuestions,
+                        onSelectedQuizChanged: (value) {
+                          setState(() {
+                            _selectedQuizId = value;
+                          });
+                        },
+                        onLoadSelectedQuiz: _loadSelectedQuizIntoDraft,
+                        onSaveQuiz: _saveQuizDraft,
+                        onResetDraft: () => _resetQuizDraft(),
+                        onRefreshQuizzes: () => _refreshQuizzes(),
+                        onDeleteSelectedQuiz: _deleteSelectedQuiz,
+                        onRemoveQuestion: _removeDraftQuestion,
+                        onSetCorrectChoice: _setDraftCorrectChoice,
+                        onRemoveChoice: _removeDraftChoice,
+                        onAddChoice: _addDraftChoice,
+                        onAddQuestion: _addDraftQuestion,
+                      ),
+                      const SizedBox(height: 14),
+                      TeacherSessionSetupCard(
+                        loading: _loading,
+                        isLoggedIn: _isLoggedIn,
+                        selectedQuizId: _selectedQuizId,
+                        onCreateSession: _createSession,
+                      ),
+                      if (_session != null) ...[
+                        const SizedBox(height: 20),
+                        TeacherLiveSessionCard(
+                          session: _session!,
+                          wsConnected: _wsConnected,
+                          activeQuestion: _activeQuestion,
+                          questionTimeLeftLabel: _questionTimeLeftLabel,
+                          answeredCount: _answeredCount,
+                          revealPayload: _revealPayload,
+                          onStart: _startSession,
+                          onNextQuestion: _nextQuestion,
+                          onRevealAnswers: _revealAnswers,
+                          onFinish: _finishSession,
+                          onShowLeaderboard: _showLeaderboard,
+                          onExportCsv: _exportCsv,
+                        ),
+                        const SizedBox(height: 12),
+                        TeacherLiveEventsCard(events: _events),
+                      ],
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
