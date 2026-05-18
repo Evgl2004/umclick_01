@@ -199,15 +199,13 @@ class _TeacherQuizBuilderCardState extends State<TeacherQuizBuilderCard> {
                 );
               }
 
-              return IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SizedBox(width: 230, child: rail),
-                    const SizedBox(width: 16),
-                    Expanded(child: editor),
-                  ],
-                ),
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(width: 230, child: rail),
+                  const SizedBox(width: 16),
+                  Expanded(child: editor),
+                ],
               );
             },
           ),
@@ -493,6 +491,7 @@ class _QuizEditor extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(16),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.88),
         borderRadius: BorderRadius.circular(26),

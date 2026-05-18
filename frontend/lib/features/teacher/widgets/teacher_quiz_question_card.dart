@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../l10n/app_strings.dart';
-import '../../../shared/widgets/app_surfaces.dart';
 import '../quiz_draft.dart';
 
 const _choiceColors = [
@@ -39,12 +38,15 @@ class TeacherQuizQuestionCard extends StatelessWidget {
       (choice) => choice.isCorrect,
     );
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: AppSectionCard(
-        padding: const EdgeInsets.all(16),
-        borderRadius: 28,
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
         color: const Color(0xFFF8FCFB),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFE1F0EE)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -121,6 +123,7 @@ class TeacherQuizQuestionCard extends StatelessWidget {
                 }).toList(),
               ),
             ),
+            const SizedBox(height: 4),
             SizedBox(
               width: double.infinity,
               child: FilledButton.tonalIcon(
