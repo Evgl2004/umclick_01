@@ -6,7 +6,7 @@ import '../../../shared/widgets/app_surfaces.dart';
 import '../quiz_draft.dart';
 import 'teacher_quiz_question_card.dart';
 
-class TeacherQuizBuilderCard extends StatelessWidget {
+class TeacherQuizBuilderCard extends StatefulWidget {
   const TeacherQuizBuilderCard({
     super.key,
     required this.quizzes,
@@ -53,8 +53,60 @@ class TeacherQuizBuilderCard extends StatelessWidget {
   final VoidCallback onAddQuestion;
 
   @override
+  State<TeacherQuizBuilderCard> createState() => _TeacherQuizBuilderCardState();
+}
+
+class _TeacherQuizBuilderCardState extends State<TeacherQuizBuilderCard> {
+  int _selectedQuestionIndex = 0;
+
+  @override
+  void didUpdateWidget(covariant TeacherQuizBuilderCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.questions.isEmpty) {
+      _selectedQuestionIndex = 0;
+      return;
+    }
+    if (_selectedQuestionIndex >= widget.questions.length) {
+      _selectedQuestionIndex = widget.questions.length - 1;
+    }
+  }
+
+  int get _activeQuestionIndex {
+    if (widget.questions.isEmpty) return 0;
+    return _selectedQuestionIndex.clamp(0, widget.questions.length - 1);
+  }
+
+  void _selectQuestion(int index) {
+    if (index < 0 || index >= widget.questions.length) return;
+    setState(() {
+      _selectedQuestionIndex = index;
+    });
+  }
+
+  void _addQuestionAndSelect() {
+    final nextQuestionIndex = widget.questions.length;
+    widget.onAddQuestion();
+    setState(() {
+      _selectedQuestionIndex = nextQuestionIndex;
+    });
+  }
+
+  void _removeQuestionAndKeepContext(int questionIndex) {
+    widget.onRemoveQuestion(questionIndex);
+    setState(() {
+      if (_selectedQuestionIndex > 0 &&
+          questionIndex <= _selectedQuestionIndex) {
+        _selectedQuestionIndex -= 1;
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final canUseTeacherApi = !loading && isLoggedIn;
+    final canUseTeacherApi = !widget.loading && widget.isLoggedIn;
+    final activeQuestionIndex = _activeQuestionIndex;
+    final activeQuestion =
+        widget.questions.isEmpty ? null : widget.questions[activeQuestionIndex];
 
     return AppSectionCard(
       padding: const EdgeInsets.all(16),
@@ -64,47 +116,48 @@ class TeacherQuizBuilderCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _BuilderHeader(
-            editingQuizId: editingQuizId,
-            questionsCount: questions.length,
+            editingQuizId: widget.editingQuizId,
+            questionsCount: widget.questions.length,
           ),
           const SizedBox(height: 16),
           _QuizSelectorRow(
-            quizzes: quizzes,
-            selectedQuizId: selectedQuizId,
-            loading: loading,
-            isLoggedIn: isLoggedIn,
-            onSelectedQuizChanged: onSelectedQuizChanged,
-            onLoadSelectedQuiz: onLoadSelectedQuiz,
+            quizzes: widget.quizzes,
+            selectedQuizId: widget.selectedQuizId,
+            loading: widget.loading,
+            isLoggedIn: widget.isLoggedIn,
+            onSelectedQuizChanged: widget.onSelectedQuizChanged,
+            onLoadSelectedQuiz: widget.onLoadSelectedQuiz,
           ),
           const SizedBox(height: 12),
           _BuilderActions(
             canUseTeacherApi: canUseTeacherApi,
-            hasSelectedQuiz: selectedQuizId != null,
-            editingQuizId: editingQuizId,
-            onSaveQuiz: onSaveQuiz,
-            onResetDraft: onResetDraft,
-            onRefreshQuizzes: onRefreshQuizzes,
-            onDeleteSelectedQuiz: onDeleteSelectedQuiz,
+            hasSelectedQuiz: widget.selectedQuizId != null,
+            editingQuizId: widget.editingQuizId,
+            onSaveQuiz: widget.onSaveQuiz,
+            onResetDraft: widget.onResetDraft,
+            onRefreshQuizzes: widget.onRefreshQuizzes,
+            onDeleteSelectedQuiz: widget.onDeleteSelectedQuiz,
           ),
           const SizedBox(height: 16),
           LayoutBuilder(
             builder: (context, constraints) {
               final compact = constraints.maxWidth < 860;
               final rail = _QuestionRail(
-                questions: questions,
-                onAddQuestion: canUseTeacherApi ? onAddQuestion : null,
+                questions: widget.questions,
+                selectedQuestionIndex: activeQuestionIndex,
+                onSelectQuestion: _selectQuestion,
+                onAddQuestion: canUseTeacherApi ? _addQuestionAndSelect : null,
               );
               final editor = _QuizEditor(
-                titleController: titleController,
-                descriptionController: descriptionController,
-                questions: questions,
-                loading: loading,
-                canUseTeacherApi: canUseTeacherApi,
-                onRemoveQuestion: onRemoveQuestion,
-                onSetCorrectChoice: onSetCorrectChoice,
-                onRemoveChoice: onRemoveChoice,
-                onAddChoice: onAddChoice,
-                onAddQuestion: onAddQuestion,
+                titleController: widget.titleController,
+                descriptionController: widget.descriptionController,
+                question: activeQuestion,
+                questionIndex: activeQuestionIndex,
+                loading: widget.loading,
+                onRemoveQuestion: _removeQuestionAndKeepContext,
+                onSetCorrectChoice: widget.onSetCorrectChoice,
+                onRemoveChoice: widget.onRemoveChoice,
+                onAddChoice: widget.onAddChoice,
               );
 
               if (compact) {
@@ -248,10 +301,14 @@ class _BuilderActions extends StatelessWidget {
 class _QuestionRail extends StatelessWidget {
   const _QuestionRail({
     required this.questions,
+    required this.selectedQuestionIndex,
+    required this.onSelectQuestion,
     required this.onAddQuestion,
   });
 
   final List<QuizDraftQuestion> questions;
+  final int selectedQuestionIndex;
+  final ValueChanged<int> onSelectQuestion;
   final VoidCallback? onAddQuestion;
 
   @override
@@ -282,7 +339,12 @@ class _QuestionRail extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           for (final entry in questions.asMap().entries) ...[
-            _QuestionRailItem(index: entry.key, question: entry.value),
+            _QuestionRailItem(
+              index: entry.key,
+              question: entry.value,
+              selected: entry.key == selectedQuestionIndex,
+              onTap: () => onSelectQuestion(entry.key),
+            ),
             if (entry.key != questions.length - 1) const SizedBox(height: 8),
           ],
           const SizedBox(height: 12),
@@ -301,45 +363,73 @@ class _QuestionRailItem extends StatelessWidget {
   const _QuestionRailItem({
     required this.index,
     required this.question,
+    required this.selected,
+    required this.onTap,
   });
 
   final int index;
   final QuizDraftQuestion question;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final title = question.textController.text.trim();
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: index == 0 ? const Color(0xFFE0F2F1) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: index == 0 ? const Color(0xFF80CBC4) : const Color(0xFFDDEBE9),
-        ),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 15,
-            backgroundColor:
-                index == 0 ? const Color(0xFF00796B) : const Color(0xFFEAF4F2),
-            foregroundColor:
-                index == 0 ? Colors.white : const Color(0xFF31524F),
-            child: Text('${index + 1}'),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              title.isEmpty
-                  ? appText(AppText.questionNumber, args: {'number': index + 1})
-                  : title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+    return AnimatedBuilder(
+      animation: question.textController,
+      builder: (context, _) {
+        final title = question.textController.text.trim();
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(18),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: selected ? const Color(0xFFE0F2F1) : Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: selected
+                      ? const Color(0xFF80CBC4)
+                      : const Color(0xFFDDEBE9),
+                  width: selected ? 1.5 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 15,
+                    backgroundColor: selected
+                        ? const Color(0xFF00796B)
+                        : const Color(0xFFEAF4F2),
+                    foregroundColor:
+                        selected ? Colors.white : const Color(0xFF31524F),
+                    child: Text('${index + 1}'),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      title.isEmpty
+                          ? appText(
+                              AppText.questionNumber,
+                              args: {'number': index + 1},
+                            )
+                          : title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight:
+                            selected ? FontWeight.w800 : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -348,31 +438,31 @@ class _QuizEditor extends StatelessWidget {
   const _QuizEditor({
     required this.titleController,
     required this.descriptionController,
-    required this.questions,
+    required this.question,
+    required this.questionIndex,
     required this.loading,
-    required this.canUseTeacherApi,
     required this.onRemoveQuestion,
     required this.onSetCorrectChoice,
     required this.onRemoveChoice,
     required this.onAddChoice,
-    required this.onAddQuestion,
   });
 
   final TextEditingController titleController;
   final TextEditingController descriptionController;
-  final List<QuizDraftQuestion> questions;
+  final QuizDraftQuestion? question;
+  final int questionIndex;
   final bool loading;
-  final bool canUseTeacherApi;
   final ValueChanged<int> onRemoveQuestion;
   final void Function(QuizDraftQuestion question, int choiceIndex)
       onSetCorrectChoice;
   final void Function(QuizDraftQuestion question, int choiceIndex)
       onRemoveChoice;
   final ValueChanged<QuizDraftQuestion> onAddChoice;
-  final VoidCallback onAddQuestion;
 
   @override
   Widget build(BuildContext context) {
+    final activeQuestion = question;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -400,30 +490,23 @@ class _QuizEditor extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          ...questions.asMap().entries.map((questionEntry) {
-            final questionIndex = questionEntry.key;
-            final question = questionEntry.value;
-
-            return TeacherQuizQuestionCard(
-              question: question,
+          if (activeQuestion == null)
+            AppSectionCard(
+              color: const Color(0xFFFFF8E1),
+              child: Text(appText(AppText.noQuizzesYet)),
+            )
+          else
+            TeacherQuizQuestionCard(
+              question: activeQuestion,
               questionIndex: questionIndex,
               loading: loading,
               onRemoveQuestion: () => onRemoveQuestion(questionIndex),
               onSetCorrectChoice: (choiceIndex) =>
-                  onSetCorrectChoice(question, choiceIndex),
+                  onSetCorrectChoice(activeQuestion, choiceIndex),
               onRemoveChoice: (choiceIndex) =>
-                  onRemoveChoice(question, choiceIndex),
-              onAddChoice: () => onAddChoice(question),
-            );
-          }),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton.tonalIcon(
-              onPressed: canUseTeacherApi ? onAddQuestion : null,
-              icon: const Icon(Icons.add_circle_outline),
-              label: Text(appText(AppText.addQuestionButton)),
+                  onRemoveChoice(activeQuestion, choiceIndex),
+              onAddChoice: () => onAddChoice(activeQuestion),
             ),
-          ),
         ],
       ),
     );

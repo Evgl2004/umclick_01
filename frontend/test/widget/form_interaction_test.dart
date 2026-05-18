@@ -3,7 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:umclick_frontend/features/participant/widgets/join_connection_card.dart';
 import 'package:umclick_frontend/features/participant/widgets/profile_card.dart';
+import 'package:umclick_frontend/features/teacher/quiz_draft.dart';
 import 'package:umclick_frontend/features/teacher/widgets/teacher_auth_card.dart';
+import 'package:umclick_frontend/features/teacher/widgets/teacher_quiz_builder_card.dart';
+import 'package:umclick_frontend/features/teacher/widgets/teacher_quiz_question_card.dart';
 import 'package:umclick_frontend/features/teacher/widgets/teacher_session_setup_card.dart';
 import 'package:umclick_frontend/l10n/app_language.dart';
 
@@ -237,6 +240,114 @@ void main() {
 
       expect(createCalls, 1);
       expect(find.text('Session quiz: #7'), findsOneWidget);
+    });
+  });
+
+  group('TeacherQuizBuilderCard', () {
+    testWidgets('switches the editor to the selected question from the rail',
+        (tester) async {
+      final titleController = TextEditingController(text: 'Chemistry warmup');
+      final descriptionController = TextEditingController();
+      final questions = [
+        QuizDraftQuestion(text: 'Which gas supports burning?'),
+        QuizDraftQuestion(),
+      ];
+      addTearDown(titleController.dispose);
+      addTearDown(descriptionController.dispose);
+      addTearDown(() {
+        for (final question in questions) {
+          question.dispose();
+        }
+      });
+
+      await pumpCard(
+        tester,
+        TeacherQuizBuilderCard(
+          quizzes: const [],
+          selectedQuizId: null,
+          editingQuizId: null,
+          loading: false,
+          isLoggedIn: true,
+          titleController: titleController,
+          descriptionController: descriptionController,
+          questions: questions,
+          onSelectedQuizChanged: (_) {},
+          onLoadSelectedQuiz: () {},
+          onSaveQuiz: () {},
+          onResetDraft: () {},
+          onRefreshQuizzes: () {},
+          onDeleteSelectedQuiz: () {},
+          onRemoveQuestion: (_) {},
+          onSetCorrectChoice: (_, __) {},
+          onRemoveChoice: (_, __) {},
+          onAddChoice: (_) {},
+          onAddQuestion: () {},
+        ),
+      );
+
+      expect(find.byType(TeacherQuizQuestionCard), findsOneWidget);
+      expect(find.text('Question 1'), findsOneWidget);
+      expect(find.text('Question 2'), findsOneWidget);
+
+      await tester.tap(find.text('Question 2'));
+      await tester.pump();
+
+      expect(find.byType(TeacherQuizQuestionCard), findsOneWidget);
+      expect(find.text('Question 2'), findsNWidgets(2));
+    });
+
+    testWidgets('selects a newly added question immediately', (tester) async {
+      final titleController = TextEditingController(text: 'Chemistry warmup');
+      final descriptionController = TextEditingController();
+      final questions = [
+        QuizDraftQuestion(text: 'Which gas supports burning?'),
+      ];
+      addTearDown(titleController.dispose);
+      addTearDown(descriptionController.dispose);
+      addTearDown(() {
+        for (final question in questions) {
+          question.dispose();
+        }
+      });
+
+      await pumpCard(
+        tester,
+        StatefulBuilder(
+          builder: (context, setState) {
+            return TeacherQuizBuilderCard(
+              quizzes: const [],
+              selectedQuizId: null,
+              editingQuizId: null,
+              loading: false,
+              isLoggedIn: true,
+              titleController: titleController,
+              descriptionController: descriptionController,
+              questions: questions,
+              onSelectedQuizChanged: (_) {},
+              onLoadSelectedQuiz: () {},
+              onSaveQuiz: () {},
+              onResetDraft: () {},
+              onRefreshQuizzes: () {},
+              onDeleteSelectedQuiz: () {},
+              onRemoveQuestion: (_) {},
+              onSetCorrectChoice: (_, __) {},
+              onRemoveChoice: (_, __) {},
+              onAddChoice: (_) {},
+              onAddQuestion: () {
+                setState(() {
+                  questions.add(QuizDraftQuestion());
+                });
+              },
+            );
+          },
+        ),
+      );
+
+      await tester.tap(find.text('Add question'));
+      await tester.pump();
+
+      expect(find.byType(TeacherQuizQuestionCard), findsOneWidget);
+      expect(find.text('Question 2'), findsNWidgets(2));
     });
   });
 
