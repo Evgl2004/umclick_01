@@ -116,7 +116,15 @@ enum AppText {
   joinSessionButton,
   participantPoints,
   participantLastAnswer,
+  participantTimeLeftBadge,
   sessionFinishedMessage,
+  participantFinalPodiumTitle,
+  participantFinalPodiumSubtitle,
+  participantYourFinalResult,
+  participantFinalRank,
+  participantCorrectAnswers,
+  participantRoundLeaderboardTitle,
+  participantNoLeaderboardYet,
   waitingForQuestionMessage,
   timeOverMessage,
   consentCheckboxLabel,
@@ -500,9 +508,33 @@ const _strings = <AppText, LocalizedString>{
       LocalizedString(ru: 'Очки: {points}', en: 'Points: {points}'),
   AppText.participantLastAnswer: LocalizedString(
       ru: 'Последний ответ: +{points}', en: 'Last answer: +{points} pts'),
+  AppText.participantTimeLeftBadge:
+      LocalizedString(ru: 'Осталось: {time}', en: 'Left: {time}'),
   AppText.sessionFinishedMessage: LocalizedString(
     ru: 'Сессия завершена. Спасибо за участие!',
     en: 'Session finished. Thanks for playing!',
+  ),
+  AppText.participantFinalPodiumTitle:
+      LocalizedString(ru: 'Финальный подиум', en: 'Final podium'),
+  AppText.participantFinalPodiumSubtitle: LocalizedString(
+    ru: 'Игра завершена. Вот итоговые места и ваш результат.',
+    en: 'Game finished. Here are the final places and your result.',
+  ),
+  AppText.participantYourFinalResult: LocalizedString(
+    ru: 'Ваш результат: {points} очков',
+    en: 'Your result: {points} pts',
+  ),
+  AppText.participantFinalRank:
+      LocalizedString(ru: 'Место #{rank}', en: 'Rank #{rank}'),
+  AppText.participantCorrectAnswers: LocalizedString(
+    ru: 'Верных ответов: {count}',
+    en: 'Correct answers: {count}',
+  ),
+  AppText.participantRoundLeaderboardTitle: LocalizedString(
+      ru: 'Рейтинг после вопроса', en: 'Leaderboard after question'),
+  AppText.participantNoLeaderboardYet: LocalizedString(
+    ru: 'Рейтинг появится после первых ответов.',
+    en: 'Leaderboard appears after the first answers.',
   ),
   AppText.waitingForQuestionMessage: LocalizedString(
     ru: 'Ждём, когда преподаватель запустит следующий вопрос...',

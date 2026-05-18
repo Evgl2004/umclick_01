@@ -19,6 +19,7 @@ from apps.session.models import LiveSession, ParticipantAnswer, SessionParticipa
 from apps.session.realtime import (
     broadcast_session_event,
     build_public_session_state,
+    build_public_leaderboard,
     compute_question_ends_at,
     get_next_question,
     serialize_question_for_participants,
@@ -92,7 +93,9 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
             ]
         )
 
-        broadcast_session_event(session.id, "session_finished", build_public_session_state(session))
+        payload = build_public_session_state(session)
+        payload["leaderboard"] = build_public_leaderboard(session)
+        broadcast_session_event(session.id, "session_finished", payload)
         return Response(LiveSessionSerializer(session).data)
 
     @action(detail=True, methods=["post"], url_path="next-question")
@@ -122,6 +125,7 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
             )
 
             payload = build_public_session_state(session)
+            payload["leaderboard"] = build_public_leaderboard(session)
             broadcast_session_event(session.id, "session_finished", payload)
             return Response(
                 {

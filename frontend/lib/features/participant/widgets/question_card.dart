@@ -10,12 +10,14 @@ class ParticipantQuestionCard extends StatelessWidget {
     required this.onAnswer,
     required this.questionLocked,
     required this.selectedChoiceId,
+    required this.timeLeftLabel,
   });
 
   final Map<String, dynamic> question;
   final ValueChanged<int> onAnswer;
   final bool questionLocked;
   final int? selectedChoiceId;
+  final String timeLeftLabel;
 
   static const _answerColors = [
     Color(0xFFE21B3C),
@@ -63,39 +65,50 @@ class ParticipantQuestionCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              crossAxisAlignment: WrapCrossAlignment.center,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    appText(AppText.questionTimeLimitLabel,
-                        args: {'seconds': question['time_limit_sec'] ?? '-'}),
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w700),
+                Expanded(
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          appText(AppText.questionTimeLimitLabel, args: {
+                            'seconds': question['time_limit_sec'] ?? '-'
+                          }),
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      if (questionLocked)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            appText(AppText.answerLockedMessage),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                if (questionLocked)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      appText(AppText.answerLockedMessage),
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w700),
-                    ),
-                  ),
+                const SizedBox(width: 12),
+                _QuestionCountdownBadge(timeLeftLabel: timeLeftLabel),
               ],
             ),
             const SizedBox(height: 18),
@@ -223,6 +236,54 @@ class ParticipantQuestionCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _QuestionCountdownBadge extends StatelessWidget {
+  const _QuestionCountdownBadge({required this.timeLeftLabel});
+
+  final String timeLeftLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 118,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.timer_outlined, color: Color(0xFF023047)),
+          const SizedBox(height: 4),
+          Text(
+            timeLeftLabel,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: const Color(0xFF023047),
+                  fontWeight: FontWeight.w900,
+                ),
+          ),
+          Text(
+            appText(AppText.participantTimeLeftBadge, args: {'time': ''})
+                .replaceAll(': ', '')
+                .trim(),
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: const Color(0xFF023047).withValues(alpha: 0.72),
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ],
       ),
     );
   }

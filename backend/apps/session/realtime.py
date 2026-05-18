@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
 from django.db.models.functions import Coalesce
 
 from apps.session.models import LiveSession, ParticipantAnswer, SessionParticipant
@@ -51,6 +51,29 @@ def build_public_session_state(session: LiveSession) -> dict:
         "is_answer_revealed": session.current_question_id is not None
         and session.revealed_question_id == session.current_question_id,
     }
+
+
+def build_public_leaderboard(session: LiveSession) -> list[dict]:
+    rows = (
+        SessionParticipant.objects.filter(session=session)
+        .select_related("participant")
+        .annotate(
+            points=Coalesce(Sum("answers__score_points"), 0),
+            correct_answers=Count("answers", filter=Q(answers__is_correct=True)),
+        )
+        .order_by("-points", "-correct_answers", "joined_at", "id")
+    )
+    return [
+        {
+            "rank": index + 1,
+            "session_participant_id": row.id,
+            "participant_name": row.participant.name,
+            "points": int(row.points or 0),
+            "correct_answers": row.correct_answers,
+            "is_podium": index < 3,
+        }
+        for index, row in enumerate(rows)
+    ]
 
 
 def get_next_question(session: LiveSession):
@@ -126,6 +149,7 @@ def build_answer_reveal_payload(session: LiveSession) -> dict:
         "choices": choices_payload,
         "total_answers": total_answers,
         "total_points_awarded": total_points_awarded,
+        "leaderboard": build_public_leaderboard(session),
     }
 
 

@@ -10,6 +10,7 @@ from apps.session.models import (
     ParticipantAnswer,
     SessionParticipant,
 )
+from apps.session.realtime import build_public_leaderboard
 
 
 User = get_user_model()
@@ -260,3 +261,45 @@ class SessionApiRegressionTests(APITestCase):
         self.assertEqual(inactive_response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("Session is not active", str(inactive_response.data))
         self.assertEqual(ParticipantAnswer.objects.count(), 0)
+
+    def test_public_leaderboard_has_places_without_phone_numbers(self):
+        (
+            session,
+            session_participant,
+            first_question,
+            first_correct,
+            _,
+            _,
+        ) = self.create_live_session()
+        second_participant = Participant.objects.create(
+            phone="+70000000002",
+            name="Bob",
+            consent=True,
+        )
+        second_session_participant = SessionParticipant.objects.create(
+            session=session,
+            participant=second_participant,
+        )
+        ParticipantAnswer.objects.create(
+            session_participant=session_participant,
+            question=first_question,
+            choice=first_correct,
+            is_correct=True,
+            score_points=900,
+        )
+        ParticipantAnswer.objects.create(
+            session_participant=second_session_participant,
+            question=first_question,
+            choice=first_correct,
+            is_correct=True,
+            score_points=700,
+        )
+
+        leaderboard = build_public_leaderboard(session)
+
+        self.assertEqual(leaderboard[0]["rank"], 1)
+        self.assertEqual(leaderboard[0]["participant_name"], "Alice")
+        self.assertEqual(leaderboard[0]["session_participant_id"], session_participant.id)
+        self.assertTrue(leaderboard[0]["is_podium"])
+        self.assertNotIn("phone", leaderboard[0])
+        self.assertEqual(leaderboard[1]["rank"], 2)

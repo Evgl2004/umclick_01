@@ -35,6 +35,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   Map<String, dynamic>? _joinPayload;
   Map<String, dynamic>? _activeQuestion;
   Map<String, dynamic>? _revealPayload;
+  List<dynamic> _finalLeaderboard = [];
   bool _consent = false;
   bool _loading = false;
   int _totalPoints = 0;
@@ -356,11 +357,14 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         });
         break;
       case 'session_finished':
+        final leaderboard =
+            (payload['leaderboard'] as List<dynamic>? ?? <dynamic>[]).toList();
         _countdownTimer?.cancel();
         setState(() {
           _sessionStatus = 'finished';
           _sessionFinished = true;
           _activeQuestion = null;
+          _finalLeaderboard = leaderboard;
           _timeLeftLabel = '--:--';
           _isQuestionExpired = false;
         });
@@ -403,6 +407,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         _joinPayload = payload;
         _activeQuestion = mapOrNull(payload['current_question']);
         _revealPayload = null;
+        _finalLeaderboard = [];
         _totalPoints = 0;
         _lastAnswerPoints = 0;
         _sessionStatus = payload['session_status']?.toString() ?? 'waiting';
@@ -482,10 +487,11 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
               args: {'points': _lastAnswerPoints})),
           const SizedBox(height: 14),
           if (_sessionFinished)
-            ParticipantRoundMessage(
-              icon: Icons.flag_circle_outlined,
-              message: appText(AppText.sessionFinishedMessage),
-              color: const Color(0xFF0A9396),
+            ParticipantPodiumCard(
+              leaderboard: _finalLeaderboard,
+              currentSessionParticipantId:
+                  asInt(_joinPayload?['session_participant_id'], -1),
+              totalPoints: _totalPoints,
             )
           else if (_activeQuestion == null)
             ParticipantRoundMessage(
@@ -499,6 +505,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
               onAnswer: _answer,
               questionLocked: _questionAnswered || _isQuestionExpired,
               selectedChoiceId: _selectedChoiceId,
+              timeLeftLabel: _timeLeftLabel,
             ),
           if (_isQuestionExpired &&
               !_questionAnswered &&

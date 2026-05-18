@@ -87,6 +87,237 @@ class ParticipantRevealResultsCard extends StatelessWidget {
               )),
             );
           })),
+          const SizedBox(height: 12),
+          _ParticipantLeaderboardPreview(
+            leaderboard:
+                (revealPayload['leaderboard'] as List<dynamic>? ?? <dynamic>[]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ParticipantPodiumCard extends StatelessWidget {
+  const ParticipantPodiumCard({
+    super.key,
+    required this.leaderboard,
+    required this.currentSessionParticipantId,
+    required this.totalPoints,
+  });
+
+  final List<dynamic> leaderboard;
+  final int currentSessionParticipantId;
+  final int totalPoints;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = leaderboard
+        .map((row) => mapOrNull(row) ?? <String, dynamic>{})
+        .where((row) => row.isNotEmpty)
+        .toList();
+    final podiumRows = rows.take(3).toList();
+    Map<String, dynamic>? myRow;
+    for (final row in rows) {
+      if (asInt(row['session_participant_id'], -1) ==
+          currentSessionParticipantId) {
+        myRow = row;
+        break;
+      }
+    }
+    final myPoints = asInt(myRow?['points'], totalPoints);
+    final myRank = asInt(myRow?['rank'], 0);
+    final myCorrect = asInt(myRow?['correct_answers'], 0);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF023047), Color(0xFF0A9396), Color(0xFFFFB703)],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.emoji_events, color: Colors.white, size: 34),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      appText(AppText.participantFinalPodiumTitle),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                          ),
+                    ),
+                    Text(
+                      appText(AppText.participantFinalPodiumSubtitle),
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.88),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (podiumRows.isEmpty)
+            Text(
+              appText(AppText.participantNoLeaderboardYet),
+              style: const TextStyle(color: Colors.white),
+            )
+          else
+            ...podiumRows.map((row) => _PodiumRow(
+                  row: row,
+                  isCurrentUser: asInt(row['session_participant_id'], -1) ==
+                      currentSessionParticipantId,
+                )),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+            ),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                Text(
+                  appText(AppText.participantYourFinalResult,
+                      args: {'points': myPoints}),
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w800),
+                ),
+                if (myRank > 0)
+                  Text(
+                    appText(AppText.participantFinalRank,
+                        args: {'rank': myRank}),
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w800),
+                  ),
+                Text(
+                  appText(AppText.participantCorrectAnswers,
+                      args: {'count': myCorrect}),
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ParticipantLeaderboardPreview extends StatelessWidget {
+  const _ParticipantLeaderboardPreview({required this.leaderboard});
+
+  final List<dynamic> leaderboard;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = leaderboard
+        .map((row) => mapOrNull(row) ?? <String, dynamic>{})
+        .where((row) => row.isNotEmpty)
+        .take(3)
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          appText(AppText.participantRoundLeaderboardTitle),
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 6),
+        if (rows.isEmpty)
+          Text(appText(AppText.participantNoLeaderboardYet))
+        else
+          ...rows.map((row) => _PodiumRow(row: row, compact: true)),
+      ],
+    );
+  }
+}
+
+class _PodiumRow extends StatelessWidget {
+  const _PodiumRow({
+    required this.row,
+    this.compact = false,
+    this.isCurrentUser = false,
+  });
+
+  final Map<String, dynamic> row;
+  final bool compact;
+  final bool isCurrentUser;
+
+  @override
+  Widget build(BuildContext context) {
+    final rank = asInt(row['rank'], 0);
+    final medalColor = switch (rank) {
+      1 => const Color(0xFFFFD166),
+      2 => const Color(0xFFE5E7EB),
+      3 => const Color(0xFFD08C60),
+      _ => Theme.of(context).colorScheme.primaryContainer,
+    };
+    final textColor = compact ? null : Colors.white;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.all(compact ? 10 : 12),
+      decoration: BoxDecoration(
+        color: compact
+            ? Theme.of(context).colorScheme.surface.withValues(alpha: 0.8)
+            : Colors.white.withValues(alpha: isCurrentUser ? 0.24 : 0.14),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: compact
+              ? Theme.of(context).colorScheme.outlineVariant
+              : Colors.white.withValues(alpha: isCurrentUser ? 0.48 : 0.18),
+        ),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: compact ? 16 : 20,
+            backgroundColor: medalColor,
+            foregroundColor: const Color(0xFF023047),
+            child: Text(
+              rank > 0 ? '$rank' : '-',
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '${row['participant_name'] ?? '-'}',
+              style: TextStyle(
+                color: textColor,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          Text(
+            '${row['points'] ?? 0}',
+            style: TextStyle(
+              color: textColor,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
         ],
       ),
     );
