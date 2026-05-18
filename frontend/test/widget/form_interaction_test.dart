@@ -42,6 +42,55 @@ void main() {
 
       var registerCalls = 0;
       var loginCalls = 0;
+
+      await pumpCard(
+        tester,
+        TeacherAuthCard(
+          usernameController: usernameController,
+          passwordController: passwordController,
+          emailController: emailController,
+          signupCodeController: signupCodeController,
+          loading: false,
+          restoringSession: false,
+          isLoggedIn: false,
+          hasRefreshToken: false,
+          teacher: null,
+          onRegister: () => registerCalls += 1,
+          onLogin: () => loginCalls += 1,
+          onLoadProfile: () {},
+          onLogout: () {},
+        ),
+      );
+
+      await tester.enterText(find.byType(TextField).at(0), 'teacher');
+      await tester.enterText(find.byType(TextField).at(1), 'safe-password');
+      await tester.enterText(find.byType(TextField).at(2), 't@example.com');
+      await tester.enterText(find.byType(TextField).at(3), 'invite-code');
+      await tester.tap(find.text('Register'));
+      await tester.tap(find.text('Login'));
+      await tester.pump();
+
+      expect(usernameController.text, 'teacher');
+      expect(passwordController.text, 'safe-password');
+      expect(emailController.text, 't@example.com');
+      expect(signupCodeController.text, 'invite-code');
+      expect(registerCalls, 1);
+      expect(loginCalls, 1);
+      expect(find.text('Not authenticated'), findsOneWidget);
+      expect(find.text('Who am I'), findsNothing);
+      expect(find.text('Logout'), findsNothing);
+    });
+
+    testWidgets('shows compact account summary after login', (tester) async {
+      final usernameController = TextEditingController();
+      final passwordController = TextEditingController();
+      final emailController = TextEditingController();
+      final signupCodeController = TextEditingController();
+      addTearDown(usernameController.dispose);
+      addTearDown(passwordController.dispose);
+      addTearDown(emailController.dispose);
+      addTearDown(signupCodeController.dispose);
+
       var profileCalls = 0;
       var logoutCalls = 0;
 
@@ -57,31 +106,22 @@ void main() {
           isLoggedIn: true,
           hasRefreshToken: true,
           teacher: const {'username': 'teacher'},
-          onRegister: () => registerCalls += 1,
-          onLogin: () => loginCalls += 1,
+          onRegister: () {},
+          onLogin: () {},
           onLoadProfile: () => profileCalls += 1,
           onLogout: () => logoutCalls += 1,
         ),
       );
 
-      await tester.enterText(find.byType(TextField).at(0), 'teacher');
-      await tester.enterText(find.byType(TextField).at(1), 'safe-password');
-      await tester.enterText(find.byType(TextField).at(2), 't@example.com');
-      await tester.enterText(find.byType(TextField).at(3), 'invite-code');
-      await tester.tap(find.text('Register'));
-      await tester.tap(find.text('Login'));
       await tester.tap(find.text('Who am I'));
       await tester.tap(find.text('Logout'));
       await tester.pump();
 
-      expect(usernameController.text, 'teacher');
-      expect(passwordController.text, 'safe-password');
-      expect(emailController.text, 't@example.com');
-      expect(signupCodeController.text, 'invite-code');
-      expect(registerCalls, 1);
-      expect(loginCalls, 1);
       expect(profileCalls, 1);
       expect(logoutCalls, 1);
+      expect(find.byType(TextField), findsNothing);
+      expect(find.text('Register'), findsNothing);
+      expect(find.text('Login'), findsNothing);
       expect(find.text('Logged in: teacher'), findsOneWidget);
       expect(
           find.text(
@@ -135,22 +175,9 @@ void main() {
         isNull,
       );
       expect(
-        tester
-            .widget<OutlinedButton>(
-              find.widgetWithText(OutlinedButton, 'Who am I'),
-            )
-            .onPressed,
-        isNull,
+        find.text('Restoring saved teacher session...'),
+        findsOneWidget,
       );
-      expect(
-        tester
-            .widget<OutlinedButton>(
-              find.widgetWithText(OutlinedButton, 'Logout'),
-            )
-            .onPressed,
-        isNull,
-      );
-      expect(find.text('Restoring saved teacher session...'), findsOneWidget);
       expect(find.text('Not authenticated'), findsOneWidget);
     });
   });

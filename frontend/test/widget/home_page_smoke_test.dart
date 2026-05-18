@@ -34,8 +34,9 @@ void main() {
 
     expect(find.byType(TeacherPanel), findsOneWidget);
     expect(find.byType(TeacherAuthCard), findsOneWidget);
-    expect(find.byType(TeacherQuizBuilderCard), findsOneWidget);
-    expect(find.byType(TeacherSessionSetupCard), findsOneWidget);
+    expect(find.text('Рабочий кабинет откроется после входа'), findsOneWidget);
+    expect(find.byType(TeacherQuizBuilderCard), findsNothing);
+    expect(find.byType(TeacherSessionSetupCard), findsNothing);
   });
 
   testWidgets('HomePage can switch to participant tab', (tester) async {

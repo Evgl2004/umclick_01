@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../l10n/app_strings.dart';
+import '../../../shared/widgets/app_surfaces.dart';
 
 class TeacherAuthCard extends StatelessWidget {
   const TeacherAuthCard({
@@ -36,9 +37,72 @@ class TeacherAuthCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    if (isLoggedIn) {
+      return AppSectionCard(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 620;
+            final summary = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  appText(AppText.teacherAuthTitle),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  appText(
+                    AppText.loggedInTeacher,
+                    args: {
+                      'suffix':
+                          teacher != null ? ': ${teacher!['username']}' : '',
+                    },
+                  ),
+                ),
+                if (hasRefreshToken) Text(appText(AppText.refreshTokenStored)),
+              ],
+            );
+            final actions = Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                OutlinedButton(
+                  onPressed: loading ? null : onLoadProfile,
+                  child: Text(appText(AppText.teacherProfileButton)),
+                ),
+                OutlinedButton(
+                  onPressed: loading ? null : onLogout,
+                  child: Text(appText(AppText.logoutButton)),
+                ),
+              ],
+            );
+
+            if (compact) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  summary,
+                  const SizedBox(height: 14),
+                  actions,
+                ],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(child: summary),
+                const SizedBox(width: 16),
+                actions,
+              ],
+            );
+          },
+        ),
+      );
+    }
+
+    return AppSectionCard(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.zero,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -89,31 +153,14 @@ class TeacherAuthCard extends StatelessWidget {
                   onPressed: loading ? null : onLogin,
                   child: Text(appText(AppText.loginButton)),
                 ),
-                OutlinedButton(
-                  onPressed: loading ? null : onLoadProfile,
-                  child: Text(appText(AppText.teacherProfileButton)),
-                ),
-                OutlinedButton(
-                  onPressed: loading ? null : onLogout,
-                  child: Text(appText(AppText.logoutButton)),
-                ),
               ],
             ),
             const SizedBox(height: 8),
             if (restoringSession)
               Text(appText(AppText.restoringTeacherSession)),
             Text(
-              isLoggedIn
-                  ? appText(
-                      AppText.loggedInTeacher,
-                      args: {
-                        'suffix':
-                            teacher != null ? ': ${teacher!['username']}' : ''
-                      },
-                    )
-                  : appText(AppText.notAuthenticated),
+              appText(AppText.notAuthenticated),
             ),
-            if (hasRefreshToken) Text(appText(AppText.refreshTokenStored)),
           ],
         ),
       ),

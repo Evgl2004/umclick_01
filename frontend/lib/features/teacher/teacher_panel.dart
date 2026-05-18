@@ -10,6 +10,7 @@ import '../../core/live_event_log.dart';
 import '../../core/live_socket_connection.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
+import '../../shared/widgets/app_surfaces.dart';
 import 'quiz_draft.dart';
 import 'quiz_draft_mapper.dart';
 import 'teacher_auth_session.dart';
@@ -942,92 +943,483 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFF3FBF9), Color(0xFFEAF4F2), Color(0xFFFFF7E8)],
+        ),
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _TeacherHero(isLoggedIn: _isLoggedIn, teacher: _teacher),
+            const SizedBox(height: 14),
+            _TeacherAdvancedSettings(apiController: _apiController),
+            const SizedBox(height: 14),
+            TeacherAuthCard(
+              usernameController: _usernameController,
+              passwordController: _passwordController,
+              emailController: _emailController,
+              signupCodeController: _signupCodeController,
+              loading: _loading,
+              restoringSession: _restoringSession,
+              isLoggedIn: _isLoggedIn,
+              hasRefreshToken:
+                  _refreshToken != null && _refreshToken!.isNotEmpty,
+              teacher: _teacher,
+              onRegister: _registerTeacher,
+              onLogin: _loginTeacher,
+              onLoadProfile: _loadMe,
+              onLogout: _logout,
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              _TeacherErrorBanner(error: _error!),
+            ],
+            if (!_isLoggedIn) ...[
+              const SizedBox(height: 14),
+              const _TeacherLockedCard(),
+            ] else ...[
+              const SizedBox(height: 14),
+              const _TeacherFlowSteps(),
+              const SizedBox(height: 14),
+              _TeacherWorkspaceHeader(quizzesCount: _quizzes.length),
+              const SizedBox(height: 14),
+              TeacherQuizBuilderCard(
+                quizzes: _quizzes,
+                selectedQuizId: _selectedQuizId,
+                editingQuizId: _editingQuizId,
+                loading: _loading,
+                isLoggedIn: _isLoggedIn,
+                titleController: _quizTitleController,
+                descriptionController: _quizDescriptionController,
+                questions: _draftQuestions,
+                onSelectedQuizChanged: (value) {
+                  setState(() {
+                    _selectedQuizId = value;
+                  });
+                },
+                onLoadSelectedQuiz: _loadSelectedQuizIntoDraft,
+                onSaveQuiz: _saveQuizDraft,
+                onResetDraft: () => _resetQuizDraft(),
+                onRefreshQuizzes: () => _refreshQuizzes(),
+                onDeleteSelectedQuiz: _deleteSelectedQuiz,
+                onRemoveQuestion: _removeDraftQuestion,
+                onSetCorrectChoice: _setDraftCorrectChoice,
+                onRemoveChoice: _removeDraftChoice,
+                onAddChoice: _addDraftChoice,
+                onAddQuestion: _addDraftQuestion,
+              ),
+              const SizedBox(height: 14),
+              TeacherSessionSetupCard(
+                loading: _loading,
+                isLoggedIn: _isLoggedIn,
+                selectedQuizId: _selectedQuizId,
+                onCreateSession: _createSession,
+              ),
+              if (_session != null) ...[
+                const SizedBox(height: 20),
+                TeacherLiveSessionCard(
+                  session: _session!,
+                  wsConnected: _wsConnected,
+                  activeQuestion: _activeQuestion,
+                  questionTimeLeftLabel: _questionTimeLeftLabel,
+                  answeredCount: _answeredCount,
+                  revealPayload: _revealPayload,
+                  onStart: _startSession,
+                  onNextQuestion: _nextQuestion,
+                  onRevealAnswers: _revealAnswers,
+                  onFinish: _finishSession,
+                  onShowLeaderboard: _showLeaderboard,
+                  onExportCsv: _exportCsv,
+                ),
+                const SizedBox(height: 12),
+                TeacherLiveEventsCard(events: _events),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TeacherHero extends StatelessWidget {
+  const _TeacherHero({required this.isLoggedIn, required this.teacher});
+
+  final bool isLoggedIn;
+  final Map<String, dynamic>? teacher;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(32),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF063B3D), Color(0xFF087E8B), Color(0xFFFFB703)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF063B3D).withValues(alpha: 0.18),
+            blurRadius: 28,
+            offset: const Offset(0, 18),
+          ),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 760;
+          final title = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AppStatusChip(
+                icon: Icons.school_outlined,
+                label: appText(AppText.teacherHeroBadge),
+                background: Colors.white.withValues(alpha: 0.18),
+                foreground: Colors.white,
+              ),
+              const SizedBox(height: 18),
+              Text(
+                appText(AppText.teacherHeroTitle),
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      height: 1.05,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                appText(AppText.teacherHeroSubtitle),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  fontSize: 16,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          );
+
+          final status = _TeacherHeroStatus(
+            isLoggedIn: isLoggedIn,
+            teacher: teacher,
+          );
+
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                title,
+                const SizedBox(height: 18),
+                status,
+              ],
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(flex: 3, child: title),
+              const SizedBox(width: 24),
+              Expanded(flex: 2, child: status),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TeacherHeroStatus extends StatelessWidget {
+  const _TeacherHeroStatus({required this.isLoggedIn, required this.teacher});
+
+  final bool isLoggedIn;
+  final Map<String, dynamic>? teacher;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.24)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextField(
-            controller: _apiController,
-            decoration: InputDecoration(
-              labelText: appText(AppText.apiBaseUrlLabel),
-              hintText: defaultApiBaseUrl,
-              helperText: appText(AppText.teacherApiBaseUrlHelper),
+          Icon(
+            isLoggedIn
+                ? Icons.verified_user_outlined
+                : Icons.lock_outline_rounded,
+            color: Colors.white,
+            size: 34,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            isLoggedIn
+                ? appText(AppText.loggedInTeacher, args: {
+                    'suffix':
+                        teacher != null ? ': ${teacher!['username']}' : '',
+                  })
+                : appText(AppText.notAuthenticated),
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
             ),
           ),
-          const SizedBox(height: 12),
-          TeacherAuthCard(
-            usernameController: _usernameController,
-            passwordController: _passwordController,
-            emailController: _emailController,
-            signupCodeController: _signupCodeController,
-            loading: _loading,
-            restoringSession: _restoringSession,
-            isLoggedIn: _isLoggedIn,
-            hasRefreshToken: _refreshToken != null && _refreshToken!.isNotEmpty,
-            teacher: _teacher,
-            onRegister: _registerTeacher,
-            onLogin: _loginTeacher,
-            onLoadProfile: _loadMe,
-            onLogout: _logout,
+          const SizedBox(height: 8),
+          Text(
+            isLoggedIn
+                ? appText(AppText.teacherWorkspaceSubtitle)
+                : appText(AppText.teacherFlowAuthBody),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.88)),
           ),
-          const SizedBox(height: 12),
-          TeacherQuizBuilderCard(
-            quizzes: _quizzes,
-            selectedQuizId: _selectedQuizId,
-            editingQuizId: _editingQuizId,
-            loading: _loading,
-            isLoggedIn: _isLoggedIn,
-            titleController: _quizTitleController,
-            descriptionController: _quizDescriptionController,
-            questions: _draftQuestions,
-            onSelectedQuizChanged: (value) {
-              setState(() {
-                _selectedQuizId = value;
-              });
-            },
-            onLoadSelectedQuiz: _loadSelectedQuizIntoDraft,
-            onSaveQuiz: _saveQuizDraft,
-            onResetDraft: () => _resetQuizDraft(),
-            onRefreshQuizzes: () => _refreshQuizzes(),
-            onDeleteSelectedQuiz: _deleteSelectedQuiz,
-            onRemoveQuestion: _removeDraftQuestion,
-            onSetCorrectChoice: _setDraftCorrectChoice,
-            onRemoveChoice: _removeDraftChoice,
-            onAddChoice: _addDraftChoice,
-            onAddQuestion: _addDraftQuestion,
-          ),
-          const SizedBox(height: 12),
-          TeacherSessionSetupCard(
-            loading: _loading,
-            isLoggedIn: _isLoggedIn,
-            selectedQuizId: _selectedQuizId,
-            onCreateSession: _createSession,
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(_error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          ],
-          if (_session != null) ...[
-            const SizedBox(height: 20),
-            TeacherLiveSessionCard(
-              session: _session!,
-              wsConnected: _wsConnected,
-              activeQuestion: _activeQuestion,
-              questionTimeLeftLabel: _questionTimeLeftLabel,
-              answeredCount: _answeredCount,
-              revealPayload: _revealPayload,
-              onStart: _startSession,
-              onNextQuestion: _nextQuestion,
-              onRevealAnswers: _revealAnswers,
-              onFinish: _finishSession,
-              onShowLeaderboard: _showLeaderboard,
-              onExportCsv: _exportCsv,
+        ],
+      ),
+    );
+  }
+}
+
+class _TeacherAdvancedSettings extends StatelessWidget {
+  const _TeacherAdvancedSettings({required this.apiController});
+
+  final TextEditingController apiController;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSectionCard(
+      padding: EdgeInsets.zero,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          leading: const Icon(Icons.tune_outlined),
+          title: Text(appText(AppText.teacherAdvancedSettingsTitle)),
+          subtitle: Text(appText(AppText.teacherAdvancedSettingsSubtitle)),
+          childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+          children: [
+            TextField(
+              controller: apiController,
+              decoration: InputDecoration(
+                labelText: appText(AppText.apiBaseUrlLabel),
+                hintText: defaultApiBaseUrl,
+                helperText: appText(AppText.teacherApiBaseUrlHelper),
+              ),
             ),
-            const SizedBox(height: 12),
-            TeacherLiveEventsCard(events: _events),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TeacherFlowSteps extends StatelessWidget {
+  const _TeacherFlowSteps();
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 760;
+        final cards = [
+          _TeacherFlowStepCard(
+            icon: Icons.login_rounded,
+            title: appText(AppText.teacherFlowAuthTitle),
+            body: appText(AppText.teacherFlowAuthBody),
+          ),
+          _TeacherFlowStepCard(
+            icon: Icons.quiz_outlined,
+            title: appText(AppText.teacherFlowQuizTitle),
+            body: appText(AppText.teacherFlowQuizBody),
+          ),
+          _TeacherFlowStepCard(
+            icon: Icons.qr_code_2_rounded,
+            title: appText(AppText.teacherFlowLaunchTitle),
+            body: appText(AppText.teacherFlowLaunchBody),
+          ),
+        ];
+
+        if (compact) {
+          return Column(
+            children: [
+              for (final card in cards) ...[
+                card,
+                if (card != cards.last) const SizedBox(height: 10),
+              ],
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            for (final card in cards) ...[
+              Expanded(child: card),
+              if (card != cards.last) const SizedBox(width: 12),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _TeacherFlowStepCard extends StatelessWidget {
+  const _TeacherFlowStepCard({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSectionCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFE8B3),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, color: const Color(0xFF975A00)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(body),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TeacherWorkspaceHeader extends StatelessWidget {
+  const _TeacherWorkspaceHeader({required this.quizzesCount});
+
+  final int quizzesCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSectionCard(
+      color: const Color(0xFFFFFFFF),
+      child: Row(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: const Color(0xFFDDF9F2),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Icon(Icons.dashboard_customize_outlined,
+                color: Color(0xFF00796B)),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  appText(AppText.teacherWorkspaceTitle),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(appText(AppText.teacherWorkspaceSubtitle)),
+              ],
+            ),
+          ),
+          AppStatusChip(
+            icon: Icons.folder_copy_outlined,
+            label: '$quizzesCount',
+            background: const Color(0xFFE0F2F1),
+            foreground: const Color(0xFF00695C),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TeacherLockedCard extends StatelessWidget {
+  const _TeacherLockedCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSectionCard(
+      color: const Color(0xFFFFF8E1),
+      child: Row(
+        children: [
+          const Icon(Icons.lock_outline_rounded, color: Color(0xFF975A00)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  appText(AppText.teacherLockedTitle),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(appText(AppText.teacherLockedBody)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TeacherErrorBanner extends StatelessWidget {
+  const _TeacherErrorBanner({required this.error});
+
+  final String error;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSectionCard(
+      color: Theme.of(context).colorScheme.errorContainer,
+      child: Row(
+        children: [
+          Icon(Icons.error_outline,
+              color: Theme.of(context).colorScheme.onErrorContainer),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              error,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onErrorContainer,
+              ),
+            ),
+          ),
         ],
       ),
     );

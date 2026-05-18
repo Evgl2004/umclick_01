@@ -8,6 +8,21 @@ enum AppText {
   teacherApiBaseUrlHelper,
   participantApiBaseUrlHelper,
   teacherAuthTitle,
+  teacherHeroBadge,
+  teacherHeroTitle,
+  teacherHeroSubtitle,
+  teacherWorkspaceTitle,
+  teacherWorkspaceSubtitle,
+  teacherAdvancedSettingsTitle,
+  teacherAdvancedSettingsSubtitle,
+  teacherFlowAuthTitle,
+  teacherFlowAuthBody,
+  teacherFlowQuizTitle,
+  teacherFlowQuizBody,
+  teacherFlowLaunchTitle,
+  teacherFlowLaunchBody,
+  teacherLockedTitle,
+  teacherLockedBody,
   usernameLabel,
   passwordLabel,
   emailOptionalLabel,
@@ -178,6 +193,53 @@ const _strings = <AppText, LocalizedString>{
   ),
   AppText.teacherAuthTitle:
       LocalizedString(ru: 'Вход преподавателя', en: 'Teacher Auth'),
+  AppText.teacherHeroBadge:
+      LocalizedString(ru: 'Панель ведущего', en: 'Host workspace'),
+  AppText.teacherHeroTitle: LocalizedString(
+    ru: 'Создайте викторину и запустите игру для аудитории',
+    en: 'Create a quiz and host a live game',
+  ),
+  AppText.teacherHeroSubtitle: LocalizedString(
+    ru: 'Сначала войдите как преподаватель. После входа откроется рабочий сценарий: викторина, запуск live-сессии, QR/PIN и экспорт результатов.',
+    en: 'Sign in as a teacher first. After login, the workspace opens: quiz builder, live launch, QR/PIN, and result export.',
+  ),
+  AppText.teacherWorkspaceTitle: LocalizedString(
+      ru: 'Рабочий кабинет преподавателя', en: 'Teacher workspace'),
+  AppText.teacherWorkspaceSubtitle: LocalizedString(
+    ru: 'Идите по шагам слева направо: подготовьте вопросы, создайте комнату, проведите раунд и выгрузите CSV.',
+    en: 'Follow the flow left to right: prepare questions, create a room, host the round, and export CSV.',
+  ),
+  AppText.teacherAdvancedSettingsTitle:
+      LocalizedString(ru: 'Технические настройки', en: 'Technical settings'),
+  AppText.teacherAdvancedSettingsSubtitle: LocalizedString(
+    ru: 'Обычно не открывать. Здесь можно поменять адрес API для разработки или диагностики.',
+    en: 'Usually keep closed. Use this only to change API URL for development or diagnostics.',
+  ),
+  AppText.teacherFlowAuthTitle:
+      LocalizedString(ru: '1. Вход', en: '1. Sign in'),
+  AppText.teacherFlowAuthBody: LocalizedString(
+    ru: 'Зарегистрируйтесь или войдите по выданному коду преподавателя.',
+    en: 'Register or sign in with the teacher code.',
+  ),
+  AppText.teacherFlowQuizTitle:
+      LocalizedString(ru: '2. Викторина', en: '2. Quiz'),
+  AppText.teacherFlowQuizBody: LocalizedString(
+    ru: 'Создайте вопросы, варианты и отметьте правильные ответы.',
+    en: 'Create questions, choices, and mark correct answers.',
+  ),
+  AppText.teacherFlowLaunchTitle:
+      LocalizedString(ru: '3. Запуск', en: '3. Launch'),
+  AppText.teacherFlowLaunchBody: LocalizedString(
+    ru: 'Создайте live-сессию, покажите QR/PIN и управляйте раундом.',
+    en: 'Create a live session, share QR/PIN, and control the round.',
+  ),
+  AppText.teacherLockedTitle: LocalizedString(
+      ru: 'Рабочий кабинет откроется после входа',
+      en: 'Workspace unlocks after sign in'),
+  AppText.teacherLockedBody: LocalizedString(
+    ru: 'Так проверяющий не попадает сразу в конструктор и видит понятную точку старта.',
+    en: 'This keeps reviewers out of the builder until they have a clear starting point.',
+  ),
   AppText.usernameLabel: LocalizedString(ru: 'Логин', en: 'Username'),
   AppText.passwordLabel: LocalizedString(ru: 'Пароль', en: 'Password'),
   AppText.emailOptionalLabel:
