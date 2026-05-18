@@ -13,12 +13,12 @@ class TeacherRoundControls extends StatelessWidget {
     required this.onExportCsv,
   });
 
-  final VoidCallback onStart;
-  final VoidCallback onNextQuestion;
-  final VoidCallback onRevealAnswers;
-  final VoidCallback onFinish;
-  final VoidCallback onShowLeaderboard;
-  final VoidCallback onExportCsv;
+  final VoidCallback? onStart;
+  final VoidCallback? onNextQuestion;
+  final VoidCallback? onRevealAnswers;
+  final VoidCallback? onFinish;
+  final VoidCallback? onShowLeaderboard;
+  final VoidCallback? onExportCsv;
 
   @override
   Widget build(BuildContext context) {

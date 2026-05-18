@@ -749,15 +749,23 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
   Future<void> _startSession() async {
     if (_session == null) return;
+    if (_session!['status']?.toString() != 'waiting') return;
+
     try {
       final started = await _runTeacherRequest(
           (client) => client.startSession(_session!['id'] as int));
+      final startedQuestion = mapOrNull(started['current_question']);
       setState(() {
         _session = started;
-        _activeQuestion = mapOrNull(started['current_question']);
+        _activeQuestion = startedQuestion;
         _revealPayload = null;
       });
       _startTeacherTimer(parseDateTimeLocal(started['question_ends_at']));
+
+      if (started['status']?.toString() == 'live' && startedQuestion == null) {
+        await _moveToNextQuestion(appendEvent: false);
+      }
+
       await _connectSessionSocket(_session!['id'] as int);
     } catch (e) {
       setState(() {
@@ -766,32 +774,39 @@ class _TeacherPanelState extends State<TeacherPanel> {
     }
   }
 
-  Future<void> _nextQuestion() async {
+  Future<void> _moveToNextQuestion({bool appendEvent = true}) async {
     if (_session == null) return;
-    try {
-      final payload = await _runTeacherRequest(
-          (client) => client.nextQuestion(_session!['id'] as int));
-      if (payload.containsKey('session')) {
-        final session = mapOrNull(payload['session']);
-        if (session != null) {
-          setState(() {
-            _session = session;
-            _activeQuestion = null;
-          });
-        }
-        _questionTimer?.cancel();
+    final payload = await _runTeacherRequest(
+        (client) => client.nextQuestion(_session!['id'] as int));
+    if (payload.containsKey('session')) {
+      final session = mapOrNull(payload['session']);
+      if (session != null) {
         setState(() {
-          _questionTimeLeftLabel = '--:--';
+          _session = session;
+          _activeQuestion = null;
         });
-      } else {
-        setState(() {
-          _activeQuestion = mapOrNull(payload['question']);
-          _revealPayload = null;
-          _answeredCount = 0;
-        });
-        _startTeacherTimer(parseDateTimeLocal(payload['question_ends_at']));
       }
+      _questionTimer?.cancel();
+      setState(() {
+        _questionTimeLeftLabel = '--:--';
+      });
+    } else {
+      setState(() {
+        _activeQuestion = mapOrNull(payload['question']);
+        _revealPayload = null;
+        _answeredCount = 0;
+      });
+      _startTeacherTimer(parseDateTimeLocal(payload['question_ends_at']));
+    }
+
+    if (appendEvent) {
       _appendEvent('Teacher moved to next question.');
+    }
+  }
+
+  Future<void> _nextQuestion() async {
+    try {
+      await _moveToNextQuestion();
     } catch (e) {
       setState(() {
         _error = userErrorText(e);

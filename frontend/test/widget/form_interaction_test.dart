@@ -5,6 +5,7 @@ import 'package:umclick_frontend/features/participant/widgets/join_connection_ca
 import 'package:umclick_frontend/features/participant/widgets/profile_card.dart';
 import 'package:umclick_frontend/features/teacher/quiz_draft.dart';
 import 'package:umclick_frontend/features/teacher/widgets/teacher_auth_card.dart';
+import 'package:umclick_frontend/features/teacher/widgets/teacher_live_session_card.dart';
 import 'package:umclick_frontend/features/teacher/widgets/teacher_quiz_builder_card.dart';
 import 'package:umclick_frontend/features/teacher/widgets/teacher_quiz_question_card.dart';
 import 'package:umclick_frontend/features/teacher/widgets/teacher_session_setup_card.dart';
@@ -240,6 +241,69 @@ void main() {
 
       expect(createCalls, 1);
       expect(find.text('Session quiz: #7'), findsOneWidget);
+    });
+  });
+
+  group('TeacherLiveSessionCard', () {
+    testWidgets('does not allow restarting a live session', (tester) async {
+      var startCalls = 0;
+      var nextQuestionCalls = 0;
+      var revealCalls = 0;
+
+      await pumpCard(
+        tester,
+        TeacherLiveSessionCard(
+          session: {
+            'id': 1,
+            'pin': '458263',
+            'status': 'live',
+            'participants_count': 1,
+            'join_url': 'http://localhost/join?token=abc',
+          },
+          wsConnected: true,
+          activeQuestion: null,
+          questionTimeLeftLabel: '--:--',
+          answeredCount: 0,
+          revealPayload: null,
+          onStart: () => startCalls += 1,
+          onNextQuestion: () => nextQuestionCalls += 1,
+          onRevealAnswers: () => revealCalls += 1,
+          onFinish: () {},
+          onShowLeaderboard: () {},
+          onExportCsv: () {},
+        ),
+      );
+
+      expect(
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, 'Start'))
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'Next question'),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'Reveal answers'),
+            )
+            .onPressed,
+        isNull,
+      );
+
+      await tester.tap(find.text('Start'));
+      await tester.tap(find.text('Next question'));
+      await tester.pump();
+
+      expect(startCalls, 0);
+      expect(nextQuestionCalls, 1);
+      expect(revealCalls, 0);
     });
   });
 

@@ -38,6 +38,11 @@ class TeacherLiveSessionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final joinUrl = session['join_url'] as String;
+    final status = session['status']?.toString() ?? '';
+    final isWaiting = status == 'waiting';
+    final isLive = status == 'live';
+    final isFinished = status == 'finished';
+    final hasActiveQuestion = activeQuestion != null;
 
     return Container(
       width: double.infinity,
@@ -75,10 +80,13 @@ class TeacherLiveSessionCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           TeacherRoundControls(
-            onStart: onStart,
-            onNextQuestion: onNextQuestion,
-            onRevealAnswers: onRevealAnswers,
-            onFinish: onFinish,
+            onStart: isWaiting ? onStart : null,
+            onNextQuestion: isLive ? onNextQuestion : null,
+            onRevealAnswers:
+                isLive && hasActiveQuestion && revealPayload == null
+                    ? onRevealAnswers
+                    : null,
+            onFinish: isFinished ? null : onFinish,
             onShowLeaderboard: onShowLeaderboard,
             onExportCsv: onExportCsv,
           ),
