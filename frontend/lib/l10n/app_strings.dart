@@ -166,6 +166,50 @@ enum AppText {
   retryButton,
   questionTimeLimitLabel,
   answerLockedMessage,
+  quizRequiresOneQuestionSnack,
+  questionRequiresTwoChoicesSnack,
+  teacherRegisteredSnack,
+  teacherLoginRequiredError,
+  sessionExpiredLoginAgainError,
+  quizCreatedNextStepSnack,
+  quizUpdatedSnack,
+  deleteQuizDialogTitle,
+  deleteQuizDialogBody,
+  cancelButton,
+  deleteButton,
+  leaderboardTitle,
+  leaderboardNoResults,
+  leaderboardCloseButton,
+  leaderboardStats,
+  quizValidationTitleRequired,
+  quizValidationAddQuestion,
+  quizValidationQuestionTextRequired,
+  quizValidationQuestionTimeLimit,
+  quizValidationTwoChoices,
+  quizValidationOneCorrectChoice,
+  participantJoinTargetRequired,
+  participantManualPinFallbackHint,
+  participantSessionUnavailable,
+  apiRegisterTeacherFailed,
+  apiLoginFailed,
+  apiRefreshTokenFailed,
+  apiGetProfileFailed,
+  apiLoadQuizzesFailed,
+  apiCreateQuizFailed,
+  apiUpdateQuizFailed,
+  apiDeleteQuizFailed,
+  apiCreateSessionFailed,
+  apiFetchSessionDetailsFailed,
+  apiStartSessionFailed,
+  apiFinishSessionFailed,
+  apiNextQuestionFailed,
+  apiRevealAnswersFailed,
+  apiLoadLeaderboardFailed,
+  apiExportSessionFailed,
+  apiLoadLegalFailed,
+  apiLoadPreviewFailed,
+  apiJoinSessionFailed,
+  apiSubmitAnswerFailed,
 }
 
 class LocalizedString {
@@ -646,6 +690,166 @@ const _strings = <AppText, LocalizedString>{
   AppText.answerLockedMessage: LocalizedString(
     ru: 'Ответ зафиксирован. Ждём обновления от преподавателя.',
     en: 'Answer locked. Waiting for teacher update.',
+  ),
+  AppText.quizRequiresOneQuestionSnack: LocalizedString(
+    ru: 'В викторине должен остаться хотя бы один вопрос.',
+    en: 'Quiz must contain at least one question.',
+  ),
+  AppText.questionRequiresTwoChoicesSnack: LocalizedString(
+    ru: 'В вопросе должно остаться минимум два варианта ответа.',
+    en: 'Each question needs at least two answer choices.',
+  ),
+  AppText.teacherRegisteredSnack: LocalizedString(
+    ru: 'Преподаватель зарегистрирован. Теперь войдите.',
+    en: 'Teacher registered. Now login.',
+  ),
+  AppText.teacherLoginRequiredError: LocalizedString(
+    ru: 'Сначала войдите как преподаватель.',
+    en: 'Login required for teacher API.',
+  ),
+  AppText.sessionExpiredLoginAgainError: LocalizedString(
+    ru: 'Сессия истекла. Войдите снова.',
+    en: 'Session expired. Please login again.',
+  ),
+  AppText.quizCreatedNextStepSnack: LocalizedString(
+    ru: 'Викторина сохранена. Следующий шаг: в блоке «Live-сессия» нажмите «Создать сессию».',
+    en: 'Quiz saved. Next step: use the Live session block and press Create session.',
+  ),
+  AppText.quizUpdatedSnack: LocalizedString(
+    ru: 'Викторина обновлена. Можно создавать или продолжать live-сессию.',
+    en: 'Quiz updated. You can create or continue a live session.',
+  ),
+  AppText.deleteQuizDialogTitle:
+      LocalizedString(ru: 'Удалить викторину?', en: 'Delete quiz?'),
+  AppText.deleteQuizDialogBody: LocalizedString(
+    ru: 'Удалить «{title}» без возможности восстановления?',
+    en: 'Delete "{title}" permanently? This action cannot be undone.',
+  ),
+  AppText.cancelButton: LocalizedString(ru: 'Отмена', en: 'Cancel'),
+  AppText.deleteButton: LocalizedString(ru: 'Удалить', en: 'Delete'),
+  AppText.leaderboardTitle: LocalizedString(ru: 'Рейтинг', en: 'Leaderboard'),
+  AppText.leaderboardNoResults: LocalizedString(
+    ru: 'Результатов пока нет.',
+    en: 'No results yet.',
+  ),
+  AppText.leaderboardCloseButton: LocalizedString(ru: 'Закрыть', en: 'Close'),
+  AppText.leaderboardStats: LocalizedString(
+    ru: 'Очки: {points} | Верных: {correct}',
+    en: 'Pts: {points} | Correct: {correct}',
+  ),
+  AppText.quizValidationTitleRequired: LocalizedString(
+    ru: 'Укажите название викторины.',
+    en: 'Quiz title is required.',
+  ),
+  AppText.quizValidationAddQuestion: LocalizedString(
+    ru: 'Добавьте хотя бы один вопрос.',
+    en: 'Add at least one question.',
+  ),
+  AppText.quizValidationQuestionTextRequired: LocalizedString(
+    ru: 'Заполните текст вопроса {questionNumber}.',
+    en: 'Question {questionNumber} text is required.',
+  ),
+  AppText.quizValidationQuestionTimeLimit: LocalizedString(
+    ru: 'В вопросе {questionNumber} лимит времени должен быть от 5 до 180 секунд.',
+    en: 'Question {questionNumber} time limit must be between 5 and 180 seconds.',
+  ),
+  AppText.quizValidationTwoChoices: LocalizedString(
+    ru: 'В вопросе {questionNumber} должно быть минимум два непустых варианта ответа.',
+    en: 'Question {questionNumber} must have at least two non-empty choices.',
+  ),
+  AppText.quizValidationOneCorrectChoice: LocalizedString(
+    ru: 'В вопросе {questionNumber} должен быть ровно один правильный ответ.',
+    en: 'Question {questionNumber} must have exactly one correct choice.',
+  ),
+  AppText.participantJoinTargetRequired: LocalizedString(
+    ru: 'Введите PIN или откройте QR-ссылку для подключения.',
+    en: 'Enter a PIN or open a tokenized join link first.',
+  ),
+  AppText.participantManualPinFallbackHint: LocalizedString(
+    ru: '\nЕсли QR-ссылка устарела, переключитесь на ручной ввод PIN.',
+    en: '\nYou can switch to manual PIN input if this link is outdated.',
+  ),
+  AppText.participantSessionUnavailable: LocalizedString(
+    ru: 'Сессия сейчас недоступна для подключения.',
+    en: 'Session is not available for joining.',
+  ),
+  AppText.apiRegisterTeacherFailed: LocalizedString(
+    ru: 'Не удалось зарегистрировать преподавателя.',
+    en: 'Failed to register teacher.',
+  ),
+  AppText.apiLoginFailed:
+      LocalizedString(ru: 'Не удалось войти.', en: 'Failed to login.'),
+  AppText.apiRefreshTokenFailed: LocalizedString(
+    ru: 'Не удалось обновить сессию входа.',
+    en: 'Failed to refresh token.',
+  ),
+  AppText.apiGetProfileFailed: LocalizedString(
+    ru: 'Не удалось загрузить профиль.',
+    en: 'Failed to get profile.',
+  ),
+  AppText.apiLoadQuizzesFailed: LocalizedString(
+    ru: 'Не удалось загрузить список викторин.',
+    en: 'Failed to load quizzes.',
+  ),
+  AppText.apiCreateQuizFailed: LocalizedString(
+    ru: 'Не удалось создать викторину.',
+    en: 'Failed to create quiz.',
+  ),
+  AppText.apiUpdateQuizFailed: LocalizedString(
+    ru: 'Не удалось обновить викторину.',
+    en: 'Failed to update quiz.',
+  ),
+  AppText.apiDeleteQuizFailed: LocalizedString(
+    ru: 'Не удалось удалить викторину.',
+    en: 'Failed to delete quiz.',
+  ),
+  AppText.apiCreateSessionFailed: LocalizedString(
+    ru: 'Не удалось создать live-сессию.',
+    en: 'Failed to create session.',
+  ),
+  AppText.apiFetchSessionDetailsFailed: LocalizedString(
+    ru: 'Не удалось загрузить детали live-сессии.',
+    en: 'Failed to fetch session details.',
+  ),
+  AppText.apiStartSessionFailed: LocalizedString(
+    ru: 'Не удалось запустить live-сессию.',
+    en: 'Failed to start session.',
+  ),
+  AppText.apiFinishSessionFailed: LocalizedString(
+    ru: 'Не удалось завершить live-сессию.',
+    en: 'Failed to finish session.',
+  ),
+  AppText.apiNextQuestionFailed: LocalizedString(
+    ru: 'Не удалось открыть следующий вопрос.',
+    en: 'Failed to load next question.',
+  ),
+  AppText.apiRevealAnswersFailed: LocalizedString(
+    ru: 'Не удалось показать ответы.',
+    en: 'Failed to reveal answers.',
+  ),
+  AppText.apiLoadLeaderboardFailed: LocalizedString(
+    ru: 'Не удалось загрузить рейтинг.',
+    en: 'Failed to load leaderboard.',
+  ),
+  AppText.apiExportSessionFailed: LocalizedString(
+    ru: 'Не удалось выгрузить результаты сессии.',
+    en: 'Failed to export session results.',
+  ),
+  AppText.apiLoadLegalFailed: LocalizedString(
+    ru: 'Не удалось загрузить юридические документы.',
+    en: 'Failed to load legal documents.',
+  ),
+  AppText.apiLoadPreviewFailed: LocalizedString(
+    ru: 'Не удалось загрузить предпросмотр сессии.',
+    en: 'Failed to load session preview.',
+  ),
+  AppText.apiJoinSessionFailed: LocalizedString(
+    ru: 'Не удалось войти в сессию.',
+    en: 'Failed to join session.',
+  ),
+  AppText.apiSubmitAnswerFailed: LocalizedString(
+    ru: 'Не удалось отправить ответ.',
+    en: 'Failed to submit answer.',
   ),
 };
 

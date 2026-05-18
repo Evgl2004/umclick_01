@@ -9,6 +9,7 @@ import '../../core/live_event_log.dart';
 import '../../core/live_socket_connection.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
+import '../../shared/user_error_text.dart';
 import '../../shared/widgets/app_surfaces.dart';
 import '../legal/legal_documents.dart';
 import 'models/join_source.dart';
@@ -129,7 +130,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         (pin == null || pin.isEmpty)) {
       if (showError) {
         setState(() {
-          _error = 'Enter a PIN or open a tokenized join link first.';
+          _error = appText(AppText.participantJoinTargetRequired);
         });
       }
       return;
@@ -158,7 +159,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
       setState(() {
         _joinPreview = null;
         if (showError) {
-          _error = e.toString();
+          _error = userErrorText(e);
         }
       });
     } finally {
@@ -210,7 +211,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     } catch (e) {
       if (showError && mounted) {
         setState(() {
-          _error = e.toString();
+          _error = userErrorText(e);
         });
       }
     } finally {
@@ -381,7 +382,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
       if (_joinPreview?['can_join'] == false) {
         throw StateError(
           _joinPreview?['closed_reason']?.toString() ??
-              'Session is not available for joining.',
+              appText(AppText.participantSessionUnavailable),
         );
       }
 
@@ -425,9 +426,9 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     } catch (e) {
       setState(() {
         final fallbackHint = _useJoinTokenFromLink
-            ? '\nYou can switch to manual PIN input if this link is outdated.'
+            ? appText(AppText.participantManualPinFallbackHint)
             : '';
-        _error = '${e.toString()}$fallbackHint';
+        _error = '${userErrorText(e)}$fallbackHint';
       });
     } finally {
       setState(() {
@@ -461,7 +462,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
       _appendEvent('Answer submitted (+$_lastAnswerPoints pts).');
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = userErrorText(e);
       });
     }
   }

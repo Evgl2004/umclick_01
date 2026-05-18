@@ -4,6 +4,7 @@ import '../../api/api_client.dart';
 import '../../core/app_config.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
+import '../../shared/user_error_text.dart';
 
 enum PublicLegalDocumentType {
   privacyPolicy,
@@ -259,7 +260,7 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _error = userErrorText(e);
       });
     } finally {
       if (!mounted) return;

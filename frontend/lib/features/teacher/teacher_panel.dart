@@ -10,6 +10,7 @@ import '../../core/live_event_log.dart';
 import '../../core/live_socket_connection.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
+import '../../shared/user_error_text.dart';
 import '../../shared/widgets/app_surfaces.dart';
 import 'quiz_draft.dart';
 import 'quiz_draft_mapper.dart';
@@ -169,8 +170,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
     if (_draftQuestions.length <= 1) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Quiz must contain at least one question.')),
+        SnackBar(content: Text(appText(AppText.quizRequiresOneQuestionSnack))),
       );
       return;
     }
@@ -191,8 +191,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
     if (question.choices.length <= 2) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Each question needs at least two answer choices.')),
+        SnackBar(
+            content: Text(appText(AppText.questionRequiresTwoChoicesSnack))),
       );
       return;
     }
@@ -317,7 +317,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       await _logout();
       if (!mounted) return false;
       setState(() {
-        _error = 'Session expired. Please login again.';
+        _error = appText(AppText.sessionExpiredLoginAgainError);
       });
       _appendEvent('Refresh token expired, teacher logged out.');
       return false;
@@ -486,12 +486,12 @@ class _TeacherPanelState extends State<TeacherPanel> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Teacher registered. Now login.')),
+          SnackBar(content: Text(appText(AppText.teacherRegisteredSnack))),
         );
       }
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = userErrorText(e);
       });
     } finally {
       setState(() {
@@ -522,7 +522,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       await _refreshQuizzes();
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = userErrorText(e);
       });
     } finally {
       setState(() {
@@ -540,7 +540,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       });
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = userErrorText(e);
       });
     }
   }
@@ -548,7 +548,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _refreshQuizzes({int? selectQuizId}) async {
     if (!_isLoggedIn) {
       setState(() {
-        _error = 'Login required for teacher API.';
+        _error = appText(AppText.teacherLoginRequiredError);
       });
       return;
     }
@@ -579,7 +579,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = userErrorText(e);
         });
       }
     } finally {
@@ -594,7 +594,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _saveQuizDraft() async {
     if (!_isLoggedIn) {
       setState(() {
-        _error = 'Login required for teacher API.';
+        _error = appText(AppText.teacherLoginRequiredError);
       });
       return;
     }
@@ -628,8 +628,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
           SnackBar(
             content: Text(
               editingQuizId == null
-                  ? 'Quiz created successfully.'
-                  : 'Quiz updated successfully.',
+                  ? appText(AppText.quizCreatedNextStepSnack)
+                  : appText(AppText.quizUpdatedSnack),
             ),
           ),
         );
@@ -641,11 +641,11 @@ class _TeacherPanelState extends State<TeacherPanel> {
       );
     } on FormatException catch (e) {
       setState(() {
-        _error = e.message;
+        _error = userErrorText(e);
       });
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = userErrorText(e);
       });
     } finally {
       if (mounted) {
@@ -662,23 +662,25 @@ class _TeacherPanelState extends State<TeacherPanel> {
       return;
     }
 
-    final quizTitle =
-        _quizById(quizId)?['title']?.toString() ?? 'selected quiz';
+    final quizTitle = _quizById(quizId)?['title']?.toString() ??
+        appText(AppText.untitledQuiz);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Delete quiz?'),
-          content: Text(
-              'Delete "$quizTitle" permanently? This action cannot be undone.'),
+          title: Text(appText(AppText.deleteQuizDialogTitle)),
+          content: Text(appText(
+            AppText.deleteQuizDialogBody,
+            args: {'title': quizTitle},
+          )),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
+              child: Text(appText(AppText.cancelButton)),
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Delete'),
+              child: Text(appText(AppText.deleteButton)),
             ),
           ],
         );
@@ -704,7 +706,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       _appendEvent('Quiz #$quizId deleted.');
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = userErrorText(e);
       });
     } finally {
       if (mounted) {
@@ -736,7 +738,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       await _connectSessionSocket(session['id'] as int);
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = userErrorText(e);
       });
     } finally {
       setState(() {
@@ -759,7 +761,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       await _connectSessionSocket(_session!['id'] as int);
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = userErrorText(e);
       });
     }
   }
@@ -792,7 +794,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       _appendEvent('Teacher moved to next question.');
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = userErrorText(e);
       });
     }
   }
@@ -808,7 +810,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       _appendEvent('Teacher revealed answers.');
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = userErrorText(e);
       });
     }
   }
@@ -827,7 +829,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       _appendEvent('Session finished by teacher.');
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = userErrorText(e);
       });
     }
   }
@@ -843,11 +845,11 @@ class _TeacherPanelState extends State<TeacherPanel> {
         context: context,
         builder: (context) {
           return AlertDialog(
-            title: const Text('Leaderboard'),
+            title: Text(appText(AppText.leaderboardTitle)),
             content: SizedBox(
               width: 420,
               child: rows.isEmpty
-                  ? const Text('No results yet.')
+                  ? Text(appText(AppText.leaderboardNoResults))
                   : ListView.builder(
                       shrinkWrap: true,
                       itemCount: rows.length,
@@ -859,8 +861,13 @@ class _TeacherPanelState extends State<TeacherPanel> {
                           leading: Text('#${index + 1}'),
                           title: Text('${row['participant_name']}'),
                           subtitle: Text('${row['phone']}'),
-                          trailing: Text(
-                              'Pts: ${row['points']} | Correct: ${row['correct_answers']}'),
+                          trailing: Text(appText(
+                            AppText.leaderboardStats,
+                            args: {
+                              'points': row['points'],
+                              'correct': row['correct_answers'],
+                            },
+                          )),
                         );
                       },
                     ),
@@ -868,7 +875,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Close'),
+                child: Text(appText(AppText.leaderboardCloseButton)),
               ),
             ],
           );
@@ -876,7 +883,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       );
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = userErrorText(e);
       });
     }
   }
@@ -908,7 +915,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _error = userErrorText(e);
       });
     } finally {
       if (mounted) {
