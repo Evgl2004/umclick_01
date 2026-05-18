@@ -121,9 +121,9 @@ class TeacherQuizQuestionCard extends StatelessWidget {
                 }).toList(),
               ),
             ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
                 onPressed: loading ? null : onAddChoice,
                 icon: const Icon(Icons.add),
                 label: Text(appText(AppText.addChoiceButton)),

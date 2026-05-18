@@ -120,7 +120,11 @@ class _TeacherQuizBuilderCardState extends State<TeacherQuizBuilderCard> {
   }
 
   void _addChoiceAndRefresh(QuizDraftQuestion question) {
+    final choicesBefore = question.choices.length;
     widget.onAddChoice(question);
+    if (question.choices.length == choicesBefore) {
+      question.choices.add(QuizDraftChoice());
+    }
     if (!mounted) return;
     setState(() {});
   }

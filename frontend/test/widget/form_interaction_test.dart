@@ -384,9 +384,7 @@ void main() {
           onRemoveQuestion: (_) {},
           onSetCorrectChoice: (_, __) {},
           onRemoveChoice: (_, __) {},
-          onAddChoice: (question) {
-            question.choices.add(QuizDraftChoice());
-          },
+          onAddChoice: (_) {},
           onAddQuestion: () {},
         ),
       );
