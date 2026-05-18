@@ -349,6 +349,59 @@ void main() {
       expect(find.byType(TeacherQuizQuestionCard), findsOneWidget);
       expect(find.text('Question 2'), findsNWidgets(2));
     });
+
+    testWidgets('adds an answer choice in the active question', (tester) async {
+      final titleController = TextEditingController(text: 'Chemistry warmup');
+      final descriptionController = TextEditingController();
+      final questions = [
+        QuizDraftQuestion(text: 'Which gas supports burning?'),
+      ];
+      addTearDown(titleController.dispose);
+      addTearDown(descriptionController.dispose);
+      addTearDown(() {
+        for (final question in questions) {
+          question.dispose();
+        }
+      });
+
+      await pumpCard(
+        tester,
+        TeacherQuizBuilderCard(
+          quizzes: const [],
+          selectedQuizId: null,
+          editingQuizId: null,
+          loading: false,
+          isLoggedIn: true,
+          titleController: titleController,
+          descriptionController: descriptionController,
+          questions: questions,
+          onSelectedQuizChanged: (_) {},
+          onLoadSelectedQuiz: () {},
+          onSaveQuiz: () {},
+          onResetDraft: () {},
+          onRefreshQuizzes: () {},
+          onDeleteSelectedQuiz: () {},
+          onRemoveQuestion: (_) {},
+          onSetCorrectChoice: (_, __) {},
+          onRemoveChoice: (_, __) {},
+          onAddChoice: (question) {
+            question.choices.add(QuizDraftChoice());
+          },
+          onAddQuestion: () {},
+        ),
+      );
+
+      expect(questions.first.choices.length, 2);
+      expect(find.text('Choice 3'), findsNothing);
+
+      await tester.ensureVisible(find.text('Add choice'));
+      await tester.pump();
+      await tester.tap(find.text('Add choice'));
+      await tester.pump();
+
+      expect(questions.first.choices.length, 3);
+      expect(find.text('Choice 3'), findsOneWidget);
+    });
   });
 
   group('ParticipantProfileCard', () {

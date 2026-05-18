@@ -101,6 +101,30 @@ class _TeacherQuizBuilderCardState extends State<TeacherQuizBuilderCard> {
     });
   }
 
+  void _setCorrectChoiceAndRefresh(
+    QuizDraftQuestion question,
+    int choiceIndex,
+  ) {
+    widget.onSetCorrectChoice(question, choiceIndex);
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  void _removeChoiceAndRefresh(
+    QuizDraftQuestion question,
+    int choiceIndex,
+  ) {
+    widget.onRemoveChoice(question, choiceIndex);
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  void _addChoiceAndRefresh(QuizDraftQuestion question) {
+    widget.onAddChoice(question);
+    if (!mounted) return;
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final canUseTeacherApi = !widget.loading && widget.isLoggedIn;
@@ -155,9 +179,9 @@ class _TeacherQuizBuilderCardState extends State<TeacherQuizBuilderCard> {
                 questionIndex: activeQuestionIndex,
                 loading: widget.loading,
                 onRemoveQuestion: _removeQuestionAndKeepContext,
-                onSetCorrectChoice: widget.onSetCorrectChoice,
-                onRemoveChoice: widget.onRemoveChoice,
-                onAddChoice: widget.onAddChoice,
+                onSetCorrectChoice: _setCorrectChoiceAndRefresh,
+                onRemoveChoice: _removeChoiceAndRefresh,
+                onAddChoice: _addChoiceAndRefresh,
               );
 
               if (compact) {
