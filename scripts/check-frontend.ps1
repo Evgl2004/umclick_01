@@ -57,7 +57,7 @@ try {
 
     if (-not $SkipBuild) {
         Write-Host "Building Flutter Web..."
-        & $Flutter build web
+        & $Flutter build web --pwa-strategy=none
     }
 }
 finally {

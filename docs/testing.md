@@ -17,8 +17,12 @@ flutter pub get
 dart format --set-exit-if-changed .
 flutter analyze
 flutter test
-flutter build web
+flutter build web --pwa-strategy=none
 ```
+
+The local helper script uses `--pwa-strategy=none` for the demo build. This keeps
+the public review stand from serving an outdated Flutter service worker cache
+after a quick frontend redeploy.
 
 ## Backend
 
