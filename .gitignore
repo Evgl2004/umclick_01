@@ -19,6 +19,7 @@ backend/staticfiles/
 .packages
 .pub/
 build/
+frontend-web.zip
 .flutter-plugins
 .flutter-plugins-dependencies
 
