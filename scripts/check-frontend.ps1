@@ -1,5 +1,6 @@
 param(
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [string]$BuildLabel = ""
 )
 
 Set-StrictMode -Version Latest
@@ -40,6 +41,18 @@ function Resolve-Dart([string]$FlutterPath) {
 
 $Flutter = Resolve-Flutter
 $Dart = Resolve-Dart $Flutter
+if ([string]::IsNullOrWhiteSpace($BuildLabel)) {
+    try {
+        $BuildLabel = (& git -C $RepoRoot rev-parse --short HEAD).Trim()
+    }
+    catch {
+        $BuildLabel = ""
+    }
+
+    if ([string]::IsNullOrWhiteSpace($BuildLabel)) {
+        $BuildLabel = "local"
+    }
+}
 
 Push-Location $FrontendDir
 try {
@@ -56,8 +69,8 @@ try {
     & $Flutter test
 
     if (-not $SkipBuild) {
-        Write-Host "Building Flutter Web..."
-        & $Flutter build web --pwa-strategy=none
+        Write-Host "Building Flutter Web with label $BuildLabel..."
+        & $Flutter build web --pwa-strategy=none --dart-define "UMCLICK_BUILD_LABEL=$BuildLabel"
     }
 }
 finally {

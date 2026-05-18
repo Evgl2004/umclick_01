@@ -125,7 +125,7 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(appText(AppText.appTitle)),
+        title: const _AppTitleWithBuildLabel(),
         actions: const [
           Padding(
             padding: EdgeInsets.only(right: 12),
@@ -152,6 +152,38 @@ class _HomePageState extends State<HomePage> {
           });
         },
       ),
+    );
+  }
+}
+
+class _AppTitleWithBuildLabel extends StatelessWidget {
+  const _AppTitleWithBuildLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 10,
+      children: [
+        Text(appText(AppText.appTitle)),
+        Tooltip(
+          message: 'Build: $buildLabel',
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              buildLabel,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -2,6 +2,10 @@ const localDevApiBaseUrl = 'http://localhost:8000/api';
 const sameOriginApiBaseUrl = '/api';
 const defaultPrivacyPolicyVersion = '2026-03';
 const defaultPersonalDataConsentVersion = '2026-03';
+const buildLabel = String.fromEnvironment(
+  'UMCLICK_BUILD_LABEL',
+  defaultValue: 'local',
+);
 
 const prefsAccessTokenKey = 'umclick_teacher_access_token';
 const prefsRefreshTokenKey = 'umclick_teacher_refresh_token';

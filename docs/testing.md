@@ -17,12 +17,14 @@ flutter pub get
 dart format --set-exit-if-changed .
 flutter analyze
 flutter test
-flutter build web --pwa-strategy=none
+flutter build web --pwa-strategy=none --dart-define UMCLICK_BUILD_LABEL=<commit-or-build-id>
 ```
 
 The local helper script uses `--pwa-strategy=none` for the demo build. This keeps
 the public review stand from serving an outdated Flutter service worker cache
-after a quick frontend redeploy.
+after a quick frontend redeploy. It also passes `UMCLICK_BUILD_LABEL` from the
+current Git commit by default, so the app header shows which frontend build is
+actually open in the browser.
 
 ## Backend
 
