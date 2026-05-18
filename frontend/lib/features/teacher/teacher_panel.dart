@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../api/api_client.dart';
 import '../../core/app_config.dart';
 import '../../core/countdown_ticker.dart';
+import '../../core/csv_download.dart';
 import '../../core/live_event_log.dart';
 import '../../core/live_socket_connection.dart';
 import '../../core/value_utils.dart';
@@ -879,13 +880,42 @@ class _TeacherPanelState extends State<TeacherPanel> {
     }
   }
 
-  void _showExportUrlSnack(String exportUrl) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content:
-            Text(appText(AppText.exportUrlSnack, args: {'url': exportUrl})),
-      ),
-    );
+  Future<void> _exportCsv() async {
+    final session = _session;
+    if (session == null) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final sessionId = session['id'] as int;
+      final pin = session['pin']?.toString() ?? sessionId.toString();
+      final csv = await _runTeacherRequest(
+          (client) => client.exportSessionResultsCsv(sessionId));
+
+      await downloadCsvFile(
+        filename: 'umclick_session_${pin}_results.csv',
+        content: csv,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(appText(AppText.exportDownloadedSnack))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
   }
 
   Future<void> _logout() async {
@@ -983,7 +1013,6 @@ class _TeacherPanelState extends State<TeacherPanel> {
             const SizedBox(height: 20),
             TeacherLiveSessionCard(
               session: _session!,
-              apiBaseUrl: _apiController.text,
               wsConnected: _wsConnected,
               activeQuestion: _activeQuestion,
               questionTimeLeftLabel: _questionTimeLeftLabel,
@@ -994,7 +1023,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
               onRevealAnswers: _revealAnswers,
               onFinish: _finishSession,
               onShowLeaderboard: _showLeaderboard,
-              onExportCsv: _showExportUrlSnack,
+              onExportCsv: _exportCsv,
             ),
             const SizedBox(height: 12),
             TeacherLiveEventsCard(events: _events),

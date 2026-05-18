@@ -11,6 +11,8 @@ backend/staticfiles/
 
 # Env
 .env
+.env.demo
+.env.production
 
 # Flutter / Dart
 .dart_tool/

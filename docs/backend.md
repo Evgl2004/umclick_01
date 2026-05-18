@@ -139,6 +139,27 @@ Endpoint:
 
 WebSocket слой не должен сам принимать бизнес-решения. Он передает состояние, подготовленное backend helpers.
 
+## Runtime
+
+Для локальной разработки backend может запускаться через Django `runserver`.
+
+Для демо-стенда и серверного запуска используется ASGI-сервер `daphne`:
+
+```bash
+python -m daphne -b 0.0.0.0 -p 8000 umclick.asgi:application
+```
+
+Это важно, потому что live-flow использует WebSocket через Django Channels.
+
+## CORS
+
+CORS управляется environment variables:
+
+- `CORS_ALLOW_ALL_ORIGINS` - разрешить все origins, удобно только для локальной разработки;
+- `CORS_ALLOWED_ORIGINS` - список разрешённых origins через запятую.
+
+Если `CORS_ALLOW_ALL_ORIGINS` не задан, значение зависит от `DJANGO_DEBUG`: в debug режиме CORS открыт, в server/demo режиме закрыт.
+
 ## Scoring
 
 Scoring находится в `apps.session.serializers.score_for_answer`.

@@ -61,16 +61,20 @@ Entry point helpers:
 - participant join;
 - submit answer;
 - leaderboard;
+- CSV export результатов;
 - legal metadata;
 - WebSocket URL generation.
 
 Если backend endpoint меняется, сначала обновляем `ApiClient`, затем feature layer.
+
+`ApiClient` поддерживает абсолютный API URL для локальной разработки и относительный `/api` для серверного same-origin развёртывания через nginx.
 
 ## `lib/core`
 
 Общие технические helpers:
 
 - `app_config.dart` - constants и default URLs.
+- `csv_download.dart` - условная web-реализация скачивания CSV-файла.
 - `value_utils.dart` - безопасный разбор map/int/datetime, форматирование времени.
 - `countdown_ticker.dart` - общий countdown timer.
 - `live_event_log.dart` - форматирование и ограничение event log.

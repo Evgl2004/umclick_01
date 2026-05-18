@@ -68,6 +68,7 @@ enum AppText {
   leaderboardButton,
   exportCsvButton,
   exportUrlSnack,
+  exportDownloadedSnack,
   revealResultsTitle,
   totalAnswers,
   pointsAwarded,
@@ -311,6 +312,10 @@ const _strings = <AppText, LocalizedString>{
   AppText.exportCsvButton: LocalizedString(ru: 'Экспорт CSV', en: 'Export CSV'),
   AppText.exportUrlSnack:
       LocalizedString(ru: 'Ссылка экспорта: {url}', en: 'Export URL: {url}'),
+  AppText.exportDownloadedSnack: LocalizedString(
+    ru: 'CSV-файл с результатами скачан.',
+    en: 'CSV results file downloaded.',
+  ),
   AppText.revealResultsTitle:
       LocalizedString(ru: 'Результаты раунда', en: 'Round results'),
   AppText.totalAnswers: LocalizedString(

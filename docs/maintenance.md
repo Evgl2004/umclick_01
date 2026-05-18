@@ -30,6 +30,8 @@
 | `docs/backend.md` | Меняются backend apps, models, endpoints, tests, migrations |
 | `docs/frontend.md` | Меняются frontend modules, widgets, state, localization, tests |
 | `docs/live-flow.md` | Меняется игровой сценарий, WebSocket events, session lifecycle |
+| `docs/deployment.md` | Меняется серверный запуск, Docker Compose, nginx, переменные стенда |
+| `docs/reviewer-guide.md` | Меняется путь пользователя при проверке MVP |
 | `docs/testing.md` | Меняются команды проверок или тестовое покрытие |
 | `docs/viewing.md` | Меняется способ просмотра UI |
 | `docs/roadmap.md` | Меняется статус проекта или ближайшие шаги |
@@ -112,6 +114,7 @@ Frontend:
 - Django settings;
 - PostgreSQL;
 - Redis/Celery;
+- CORS;
 - legal metadata;
 - teacher signup restriction.
 

@@ -23,7 +23,29 @@ class ApiClient {
   final String baseUrl;
   final String? accessToken;
 
-  Uri _uri(String path) => Uri.parse('$baseUrl$path');
+  Uri _resolveBaseUri() {
+    final trimmedBaseUrl = baseUrl.trim();
+    if (trimmedBaseUrl.startsWith('http://') ||
+        trimmedBaseUrl.startsWith('https://')) {
+      return Uri.parse(trimmedBaseUrl);
+    }
+
+    final currentUri = Uri.base;
+    final normalizedRelativeBase =
+        trimmedBaseUrl.startsWith('/') ? trimmedBaseUrl : '/$trimmedBaseUrl';
+    if ((currentUri.scheme == 'http' || currentUri.scheme == 'https') &&
+        currentUri.host.isNotEmpty) {
+      return currentUri.resolve(normalizedRelativeBase);
+    }
+
+    return Uri.parse('http://localhost:8000$normalizedRelativeBase');
+  }
+
+  Uri _uri(String path) {
+    final base = _resolveBaseUri().toString().replaceFirst(RegExp(r'/*$'), '');
+    final normalizedPath = path.startsWith('/') ? path : '/$path';
+    return Uri.parse('$base$normalizedPath');
+  }
 
   Map<String, String> _headers({bool jsonBody = false, bool auth = false}) {
     final headers = <String, String>{};
@@ -45,7 +67,7 @@ class ApiClient {
   }
 
   String sessionWebSocketUrl(int sessionId) {
-    final apiUri = Uri.parse(baseUrl);
+    final apiUri = _resolveBaseUri();
     final scheme = apiUri.scheme == 'https' ? 'wss' : 'ws';
     final portPart = apiUri.hasPort ? ':${apiUri.port}' : '';
     return '$scheme://${apiUri.host}$portPart/ws/sessions/$sessionId/';
@@ -236,6 +258,17 @@ class ApiClient {
       _throwError(response, 'Failed to load leaderboard');
     }
     return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  Future<String> exportSessionResultsCsv(int sessionId) async {
+    final response = await http.get(
+      _uri('/sessions/$sessionId/results/export/'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode >= 400) {
+      _throwError(response, 'Failed to export session results');
+    }
+    return utf8.decode(response.bodyBytes);
   }
 
   Future<Map<String, dynamic>> getCurrentLegalDocuments() async {

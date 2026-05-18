@@ -291,6 +291,8 @@ CSV columns:
 participant_name,phone,points,correct_answers
 ```
 
+Во frontend кнопка `Экспорт CSV` делает authenticated запрос через `ApiClient` и запускает скачивание файла в браузере. Это важно: endpoint требует JWT преподавателя, поэтому простая публичная ссылка на CSV не подходит.
+
 ## Нетиповые сценарии, которые покрыты тестами
 
 - teacher API без авторизации;

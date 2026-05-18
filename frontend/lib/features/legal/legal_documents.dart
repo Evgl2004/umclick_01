@@ -125,13 +125,13 @@ class PublicLegalDocumentPage extends StatefulWidget {
     super.key,
     required this.documentType,
     this.initialDocuments,
-    this.apiBaseUrl = defaultApiBaseUrl,
+    this.apiBaseUrl,
     this.appHomeBuilder,
   });
 
   final PublicLegalDocumentType documentType;
   final Map<String, dynamic>? initialDocuments;
-  final String apiBaseUrl;
+  final String? apiBaseUrl;
   final WidgetBuilder? appHomeBuilder;
 
   @override
@@ -250,8 +250,8 @@ class _PublicLegalDocumentPageState extends State<PublicLegalDocumentPage> {
     });
 
     try {
-      final docs =
-          await ApiClient(widget.apiBaseUrl).getCurrentLegalDocuments();
+      final docs = await ApiClient(widget.apiBaseUrl ?? defaultApiBaseUrl)
+          .getCurrentLegalDocuments();
       if (!mounted) return;
       setState(() {
         _documents = docs;

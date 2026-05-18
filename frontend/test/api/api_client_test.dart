@@ -20,5 +20,15 @@ void main() {
         'wss://umclick.example/ws/sessions/7/',
       );
     });
+
+    test('builds local fallback websocket URL from relative API URL in tests',
+        () {
+      final client = ApiClient('/api');
+
+      expect(
+        client.sessionWebSocketUrl(7),
+        'ws://localhost:8000/ws/sessions/7/',
+      );
+    });
   });
 }

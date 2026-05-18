@@ -89,6 +89,18 @@ C:\Users\admin_eas\flutter\bin\flutter.bat run -d chrome --web-port 3000
 
 Полная инструкция: `docs/viewing.md`.
 
+## Демо-стенд для проверки
+
+Для пользовательской проверки подготовлена отдельная server-схема:
+
+- `deploy/docker-compose.demo.yml` - PostgreSQL, Redis, Django ASGI, Celery и nginx;
+- `deploy/nginx.demo.conf` - отдача Flutter Web, proxy `/api/` и `/ws/`;
+- `.env.demo.example` - пример переменных окружения для стенда.
+
+Техническая инструкция: `docs/deployment.md`.
+
+Сценарий для проверяющего пользователя: `docs/reviewer-guide.md`.
+
 ## Документация
 
 | Документ | Назначение |
@@ -98,6 +110,8 @@ C:\Users\admin_eas\flutter\bin\flutter.bat run -d chrome --web-port 3000
 | `docs/frontend.md` | Flutter структура, features, widgets, state, tests |
 | `docs/live-flow.md` | Полный игровой сценарий teacher/participant |
 | `docs/maintenance.md` | Правила поддержки проекта и документации |
+| `docs/deployment.md` | Как развернуть демо-стенд на сервере |
+| `docs/reviewer-guide.md` | Пошаговая инструкция для проверяющего пользователя |
 | `docs/testing.md` | Локальные проверки и текущая тестовая стратегия |
 | `docs/viewing.md` | Как смотреть реализованные экраны |
 | `docs/roadmap.md` | Дорожная карта и статус работ |
@@ -108,6 +122,7 @@ C:\Users\admin_eas\flutter\bin\flutter.bat run -d chrome --web-port 3000
 backend/          Django API, WebSocket, Celery
 frontend/         Flutter Web client
 docs/             Project documentation
+deploy/           Demo deployment compose and nginx config
 scripts/          Local Windows quality-gate scripts
 infra/            Infrastructure notes/placeholders
 docker-compose.yml

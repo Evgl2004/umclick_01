@@ -108,7 +108,18 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-CORS_ALLOW_ALL_ORIGINS = True
+cors_allow_all_raw = os.getenv("CORS_ALLOW_ALL_ORIGINS")
+if cors_allow_all_raw is None:
+    CORS_ALLOW_ALL_ORIGINS = DEBUG
+else:
+    CORS_ALLOW_ALL_ORIGINS = cors_allow_all_raw.lower() == "true"
+
+cors_allowed_origins_raw = os.getenv("CORS_ALLOWED_ORIGINS", "")
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in cors_allowed_origins_raw.split(",")
+    if origin.strip()
+]
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

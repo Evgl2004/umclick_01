@@ -9,7 +9,6 @@ class TeacherLiveSessionCard extends StatelessWidget {
   const TeacherLiveSessionCard({
     super.key,
     required this.session,
-    required this.apiBaseUrl,
     required this.wsConnected,
     required this.activeQuestion,
     required this.questionTimeLeftLabel,
@@ -24,7 +23,6 @@ class TeacherLiveSessionCard extends StatelessWidget {
   });
 
   final Map<String, dynamic> session;
-  final String apiBaseUrl;
   final bool wsConnected;
   final Map<String, dynamic>? activeQuestion;
   final String questionTimeLeftLabel;
@@ -35,12 +33,11 @@ class TeacherLiveSessionCard extends StatelessWidget {
   final VoidCallback onRevealAnswers;
   final VoidCallback onFinish;
   final VoidCallback onShowLeaderboard;
-  final ValueChanged<String> onExportCsv;
+  final VoidCallback onExportCsv;
 
   @override
   Widget build(BuildContext context) {
     final joinUrl = session['join_url'] as String;
-    final exportUrl = '$apiBaseUrl/sessions/${session['id']}/results/export/';
 
     return Container(
       width: double.infinity,
@@ -83,7 +80,7 @@ class TeacherLiveSessionCard extends StatelessWidget {
             onRevealAnswers: onRevealAnswers,
             onFinish: onFinish,
             onShowLeaderboard: onShowLeaderboard,
-            onExportCsv: () => onExportCsv(exportUrl),
+            onExportCsv: onExportCsv,
           ),
           if (revealPayload != null) ...[
             const SizedBox(height: 16),
