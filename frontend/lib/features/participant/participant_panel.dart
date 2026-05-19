@@ -74,6 +74,43 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     return pin.isEmpty ? null : pin;
   }
 
+  String? _joinFormErrorText() {
+    if (_activeJoinToken == null && _activePin == null) {
+      return appText(AppText.participantJoinTargetRequired);
+    }
+    if (_nameController.text.trim().isEmpty) {
+      return appText(AppText.participantNameRequiredError);
+    }
+    if (_phoneController.text.trim().isEmpty) {
+      return appText(AppText.participantPhoneRequiredError);
+    }
+    if (!_consent) {
+      return appText(AppText.participantConsentRequiredError);
+    }
+    return null;
+  }
+
+  bool _shouldShowManualPinFallback(Object error) {
+    if (!_useJoinTokenFromLink) {
+      return false;
+    }
+    if (error is StateError) {
+      return true;
+    }
+    if (error is! ApiException) {
+      return false;
+    }
+    if (error.statusCode == 404) {
+      return true;
+    }
+
+    final body = error.body.toLowerCase();
+    return body.contains('not found') ||
+        body.contains('expired') ||
+        body.contains('finished') ||
+        body.contains('closed');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -377,6 +414,14 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   }
 
   Future<void> _join() async {
+    final validationError = _joinFormErrorText();
+    if (validationError != null) {
+      setState(() {
+        _error = validationError;
+      });
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
@@ -430,7 +475,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
       await _connectSocket(payload['session_id'] as int);
     } catch (e) {
       setState(() {
-        final fallbackHint = _useJoinTokenFromLink
+        final fallbackHint = _shouldShowManualPinFallback(e)
             ? appText(AppText.participantManualPinFallbackHint)
             : '';
         _error = '${userErrorText(e)}$fallbackHint';

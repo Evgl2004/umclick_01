@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../api/api_client.dart';
 import '../l10n/app_strings.dart';
 
@@ -15,6 +17,13 @@ String userErrorText(Object error) {
 }
 
 String _apiExceptionText(ApiException error) {
+  if (error.message == 'Failed to join session') {
+    final validationText = _joinValidationText(error);
+    if (validationText != null) {
+      return validationText;
+    }
+  }
+
   return switch (error.message) {
     'Failed to register teacher' => appText(AppText.apiRegisterTeacherFailed),
     'Failed to login' => appText(AppText.apiLoginFailed),
@@ -40,6 +49,55 @@ String _apiExceptionText(ApiException error) {
     'Failed to submit answer' => appText(AppText.apiSubmitAnswerFailed),
     _ => _rawErrorText(error.message),
   };
+}
+
+String? _joinValidationText(ApiException error) {
+  if (error.statusCode != 400) {
+    return null;
+  }
+
+  final body = _decodeErrorBody(error.body);
+  if (body == null) {
+    return null;
+  }
+
+  if (_hasFieldError(body, 'name')) {
+    return appText(AppText.participantNameRequiredError);
+  }
+  if (_hasFieldError(body, 'phone')) {
+    return appText(AppText.participantPhoneRequiredError);
+  }
+  if (_hasFieldError(body, 'consent')) {
+    return appText(AppText.participantConsentRequiredError);
+  }
+
+  return null;
+}
+
+Map<String, dynamic>? _decodeErrorBody(String body) {
+  try {
+    final decoded = jsonDecode(body);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+  } on FormatException {
+    return null;
+  }
+  return null;
+}
+
+bool _hasFieldError(Map<String, dynamic> body, String field) {
+  final value = body[field];
+  if (value == null) {
+    return false;
+  }
+  if (value is List) {
+    return value.isNotEmpty;
+  }
+  if (value is Map) {
+    return value.isNotEmpty;
+  }
+  return value.toString().trim().isNotEmpty;
 }
 
 String _formatExceptionText(FormatException error) {

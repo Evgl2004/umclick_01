@@ -196,6 +196,9 @@ enum AppText {
   quizValidationTwoChoices,
   quizValidationOneCorrectChoice,
   participantJoinTargetRequired,
+  participantNameRequiredError,
+  participantPhoneRequiredError,
+  participantConsentRequiredError,
   participantManualPinFallbackHint,
   participantSessionUnavailable,
   apiRegisterTeacherFailed,
@@ -796,6 +799,18 @@ const _strings = <AppText, LocalizedString>{
   AppText.participantJoinTargetRequired: LocalizedString(
     ru: 'Введите PIN или откройте QR-ссылку для подключения.',
     en: 'Enter a PIN or open a tokenized join link first.',
+  ),
+  AppText.participantNameRequiredError: LocalizedString(
+    ru: 'Введите имя участника.',
+    en: 'Enter participant name.',
+  ),
+  AppText.participantPhoneRequiredError: LocalizedString(
+    ru: 'Введите телефон участника.',
+    en: 'Enter participant phone.',
+  ),
+  AppText.participantConsentRequiredError: LocalizedString(
+    ru: 'Подтвердите согласие на обработку персональных данных.',
+    en: 'Confirm personal data consent.',
   ),
   AppText.participantManualPinFallbackHint: LocalizedString(
     ru: '\nЕсли QR-ссылка устарела, переключитесь на ручной ввод PIN.',
