@@ -288,9 +288,6 @@ class SubmitAnswerSerializer(serializers.Serializer):
         if question_ends_at and now > question_ends_at:
             raise serializers.ValidationError("Time is over for this question.")
 
-        if ParticipantAnswer.objects.filter(session_participant=session_participant, question=question).exists():
-            raise serializers.ValidationError("Answer for this question has already been submitted.")
-
         elapsed_ms = int(max(0, (now - session.question_started_at).total_seconds() * 1000))
 
         attrs["session_participant"] = session_participant
@@ -307,13 +304,16 @@ class SubmitAnswerSerializer(serializers.Serializer):
 
         points = score_for_answer(question, elapsed_ms, choice.is_correct)
 
-        answer = ParticipantAnswer.objects.create(
+        answer, _ = ParticipantAnswer.objects.update_or_create(
             session_participant=session_participant,
             question=question,
-            choice=choice,
-            is_correct=choice.is_correct,
-            score_points=points,
-            elapsed_ms=elapsed_ms,
+            defaults={
+                "choice": choice,
+                "is_correct": choice.is_correct,
+                "score_points": points,
+                "elapsed_ms": elapsed_ms,
+                "answered_at": timezone.now(),
+            },
         )
 
         total_points = (

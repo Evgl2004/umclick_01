@@ -9,6 +9,7 @@ from rest_framework.test import APITestCase
 from apps.quiz.models import Choice, Question, Quiz
 from apps.session.flow import start_answering_for_current_question
 from apps.session.models import LiveSession, Participant, ParticipantAnswer, SessionParticipant
+from apps.session.realtime import build_answer_reveal_payload
 from apps.session.serializers import build_leaderboard
 
 
@@ -220,8 +221,8 @@ class SessionApiFlowTests(APITestCase):
         self.assertEqual(build_leaderboard(session)[0]["phone"], "")
 
     @override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
-    def test_live_answer_scores_once_and_blocks_duplicates(self):
-        session, question, correct_choice, _ = self.create_session()
+    def test_live_answer_can_be_changed_before_reveal(self):
+        session, question, correct_choice, wrong_choice = self.create_session()
         self.authenticate_teacher()
 
         start_response = self.client.post(f"/api/sessions/{session.id}/start/")
@@ -251,14 +252,25 @@ class SessionApiFlowTests(APITestCase):
         }
 
         first_answer = self.client.post("/api/sessions/answer/", answer_payload, format="json")
-        second_answer = self.client.post("/api/sessions/answer/", answer_payload, format="json")
+        changed_payload = {**answer_payload, "choice_id": wrong_choice.id}
+        second_answer = self.client.post("/api/sessions/answer/", changed_payload, format="json")
 
         self.assertEqual(join_response.status_code, status.HTTP_200_OK)
         self.assertEqual(first_answer.status_code, status.HTTP_200_OK)
         self.assertTrue(first_answer.data["is_correct"])
         self.assertGreater(first_answer.data["score_points"], 0)
-        self.assertEqual(second_answer.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("already been submitted", str(second_answer.data))
+        self.assertEqual(second_answer.status_code, status.HTTP_200_OK)
+        self.assertFalse(second_answer.data["is_correct"])
+        self.assertEqual(second_answer.data["score_points"], 0)
+        self.assertEqual(ParticipantAnswer.objects.count(), 1)
+        self.assertEqual(ParticipantAnswer.objects.get().choice_id, wrong_choice.id)
+
+        reveal_payload = build_answer_reveal_payload(session)
+        reveal_by_choice = {choice["id"]: choice for choice in reveal_payload["choices"]}
+        self.assertEqual(reveal_by_choice[correct_choice.id]["answers_count"], 0)
+        self.assertEqual(reveal_by_choice[correct_choice.id]["answers_percent"], 0)
+        self.assertEqual(reveal_by_choice[wrong_choice.id]["answers_count"], 1)
+        self.assertEqual(reveal_by_choice[wrong_choice.id]["answers_percent"], 100)
 
     def test_late_answer_is_rejected_after_question_deadline(self):
         session, question, correct_choice, _ = self.create_session(status_value=LiveSession.STATUS_LIVE)

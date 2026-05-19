@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/value_utils.dart';
+import '../../../l10n/app_language.dart';
 import '../../../l10n/app_strings.dart';
 
 class ParticipantRoundMessage extends StatelessWidget {
@@ -73,18 +74,26 @@ class ParticipantRevealResultsCard extends StatelessWidget {
               .map((rawChoice) {
             final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
             final isCorrect = choice['is_correct'] == true;
+            final votes = asInt(choice['answers_count']);
+            final percent = asInt(choice['answers_percent']);
             return ListTile(
               dense: true,
               leading:
                   Icon(isCorrect ? Icons.check_circle : Icons.circle_outlined),
-              title: Text('${choice['text']}'),
-              trailing: Text(appText(
-                AppText.choiceStats,
-                args: {
-                  'votes': choice['answers_count'] ?? 0,
-                  'points': choice['points_awarded'] ?? 0,
-                },
-              )),
+              title: Text(
+                (choice['text']?.toString().trim().isNotEmpty ?? false)
+                    ? '${choice['text']}'
+                    : uiText(
+                        ru: 'Вариант ${choice['order'] ?? '-'}',
+                        en: 'Choice ${choice['order'] ?? '-'}',
+                      ),
+              ),
+              trailing: Text(
+                uiText(
+                  ru: '$votes голосов · $percent%',
+                  en: '$votes votes · $percent%',
+                ),
+              ),
             );
           })),
           const SizedBox(height: 12),

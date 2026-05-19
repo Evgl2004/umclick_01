@@ -53,6 +53,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   Map<String, dynamic>? _joinPreview;
   bool _loadingJoinPreview = false;
   bool _syncingSessionState = false;
+  bool _answerSubmitting = false;
   String? _joinTokenFromLink;
   bool _useJoinTokenFromLink = false;
 
@@ -588,12 +589,19 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   Future<void> _answer(int choiceId) async {
     if (_joinPayload == null ||
         _activeQuestion == null ||
-        _questionAnswered ||
+        _answerSubmitting ||
         _sessionPhase != 'answering' ||
         _isQuestionExpired) {
       return;
     }
+    if (_questionAnswered && _selectedChoiceId == choiceId) {
+      return;
+    }
 
+    final hadAnswer = _questionAnswered;
+    setState(() {
+      _answerSubmitting = true;
+    });
     try {
       final response = await _client().submitAnswer(
         sessionParticipantId: _joinPayload!['session_participant_id'] as int,
@@ -608,11 +616,19 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         _selectedChoiceId = choiceId;
       });
 
-      _appendEvent('Answer submitted (+$_lastAnswerPoints pts).');
+      _appendEvent(hadAnswer
+          ? 'Answer changed (+$_lastAnswerPoints pts).'
+          : 'Answer submitted (+$_lastAnswerPoints pts).');
     } catch (e) {
       setState(() {
         _error = userErrorText(e);
       });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _answerSubmitting = false;
+        });
+      }
     }
   }
 
@@ -653,7 +669,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
             ParticipantQuestionCard(
               question: _activeQuestion!,
               onAnswer: _answer,
-              questionLocked: _questionAnswered || _isQuestionExpired,
+              questionLocked: _isQuestionExpired || _revealPayload != null,
               selectedChoiceId: _selectedChoiceId,
               timeLeftLabel: _timeLeftLabel,
               correctChoiceId: _correctChoiceId,

@@ -3,11 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:umclick_frontend/features/participant/widgets/join_connection_card.dart';
 import 'package:umclick_frontend/features/participant/widgets/profile_card.dart';
+import 'package:umclick_frontend/features/participant/widgets/question_card.dart';
 import 'package:umclick_frontend/features/teacher/quiz_draft.dart';
 import 'package:umclick_frontend/features/teacher/widgets/teacher_auth_card.dart';
 import 'package:umclick_frontend/features/teacher/widgets/teacher_live_session_card.dart';
 import 'package:umclick_frontend/features/teacher/widgets/teacher_quiz_builder_card.dart';
 import 'package:umclick_frontend/features/teacher/widgets/teacher_quiz_question_card.dart';
+import 'package:umclick_frontend/features/teacher/widgets/teacher_reveal_results_card.dart';
 import 'package:umclick_frontend/features/teacher/widgets/teacher_session_setup_card.dart';
 import 'package:umclick_frontend/l10n/app_language.dart';
 
@@ -747,6 +749,80 @@ void main() {
             .onPressed,
         isNotNull,
       );
+    });
+  });
+
+  group('ParticipantQuestionCard', () {
+    testWidgets('keeps other answer choices tappable after one answer',
+        (tester) async {
+      final tappedChoices = <int>[];
+
+      await pumpCard(
+        tester,
+        ParticipantQuestionCard(
+          question: const {
+            'id': 1,
+            'text': 'Which gas supports burning?',
+            'text_hidden': false,
+            'time_limit_sec': 20,
+            'choices_text_hidden': false,
+            'choices': [
+              {'id': 11, 'text': 'Oxygen', 'order': 1},
+              {'id': 12, 'text': 'Nitrogen', 'order': 2},
+            ],
+          },
+          onAnswer: tappedChoices.add,
+          questionLocked: false,
+          selectedChoiceId: 11,
+          timeLeftLabel: '00:12',
+          correctChoiceId: null,
+          answerRevealed: false,
+        ),
+      );
+
+      await tester.tap(find.text('Nitrogen'));
+      await tester.pump();
+
+      expect(tappedChoices, [12]);
+    });
+  });
+
+  group('TeacherRevealResultsCard', () {
+    testWidgets('shows votes with percentages for each answer', (tester) async {
+      await pumpCard(
+        tester,
+        TeacherRevealResultsCard(
+          revealPayload: const {
+            'total_answers': 4,
+            'total_points_awarded': 900,
+            'choices': [
+              {
+                'id': 1,
+                'text': 'Oxygen',
+                'order': 1,
+                'is_correct': true,
+                'answers_count': 3,
+                'answers_percent': 75,
+                'points_awarded': 900,
+              },
+              {
+                'id': 2,
+                'text': 'Nitrogen',
+                'order': 2,
+                'is_correct': false,
+                'answers_count': 1,
+                'answers_percent': 25,
+                'points_awarded': 0,
+              },
+            ],
+          },
+        ),
+      );
+
+      expect(find.text('Oxygen'), findsOneWidget);
+      expect(find.textContaining('75%'), findsOneWidget);
+      expect(find.text('Nitrogen'), findsOneWidget);
+      expect(find.textContaining('25%'), findsOneWidget);
     });
   });
 }

@@ -188,15 +188,15 @@ def build_answer_reveal_payload(session: LiveSession, *, for_display: bool = Fal
     by_choice = {item["choice_id"]: item for item in counts}
 
     choices_payload = []
-    total_answers = 0
+    total_answers = sum(int(item.get("total", 0)) for item in by_choice.values())
     total_points_awarded = 0
     show_choices = for_display or session.quiz.show_choices_on_participant
     for index, choice in enumerate(_ordered_choices_for_session(question, session)):
         choice_data = by_choice.get(choice.id, {})
         answers_count = int(choice_data.get("total", 0))
         awarded_points = int(choice_data.get("points_awarded", 0))
+        answers_percent = round((answers_count / total_answers) * 100) if total_answers else 0
 
-        total_answers += answers_count
         total_points_awarded += awarded_points
         choices_payload.append(
             {
@@ -206,6 +206,7 @@ def build_answer_reveal_payload(session: LiveSession, *, for_display: bool = Fal
                 "original_order": choice.order,
                 "is_correct": choice.is_correct,
                 "answers_count": answers_count,
+                "answers_percent": answers_percent,
                 "points_awarded": awarded_points,
             }
         )

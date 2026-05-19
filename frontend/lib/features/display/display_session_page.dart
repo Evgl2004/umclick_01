@@ -637,6 +637,7 @@ class _HistogramRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final votes = asInt(choice['answers_count']);
+    final percent = asInt(choice['answers_percent']);
     final isCorrect = choice['is_correct'] == true;
     final color = isCorrect ? const Color(0xFF22C55E) : _choiceColor(index);
     final fraction = (votes / maxVotes).clamp(0.05, 1.0).toDouble();
@@ -699,15 +700,32 @@ class _HistogramRow extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 16),
-                          Text(
-                            '$votes',
-                            style: Theme.of(context)
-                                .textTheme
-                                .displaySmall
-                                ?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w900,
-                                ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                '$votes',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .displaySmall
+                                    ?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                              ),
+                              Text(
+                                '$percent%',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleLarge
+                                    ?.copyWith(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.86),
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
