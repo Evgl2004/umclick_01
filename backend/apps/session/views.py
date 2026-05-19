@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.permissions import IsTeacher
+from apps.session.advance import advance_session_if_due
 from apps.session.autoreveal import (
     cancel_auto_reveal,
     reveal_current_question_once,
@@ -140,11 +141,13 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
     )
     def state(self, request, pk=None):
         session = self.get_object()
+        session, _ = advance_session_if_due(session)
         return Response(build_public_session_state(session))
 
     @action(detail=True, methods=["get"], url_path="display-state")
     def display_state(self, request, pk=None):
         session = self.get_object()
+        session, _ = advance_session_if_due(session)
         return Response(build_display_session_state(session))
 
     @action(detail=True, methods=["get"], url_path="results/export")
@@ -212,6 +215,7 @@ class JoinSessionPreviewAPIView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        session, _ = advance_session_if_due(session)
         session_state = build_public_session_state(session)
         return Response(
             {
@@ -256,6 +260,7 @@ class JoinSessionAPIView(APIView):
         payload = serializer.save()
 
         session = payload["session"]
+        session, _ = advance_session_if_due(session)
         session_participant = payload["session_participant"]
         participant = payload["participant"]
 

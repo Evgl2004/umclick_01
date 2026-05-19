@@ -52,12 +52,14 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   bool _loadingLegalDocuments = false;
   Map<String, dynamic>? _joinPreview;
   bool _loadingJoinPreview = false;
+  bool _syncingSessionState = false;
   String? _joinTokenFromLink;
   bool _useJoinTokenFromLink = false;
 
   LiveSocketConnection? _socketConnection;
   bool _socketConnected = false;
   Timer? _countdownTimer;
+  Timer? _statePollingTimer;
   final _countdownTicker = const CountdownTicker();
   final _eventLog = const LiveEventLog();
   final List<String> _events = [];
@@ -152,6 +154,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _statePollingTimer?.cancel();
     _closeSocket();
     _apiController.dispose();
     _pinController.dispose();
@@ -347,11 +350,93 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     _setSocketConnected(false);
   }
 
+  void _startStatePolling(int sessionId) {
+    _statePollingTimer?.cancel();
+    _statePollingTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _syncSessionState(sessionId),
+    );
+  }
+
+  Future<void> _syncSessionState(int sessionId) async {
+    if (!mounted ||
+        _joinPayload == null ||
+        _sessionFinished ||
+        _syncingSessionState) {
+      return;
+    }
+
+    _syncingSessionState = true;
+    try {
+      final payload = await _client().getSessionState(sessionId);
+      if (!mounted) return;
+      _applySessionStatePayload(payload);
+    } catch (_) {
+      // WebSocket remains primary. Polling is only a quiet safety net.
+    } finally {
+      _syncingSessionState = false;
+    }
+  }
+
   void _setSocketConnected(bool connected) {
     if (!mounted) return;
     setState(() {
       _socketConnected = connected;
     });
+  }
+
+  void _applySessionStatePayload(Map<String, dynamic> payload) {
+    final incomingQuestion = mapOrNull(payload['current_question']);
+    final incomingQuestionId = asInt(incomingQuestion?['id'], -1);
+    final activeQuestionId = asInt(_activeQuestion?['id'], -2);
+    final isAnswerRevealed = payload['is_answer_revealed'] == true;
+    final incomingStatus = payload['status']?.toString() ?? _sessionStatus;
+    final incomingPhase = payload['phase']?.toString() ?? _sessionPhase;
+    final isFinished =
+        incomingStatus == 'finished' || incomingStatus == 'aborted';
+    final leaderboard =
+        (payload['leaderboard'] as List<dynamic>? ?? _finalLeaderboard)
+            .toList();
+
+    setState(() {
+      _sessionStatus = incomingStatus;
+      _sessionPhase = incomingPhase;
+      _sessionFinished = isFinished;
+      if (isFinished) {
+        _finalLeaderboard = leaderboard;
+      }
+    });
+
+    if (isFinished) {
+      _countdownTimer?.cancel();
+      setState(() {
+        _activeQuestion = null;
+        _timeLeftLabel = '--:--';
+        _isQuestionExpired = false;
+      });
+      _statePollingTimer?.cancel();
+      return;
+    }
+
+    if (incomingQuestionId != activeQuestionId || incomingQuestion == null) {
+      _applyQuestionState(
+        incomingQuestion,
+        payload['question_ends_at'] ?? payload['phase_ends_at'],
+      );
+    } else {
+      _startCountdown(parseDateTimeLocal(
+        payload['question_ends_at'] ?? payload['phase_ends_at'],
+      ));
+    }
+
+    if (isAnswerRevealed && incomingQuestion != null) {
+      _countdownTimer?.cancel();
+      setState(() {
+        _revealPayload = mapOrNull(payload['reveal']) ?? _revealPayload;
+        _isQuestionExpired = true;
+        _timeLeftLabel = '00:00';
+      });
+    }
   }
 
   void _handleParticipantSocketEvent(Map<String, dynamic> message) {
@@ -361,38 +446,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     switch (event) {
       case 'session_state':
       case 'session_started':
-        final incomingQuestion = mapOrNull(payload['current_question']);
-        final incomingQuestionId = asInt(incomingQuestion?['id'], -1);
-        final activeQuestionId = asInt(_activeQuestion?['id'], -2);
-        final isAnswerRevealed = payload['is_answer_revealed'] == true;
-
-        setState(() {
-          _sessionStatus = payload['status']?.toString() ?? _sessionStatus;
-          _sessionPhase = payload['phase']?.toString() ?? _sessionPhase;
-          _sessionFinished =
-              _sessionStatus == 'finished' || _sessionStatus == 'aborted';
-        });
-
-        if (incomingQuestionId != activeQuestionId ||
-            incomingQuestion == null) {
-          _applyQuestionState(
-            incomingQuestion,
-            payload['question_ends_at'] ?? payload['phase_ends_at'],
-          );
-        } else {
-          _startCountdown(parseDateTimeLocal(
-            payload['question_ends_at'] ?? payload['phase_ends_at'],
-          ));
-        }
-
-        if (isAnswerRevealed && incomingQuestion != null) {
-          _countdownTimer?.cancel();
-          setState(() {
-            _revealPayload = mapOrNull(payload['reveal']) ?? _revealPayload;
-            _isQuestionExpired = true;
-            _timeLeftLabel = '00:00';
-          });
-        }
+        _applySessionStatePayload(payload);
         break;
       case 'question_reading_started':
         _countdownTimer?.cancel();
@@ -443,6 +497,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
           _timeLeftLabel = '--:--';
           _isQuestionExpired = false;
         });
+        _statePollingTimer?.cancel();
         break;
       default:
         break;
@@ -515,6 +570,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
       }
 
       await _connectSocket(payload['session_id'] as int);
+      _startStatePolling(payload['session_id'] as int);
     } catch (e) {
       setState(() {
         final fallbackHint = _shouldShowManualPinFallback(e)

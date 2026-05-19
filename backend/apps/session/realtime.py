@@ -112,6 +112,8 @@ def build_public_session_state(session: LiveSession) -> dict:
     }
     if session.phase == LiveSession.PHASE_RESULTS and session.current_question_id is not None:
         state["reveal"] = build_answer_reveal_payload(session)
+    if session.status in {LiveSession.STATUS_FINISHED, LiveSession.STATUS_ABORTED}:
+        state["leaderboard"] = build_public_leaderboard(session)
     return state
 
 

@@ -304,6 +304,56 @@ class SessionApiFlowTests(APITestCase):
         self.assertIn("text", choice_payload)
         self.assertNotIn("is_correct", choice_payload)
 
+    @override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+    def test_public_session_state_advances_overdue_answering_phase(self):
+        session, question, _, _ = self.create_session(status_value=LiveSession.STATUS_LIVE)
+        session.current_question = question
+        session.phase = LiveSession.PHASE_ANSWERING
+        session.question_started_at = timezone.now() - timedelta(seconds=question.time_limit_sec + 1)
+        session.save(update_fields=["current_question", "phase", "question_started_at"])
+
+        response = self.client.get(f"/api/sessions/{session.id}/state/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["phase"], LiveSession.PHASE_RESULTS)
+        self.assertTrue(response.data["is_answer_revealed"])
+        self.assertIn("reveal", response.data)
+        session.refresh_from_db()
+        self.assertEqual(session.phase, LiveSession.PHASE_RESULTS)
+
+    @override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+    def test_display_state_advances_results_phase_to_next_question(self):
+        self.authenticate_teacher()
+        session, first_question, _, _ = self.create_session(status_value=LiveSession.STATUS_LIVE)
+        second_question = Question.objects.create(
+            quiz=session.quiz,
+            text="Second question?",
+            order=2,
+            time_limit_sec=20,
+        )
+        Choice.objects.create(question=second_question, text="Yes", order=1, is_correct=True)
+        Choice.objects.create(question=second_question, text="No", order=2, is_correct=False)
+        session.current_question = first_question
+        session.revealed_question_id = first_question.id
+        session.phase = LiveSession.PHASE_RESULTS
+        session.phase_started_at = timezone.now() - timedelta(seconds=session.quiz.results_time_sec + 1)
+        session.save(
+            update_fields=[
+                "current_question",
+                "revealed_question_id",
+                "phase",
+                "phase_started_at",
+            ]
+        )
+
+        response = self.client.get(f"/api/sessions/{session.id}/display-state/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["phase"], LiveSession.PHASE_READING)
+        self.assertEqual(response.data["display_question"]["id"], second_question.id)
+        session.refresh_from_db()
+        self.assertEqual(session.current_question_id, second_question.id)
+
     def test_display_state_keeps_full_text_when_participant_payload_is_hidden(self):
         self.authenticate_teacher()
         quiz, question, correct_choice, _ = self.create_quiz()
