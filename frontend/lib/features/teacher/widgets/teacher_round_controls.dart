@@ -9,6 +9,7 @@ class TeacherRoundControls extends StatelessWidget {
     required this.onNextQuestion,
     required this.onRevealAnswers,
     required this.onFinish,
+    required this.onOpenDisplay,
     required this.onShowLeaderboard,
     required this.onExportCsv,
   });
@@ -17,6 +18,7 @@ class TeacherRoundControls extends StatelessWidget {
   final VoidCallback? onNextQuestion;
   final VoidCallback? onRevealAnswers;
   final VoidCallback? onFinish;
+  final VoidCallback? onOpenDisplay;
   final VoidCallback? onShowLeaderboard;
   final VoidCallback? onExportCsv;
 
@@ -56,6 +58,12 @@ class TeacherRoundControls extends StatelessWidget {
               onPressed: onFinish,
               icon: const Icon(Icons.flag_outlined),
               label: Text(appText(AppText.finishButton)),
+            ),
+            OutlinedButton.icon(
+              onPressed: onOpenDisplay,
+              icon: const Icon(Icons.connected_tv_outlined),
+              label: Text(appText(AppText.openDisplayButton)),
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
             ),
             OutlinedButton.icon(
               onPressed: onShowLeaderboard,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/app_config.dart';
+import 'features/display/display_session_page.dart';
 import 'features/legal/legal_documents.dart';
 import 'features/participant/participant_panel.dart';
 import 'features/teacher/teacher_panel.dart';
@@ -15,6 +16,7 @@ Future<void> main() async {
 
 enum UmclickEntryPoint {
   home,
+  display,
   legalPrivacy,
   legalConsent,
 }
@@ -28,6 +30,8 @@ String _normalizePath(String path) {
 UmclickEntryPoint resolveEntryPoint(Uri uri) {
   final normalizedPath = _normalizePath(uri.path.toLowerCase());
   switch (normalizedPath) {
+    case '/display':
+      return UmclickEntryPoint.display;
     case '/legal/privacy':
       return UmclickEntryPoint.legalPrivacy;
     case '/legal/consent':
@@ -74,6 +78,8 @@ class UmclickApp extends StatelessWidget {
           apiBaseUrl: publicApiBase,
           appHomeBuilder: (_) => const HomePage(),
         );
+      case UmclickEntryPoint.display:
+        return const DisplaySessionPage();
       case UmclickEntryPoint.home:
         return HomePage(initialIndex: resolveInitialHomeTab(uri));
     }

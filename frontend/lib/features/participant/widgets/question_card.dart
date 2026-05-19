@@ -11,6 +11,8 @@ class ParticipantQuestionCard extends StatelessWidget {
     required this.questionLocked,
     required this.selectedChoiceId,
     required this.timeLeftLabel,
+    required this.correctChoiceId,
+    required this.answerRevealed,
   });
 
   final Map<String, dynamic> question;
@@ -18,6 +20,8 @@ class ParticipantQuestionCard extends StatelessWidget {
   final bool questionLocked;
   final int? selectedChoiceId;
   final String timeLeftLabel;
+  final int? correctChoiceId;
+  final bool answerRevealed;
 
   static const _answerColors = [
     Color(0xFFE21B3C),
@@ -112,15 +116,20 @@ class ParticipantQuestionCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 18),
-            Text(
-              '${question['text']}',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    height: 1.15,
-                  ),
-            ),
-            const SizedBox(height: 18),
+            if (question['text_hidden'] == true ||
+                (question['text']?.toString().trim().isEmpty ?? true))
+              _DisplayOnlyQuestionBanner()
+            else ...[
+              Text(
+                '${question['text']}',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      height: 1.15,
+                    ),
+              ),
+              const SizedBox(height: 18),
+            ],
             LayoutBuilder(
               builder: (context, constraints) {
                 final useTwoColumns = constraints.maxWidth >= 680;
@@ -137,6 +146,16 @@ class ParticipantQuestionCard extends StatelessWidget {
                     final choice = mapOrNull(rawChoice) ?? <String, dynamic>{};
                     final choiceId = asInt(choice['id'], -1);
                     final isSelected = selectedChoiceId == choiceId;
+                    final isCorrect = correctChoiceId == choiceId;
+                    final shouldHideText =
+                        question['choices_text_hidden'] == true ||
+                            (choice['text']?.toString().trim().isEmpty ?? true);
+                    final label = shouldHideText
+                        ? appText(
+                            AppText.participantChoiceFallback,
+                            args: {'number': choiceIndex + 1},
+                          )
+                        : '${choice['text']}';
                     final color =
                         _answerColors[choiceIndex % _answerColors.length];
                     final icon =
@@ -148,9 +167,11 @@ class ParticipantQuestionCard extends StatelessWidget {
                         context,
                         color: color,
                         icon: icon,
-                        label: '${choice['text']}',
+                        label: label,
                         isSelected: isSelected,
-                        isDimmed: questionLocked && !isSelected,
+                        isCorrect: isCorrect,
+                        answerRevealed: answerRevealed,
+                        isDimmed: questionLocked && !isSelected && !isCorrect,
                         onTap: questionLocked ? null : () => onAnswer(choiceId),
                       ),
                     );
@@ -170,10 +191,23 @@ class ParticipantQuestionCard extends StatelessWidget {
     required IconData icon,
     required String label,
     required bool isSelected,
+    required bool isCorrect,
+    required bool answerRevealed,
     required bool isDimmed,
     required VoidCallback? onTap,
   }) {
     final radius = BorderRadius.circular(24);
+
+    final borderColor = answerRevealed && isCorrect
+        ? const Color(0xFFB9FBC0)
+        : isSelected
+            ? Colors.white
+            : Colors.white.withValues(alpha: 0.18);
+    final borderWidth = answerRevealed && isCorrect
+        ? 5.0
+        : isSelected
+            ? 4.0
+            : 1.0;
 
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 180),
@@ -192,10 +226,8 @@ class ParticipantQuestionCard extends StatelessWidget {
               color: color,
               borderRadius: radius,
               border: Border.all(
-                color: isSelected
-                    ? Colors.white
-                    : Colors.white.withValues(alpha: 0.18),
-                width: isSelected ? 4 : 1,
+                color: borderColor,
+                width: borderWidth,
               ),
               boxShadow: [
                 if (isSelected)
@@ -228,7 +260,11 @@ class ParticipantQuestionCard extends StatelessWidget {
                         ),
                   ),
                 ),
-                if (isSelected) ...[
+                if (answerRevealed && isCorrect) ...[
+                  const SizedBox(width: 10),
+                  const Icon(Icons.check_circle,
+                      color: Color(0xFFB9FBC0), size: 34),
+                ] else if (isSelected) ...[
                   const SizedBox(width: 10),
                   const Icon(Icons.check_circle, color: Colors.white),
                 ],
@@ -236,6 +272,37 @@ class ParticipantQuestionCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DisplayOnlyQuestionBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.connected_tv_outlined, color: Colors.white),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              appText(AppText.participantQuestionOnDisplayTitle),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+          ),
+        ],
       ),
     );
   }

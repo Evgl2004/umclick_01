@@ -31,6 +31,9 @@ String _apiExceptionText(ApiException error) {
     'Failed to refresh token' => appText(AppText.apiRefreshTokenFailed),
     'Failed to get profile' => appText(AppText.apiGetProfileFailed),
     'Failed to load quizzes' => appText(AppText.apiLoadQuizzesFailed),
+    'Failed to load sessions' => appText(AppText.apiLoadSessionsFailed),
+    'Failed to load display state' =>
+      appText(AppText.apiLoadDisplayStateFailed),
     'Failed to create quiz' => appText(AppText.apiCreateQuizFailed),
     'Failed to update quiz' => appText(AppText.apiUpdateQuizFailed),
     'Failed to delete quiz' => appText(AppText.apiDeleteQuizFailed),
@@ -137,6 +140,14 @@ String _formatExceptionText(FormatException error) {
     );
   }
 
+  if (message == 'Reading time must be between 3 and 120 seconds.') {
+    return appText(AppText.quizValidationReadingTime);
+  }
+
+  if (message == 'Results time must be between 3 and 60 seconds.') {
+    return appText(AppText.quizValidationResultsTime);
+  }
+
   final twoChoicesMatch = RegExp(
     r'^Question (\d+) must have at least two non-empty choices\.$',
   ).firstMatch(message);
@@ -179,6 +190,14 @@ String _rawErrorText(String message) {
     'Session is already finished.' => uiText(
         ru: 'Сессия уже завершена.',
         en: 'Session is already finished.',
+      ),
+    'Session was stopped by teacher.' => uiText(
+        ru: 'Сессия остановлена преподавателем.',
+        en: 'Session was stopped by teacher.',
+      ),
+    'Question is not accepting answers right now.' => uiText(
+        ru: 'Сейчас нельзя отправить ответ. Дождитесь начала этапа ответов.',
+        en: 'Question is not accepting answers right now.',
       ),
     'Consent is required to join quiz sessions.' =>
       appText(AppText.participantConsentRequiredError),

@@ -6,12 +6,14 @@ class QuizDraftData {
     required this.quizId,
     required this.title,
     required this.description,
+    required this.displaySettings,
     required this.questions,
   });
 
   final int? quizId;
   final String title;
   final String description;
+  final QuizDisplaySettings displaySettings;
   final List<QuizDraftQuestion> questions;
 }
 
@@ -92,6 +94,12 @@ class QuizDraftMapper {
       quizId: parsedQuizId > 0 ? parsedQuizId : null,
       title: quiz['title']?.toString() ?? '',
       description: quiz['description']?.toString() ?? '',
+      displaySettings: QuizDisplaySettings(
+        questionOnlyOnDisplay: quiz['question_only_on_display'] == true,
+        showChoicesOnParticipant: quiz['show_choices_on_participant'] != false,
+        readingTimeSec: asInt(quiz['reading_time_sec'], 15),
+        resultsTimeSec: asInt(quiz['results_time_sec'], 10),
+      ),
       questions: questions,
     );
   }
@@ -99,6 +107,7 @@ class QuizDraftMapper {
   Map<String, dynamic> toPayload({
     required String title,
     required String description,
+    required QuizDisplaySettings displaySettings,
     required List<QuizDraftQuestion> questions,
   }) {
     final trimmedTitle = title.trim();
@@ -108,6 +117,17 @@ class QuizDraftMapper {
 
     if (questions.isEmpty) {
       throw const FormatException('Add at least one question.');
+    }
+
+    if (displaySettings.readingTimeSec < 3 ||
+        displaySettings.readingTimeSec > 120) {
+      throw const FormatException(
+          'Reading time must be between 3 and 120 seconds.');
+    }
+    if (displaySettings.resultsTimeSec < 3 ||
+        displaySettings.resultsTimeSec > 60) {
+      throw const FormatException(
+          'Results time must be between 3 and 60 seconds.');
     }
 
     final payloadQuestions = <Map<String, dynamic>>[];
@@ -170,6 +190,10 @@ class QuizDraftMapper {
     return {
       'title': trimmedTitle,
       'description': description.trim(),
+      'question_only_on_display': displaySettings.questionOnlyOnDisplay,
+      'show_choices_on_participant': displaySettings.showChoicesOnParticipant,
+      'reading_time_sec': displaySettings.readingTimeSec,
+      'results_time_sec': displaySettings.resultsTimeSec,
       'questions': payloadQuestions,
     };
   }

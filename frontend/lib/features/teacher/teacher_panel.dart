@@ -6,6 +6,7 @@ import '../../api/api_client.dart';
 import '../../core/app_config.dart';
 import '../../core/countdown_ticker.dart';
 import '../../core/csv_download.dart';
+import '../../core/display_window.dart';
 import '../../core/live_event_log.dart';
 import '../../core/live_socket_connection.dart';
 import '../../core/value_utils.dart';
@@ -36,6 +37,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
   final _signupCodeController = TextEditingController();
   final _quizTitleController = TextEditingController();
   final _quizDescriptionController = TextEditingController();
+  final _readingTimeController = TextEditingController(text: '15');
+  final _resultsTimeController = TextEditingController(text: '10');
   final _authSessionStore = const TeacherAuthSessionStore();
   final _quizDraftMapper = const QuizDraftMapper();
 
@@ -43,6 +46,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   int? _editingQuizId;
 
   List<dynamic> _quizzes = [];
+  List<dynamic> _sessionHistory = [];
   int? _selectedQuizId;
   Map<String, dynamic>? _session;
   Map<String, dynamic>? _teacher;
@@ -63,6 +67,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Timer? _questionTimer;
   String _questionTimeLeftLabel = '--:--';
   bool _restoringSession = true;
+  bool _questionOnlyOnDisplay = false;
+  bool _showChoicesOnParticipant = true;
 
   ApiClient _client({bool withToken = true}) {
     return ApiClient(
@@ -92,6 +98,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
     _signupCodeController.dispose();
     _quizTitleController.dispose();
     _quizDescriptionController.dispose();
+    _readingTimeController.dispose();
+    _resultsTimeController.dispose();
     super.dispose();
   }
 
@@ -115,6 +123,10 @@ class _TeacherPanelState extends State<TeacherPanel> {
       _editingQuizId = null;
       _quizTitleController.clear();
       _quizDescriptionController.clear();
+      _readingTimeController.text = '15';
+      _resultsTimeController.text = '10';
+      _questionOnlyOnDisplay = false;
+      _showChoicesOnParticipant = true;
       _draftQuestions.add(_quizDraftMapper.createQuestion());
     }
 
@@ -147,7 +159,24 @@ class _TeacherPanelState extends State<TeacherPanel> {
       }
       _quizTitleController.text = draft.title;
       _quizDescriptionController.text = draft.description;
+      _questionOnlyOnDisplay = draft.displaySettings.questionOnlyOnDisplay;
+      _showChoicesOnParticipant =
+          draft.displaySettings.showChoicesOnParticipant;
+      _readingTimeController.text = '${draft.displaySettings.readingTimeSec}';
+      _resultsTimeController.text = '${draft.displaySettings.resultsTimeSec}';
       _draftQuestions.addAll(draft.questions);
+    });
+  }
+
+  void _setQuestionOnlyOnDisplay(bool value) {
+    setState(() {
+      _questionOnlyOnDisplay = value;
+    });
+  }
+
+  void _setShowChoicesOnParticipant(bool value) {
+    setState(() {
+      _showChoicesOnParticipant = value;
     });
   }
 
@@ -258,11 +287,14 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
       final me = await _runTeacherRequest((client) => client.getMe());
       final quizzes = await _runTeacherRequest((client) => client.getQuizzes());
+      final sessions =
+          await _runTeacherRequest((client) => client.getSessions());
 
       if (mounted) {
         setState(() {
           _teacher = me;
           _quizzes = quizzes;
+          _sessionHistory = sessions;
           if (_quizzes.isNotEmpty) {
             _selectedQuizId = _selectedQuizId ?? _quizzes.first['id'] as int;
           }
@@ -278,6 +310,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
           _refreshToken = null;
           _teacher = null;
           _quizzes = [];
+          _sessionHistory = [];
           _selectedQuizId = null;
           _restoringSession = false;
         });
@@ -413,6 +446,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       case 'session_started':
         _patchSession({
           'status': payload['status'],
+          'phase': payload['phase'],
           'participants_count': payload['participants_count'] ??
               (_session?['participants_count'] ?? 0),
         });
@@ -422,7 +456,9 @@ class _TeacherPanelState extends State<TeacherPanel> {
             _activeQuestion = null;
           }
         });
-        _startTeacherTimer(parseDateTimeLocal(payload['question_ends_at']));
+        _startTeacherTimer(parseDateTimeLocal(
+          payload['question_ends_at'] ?? payload['phase_ends_at'],
+        ));
         if (payload['is_answer_revealed'] == true) {
           _questionTimer?.cancel();
           setState(() {
@@ -436,13 +472,19 @@ class _TeacherPanelState extends State<TeacherPanel> {
               (_session?['participants_count'] ?? 0)
         });
         break;
+      case 'question_reading_started':
       case 'question_started':
         setState(() {
-          _activeQuestion = mapOrNull(payload['question']);
+          _activeQuestion = mapOrNull(
+            payload['question'] ?? payload['current_question'],
+          );
           _revealPayload = null;
           _answeredCount = 0;
         });
-        _startTeacherTimer(parseDateTimeLocal(payload['question_ends_at']));
+        _patchSession({'phase': payload['phase'], 'status': payload['status']});
+        _startTeacherTimer(parseDateTimeLocal(
+          payload['question_ends_at'] ?? payload['phase_ends_at'],
+        ));
         break;
       case 'answer_submitted':
         setState(() {
@@ -450,19 +492,23 @@ class _TeacherPanelState extends State<TeacherPanel> {
         });
         break;
       case 'answer_revealed':
-        _questionTimer?.cancel();
         setState(() {
           _revealPayload = payload;
-          _questionTimeLeftLabel = '00:00';
         });
+        _patchSession({'phase': payload['phase'] ?? 'results'});
+        _startTeacherTimer(parseDateTimeLocal(payload['phase_ends_at']));
         break;
       case 'session_finished':
-        _patchSession({'status': 'finished'});
+        _patchSession({
+          'status': payload['status'] ?? 'finished',
+          'phase': payload['phase'] ?? 'final',
+        });
         _questionTimer?.cancel();
         setState(() {
           _activeQuestion = null;
           _questionTimeLeftLabel = '--:--';
         });
+        unawaited(_refreshSessionHistory());
         break;
       default:
         break;
@@ -520,6 +566,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       await _persistAuthSession();
       await _loadMe();
       await _refreshQuizzes();
+      await _refreshSessionHistory();
     } catch (e) {
       setState(() {
         _error = userErrorText(e);
@@ -591,6 +638,23 @@ class _TeacherPanelState extends State<TeacherPanel> {
     }
   }
 
+  Future<void> _refreshSessionHistory() async {
+    if (!_isLoggedIn) return;
+    try {
+      final sessions =
+          await _runTeacherRequest((client) => client.getSessions());
+      if (!mounted) return;
+      setState(() {
+        _sessionHistory = sessions;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = userErrorText(e);
+      });
+    }
+  }
+
   Future<void> _saveQuizDraft() async {
     if (!_isLoggedIn) {
       setState(() {
@@ -608,6 +672,12 @@ class _TeacherPanelState extends State<TeacherPanel> {
       final payload = _quizDraftMapper.toPayload(
         title: _quizTitleController.text,
         description: _quizDescriptionController.text,
+        displaySettings: QuizDisplaySettings(
+          questionOnlyOnDisplay: _questionOnlyOnDisplay,
+          showChoicesOnParticipant: _showChoicesOnParticipant,
+          readingTimeSec: asInt(_readingTimeController.text, 15),
+          resultsTimeSec: asInt(_resultsTimeController.text, 10),
+        ),
         questions: _draftQuestions,
       );
       final editingQuizId = _editingQuizId;
@@ -736,6 +806,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       });
       _startTeacherTimer(parseDateTimeLocal(session['question_ends_at']));
       await _connectSessionSocket(session['id'] as int);
+      await _refreshSessionHistory();
     } catch (e) {
       setState(() {
         _error = userErrorText(e);
@@ -745,6 +816,15 @@ class _TeacherPanelState extends State<TeacherPanel> {
         _loading = false;
       });
     }
+  }
+
+  void _openDisplayForSession(Map<String, dynamic> session) {
+    final sessionId = asInt(session['id'], 0);
+    if (sessionId <= 0) return;
+    openDisplayWindow(
+      sessionId: sessionId,
+      apiBaseUrl: _apiController.text.trim(),
+    );
   }
 
   Future<void> _startSession() async {
@@ -760,6 +840,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
         _activeQuestion = startedQuestion;
         _revealPayload = null;
       });
+      _openDisplayForSession(started);
       _startTeacherTimer(parseDateTimeLocal(started['question_ends_at']));
 
       if (started['status']?.toString() == 'live' && startedQuestion == null) {
@@ -793,10 +874,13 @@ class _TeacherPanelState extends State<TeacherPanel> {
     } else {
       setState(() {
         _activeQuestion = mapOrNull(payload['question']);
+        _activeQuestion ??= mapOrNull(payload['current_question']);
         _revealPayload = null;
         _answeredCount = 0;
       });
-      _startTeacherTimer(parseDateTimeLocal(payload['question_ends_at']));
+      _startTeacherTimer(parseDateTimeLocal(
+        payload['question_ends_at'] ?? payload['phase_ends_at'],
+      ));
     }
 
     if (appendEvent) {
@@ -842,6 +926,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
         _questionTimeLeftLabel = '--:--';
       });
       _appendEvent('Session finished by teacher.');
+      await _refreshSessionHistory();
     } catch (e) {
       setState(() {
         _error = userErrorText(e);
@@ -907,13 +992,18 @@ class _TeacherPanelState extends State<TeacherPanel> {
     final session = _session;
     if (session == null) return;
 
+    await _exportCsvForSession(session);
+  }
+
+  Future<void> _exportCsvForSession(Map<String, dynamic> session) async {
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
-      final sessionId = session['id'] as int;
+      final sessionId = asInt(session['id'], 0);
+      if (sessionId <= 0) return;
       final pin = session['pin']?.toString() ?? sessionId.toString();
       final csv = await _runTeacherRequest(
           (client) => client.exportSessionResultsCsv(sessionId));
@@ -941,6 +1031,82 @@ class _TeacherPanelState extends State<TeacherPanel> {
     }
   }
 
+  Future<void> _showSessionHistoryDetails(Map<String, dynamic> session) async {
+    final sessionId = asInt(session['id'], 0);
+    if (sessionId <= 0) return;
+
+    try {
+      final rows = await _runTeacherRequest(
+          (client) => client.getLeaderboard(sessionId));
+      if (!mounted) return;
+
+      showDialog<void>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: Text(appText(AppText.sessionHistoryDetailsTitle)),
+            content: SizedBox(
+              width: 520,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(appText(
+                    AppText.sessionHistoryDetailsSubtitle,
+                    args: {
+                      'pin': session['pin'] ?? '-',
+                      'status': sessionStatusText(session['status']),
+                    },
+                  )),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 320,
+                    child: rows.isEmpty
+                        ? Text(appText(AppText.leaderboardNoResults))
+                        : ListView.builder(
+                            itemCount: rows.length,
+                            itemBuilder: (context, index) {
+                              final row =
+                                  mapOrNull(rows[index]) ?? <String, dynamic>{};
+                              return ListTile(
+                                dense: true,
+                                leading: CircleAvatar(
+                                  child: Text('${index + 1}'),
+                                ),
+                                title: Text('${row['participant_name']}'),
+                                subtitle: Text(appText(
+                                  AppText.leaderboardStats,
+                                  args: {
+                                    'points': row['points'],
+                                    'correct': row['correct_answers'],
+                                  },
+                                )),
+                                trailing: Text(
+                                  '${asInt(row['answer_time_ms'])} мс',
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(appText(AppText.leaderboardCloseButton)),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      setState(() {
+        _error = userErrorText(e);
+      });
+    }
+  }
+
   Future<void> _logout() async {
     _questionTimer?.cancel();
     await _closeSessionSocket();
@@ -952,6 +1118,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       _refreshToken = null;
       _teacher = null;
       _quizzes = [];
+      _sessionHistory = [];
       _selectedQuizId = null;
       _session = null;
       _activeQuestion = null;
@@ -1034,7 +1201,15 @@ class _TeacherPanelState extends State<TeacherPanel> {
                         isLoggedIn: _isLoggedIn,
                         titleController: _quizTitleController,
                         descriptionController: _quizDescriptionController,
+                        readingTimeController: _readingTimeController,
+                        resultsTimeController: _resultsTimeController,
+                        questionOnlyOnDisplay: _questionOnlyOnDisplay,
+                        showChoicesOnParticipant: _showChoicesOnParticipant,
                         questions: _draftQuestions,
+                        onQuestionOnlyOnDisplayChanged:
+                            _setQuestionOnlyOnDisplay,
+                        onShowChoicesOnParticipantChanged:
+                            _setShowChoicesOnParticipant,
                         onSelectedQuizChanged: (value) {
                           setState(() {
                             _selectedQuizId = value;
@@ -1071,12 +1246,22 @@ class _TeacherPanelState extends State<TeacherPanel> {
                           onNextQuestion: _nextQuestion,
                           onRevealAnswers: _revealAnswers,
                           onFinish: _finishSession,
+                          onOpenDisplay: () =>
+                              _openDisplayForSession(_session!),
                           onShowLeaderboard: _showLeaderboard,
                           onExportCsv: _exportCsv,
                         ),
                         const SizedBox(height: 12),
                         TeacherLiveEventsCard(events: _events),
                       ],
+                      const SizedBox(height: 14),
+                      _TeacherSessionHistoryCard(
+                        sessions: _sessionHistory,
+                        loading: _loading,
+                        onRefresh: _refreshSessionHistory,
+                        onExportCsv: _exportCsvForSession,
+                        onOpenDetails: _showSessionHistoryDetails,
+                      ),
                     ],
                   ],
                 ),
@@ -1436,6 +1621,214 @@ class _TeacherLockedCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _TeacherSessionHistoryCard extends StatelessWidget {
+  const _TeacherSessionHistoryCard({
+    required this.sessions,
+    required this.loading,
+    required this.onRefresh,
+    required this.onExportCsv,
+    required this.onOpenDetails,
+  });
+
+  final List<dynamic> sessions;
+  final bool loading;
+  final VoidCallback onRefresh;
+  final ValueChanged<Map<String, dynamic>> onExportCsv;
+  final ValueChanged<Map<String, dynamic>> onOpenDetails;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = sessions
+        .map((raw) => mapOrNull(raw) ?? <String, dynamic>{})
+        .where((row) => row.isNotEmpty)
+        .toList();
+
+    return AppSectionCard(
+      padding: const EdgeInsets.all(18),
+      borderRadius: 28,
+      color: Colors.white.withValues(alpha: 0.94),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0F7FA),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(Icons.history_edu_outlined,
+                    color: Color(0xFF005F73)),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      appText(AppText.sessionHistoryTitle),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(appText(AppText.sessionHistorySubtitle)),
+                  ],
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: loading ? null : onRefresh,
+                icon: const Icon(Icons.refresh_rounded),
+                label: Text(appText(AppText.refreshHistoryButton)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (rows.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF4FBFA),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Text(appText(AppText.sessionHistoryEmpty)),
+            )
+          else
+            ...rows.take(8).map((session) {
+              final quiz = mapOrNull(session['quiz']) ?? <String, dynamic>{};
+              final status = session['status']?.toString() ?? '';
+              final createdAt = _compactDateTime(session['created_at']);
+              final finishedAt = _compactDateTime(session['finished_at']);
+              final participantsCount = asInt(session['participants_count']);
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7FBFA),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFDDEBE9)),
+                  ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final compact = constraints.maxWidth < 720;
+                      final details = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            quiz['title']?.toString() ??
+                                appText(AppText.untitledQuiz),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 8,
+                            children: [
+                              AppStatusChip(
+                                icon: Icons.pin_outlined,
+                                label: 'PIN: ${session['pin'] ?? '-'}',
+                                background: Colors.white,
+                                foreground: const Color(0xFF023047),
+                              ),
+                              AppStatusChip(
+                                icon: Icons.flag_outlined,
+                                label: sessionStatusText(status),
+                                background: const Color(0xFFE0F2F1),
+                                foreground: const Color(0xFF00695C),
+                              ),
+                              AppStatusChip(
+                                icon: Icons.group_outlined,
+                                label: appText(
+                                  AppText.sessionHistoryParticipants,
+                                  args: {'count': participantsCount},
+                                ),
+                                background: const Color(0xFFFFF3CD),
+                                foreground: const Color(0xFF805300),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(appText(
+                            AppText.sessionHistoryCreated,
+                            args: {'value': createdAt},
+                          )),
+                          if (finishedAt.isNotEmpty)
+                            Text(appText(
+                              AppText.sessionHistoryFinished,
+                              args: {'value': finishedAt},
+                            )),
+                        ],
+                      );
+                      final actions = Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => onOpenDetails(session),
+                            icon: const Icon(Icons.insights_outlined),
+                            label: Text(
+                                appText(AppText.sessionHistoryDetailsButton)),
+                          ),
+                          FilledButton.tonalIcon(
+                            onPressed: () => onExportCsv(session),
+                            icon: const Icon(Icons.download_outlined),
+                            label: Text(
+                                appText(AppText.sessionHistoryExportButton)),
+                          ),
+                        ],
+                      );
+
+                      if (compact) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            details,
+                            const SizedBox(height: 10),
+                            actions,
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(child: details),
+                          const SizedBox(width: 12),
+                          actions,
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  String _compactDateTime(Object? rawValue) {
+    final value = rawValue?.toString() ?? '';
+    final parsed = parseDateTimeLocal(value);
+    if (parsed == null) return value;
+    final day = parsed.day.toString().padLeft(2, '0');
+    final month = parsed.month.toString().padLeft(2, '0');
+    final hour = parsed.hour.toString().padLeft(2, '0');
+    final minute = parsed.minute.toString().padLeft(2, '0');
+    return '$day.$month.${parsed.year} $hour:$minute';
   }
 }
 

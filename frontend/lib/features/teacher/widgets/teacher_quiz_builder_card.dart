@@ -16,7 +16,13 @@ class TeacherQuizBuilderCard extends StatefulWidget {
     required this.isLoggedIn,
     required this.titleController,
     required this.descriptionController,
+    required this.readingTimeController,
+    required this.resultsTimeController,
+    required this.questionOnlyOnDisplay,
+    required this.showChoicesOnParticipant,
     required this.questions,
+    required this.onQuestionOnlyOnDisplayChanged,
+    required this.onShowChoicesOnParticipantChanged,
     required this.onSelectedQuizChanged,
     required this.onLoadSelectedQuiz,
     required this.onSaveQuiz,
@@ -37,7 +43,13 @@ class TeacherQuizBuilderCard extends StatefulWidget {
   final bool isLoggedIn;
   final TextEditingController titleController;
   final TextEditingController descriptionController;
+  final TextEditingController readingTimeController;
+  final TextEditingController resultsTimeController;
+  final bool questionOnlyOnDisplay;
+  final bool showChoicesOnParticipant;
   final List<QuizDraftQuestion> questions;
+  final ValueChanged<bool> onQuestionOnlyOnDisplayChanged;
+  final ValueChanged<bool> onShowChoicesOnParticipantChanged;
   final ValueChanged<int?> onSelectedQuizChanged;
   final VoidCallback onLoadSelectedQuiz;
   final VoidCallback onSaveQuiz;
@@ -179,9 +191,17 @@ class _TeacherQuizBuilderCardState extends State<TeacherQuizBuilderCard> {
               final editor = _QuizEditor(
                 titleController: widget.titleController,
                 descriptionController: widget.descriptionController,
+                readingTimeController: widget.readingTimeController,
+                resultsTimeController: widget.resultsTimeController,
+                questionOnlyOnDisplay: widget.questionOnlyOnDisplay,
+                showChoicesOnParticipant: widget.showChoicesOnParticipant,
                 question: activeQuestion,
                 questionIndex: activeQuestionIndex,
                 loading: widget.loading,
+                onQuestionOnlyOnDisplayChanged:
+                    widget.onQuestionOnlyOnDisplayChanged,
+                onShowChoicesOnParticipantChanged:
+                    widget.onShowChoicesOnParticipantChanged,
                 onRemoveQuestion: _removeQuestionAndKeepContext,
                 onSetCorrectChoice: _setCorrectChoiceAndRefresh,
                 onRemoveChoice: _removeChoiceAndRefresh,
@@ -464,9 +484,15 @@ class _QuizEditor extends StatelessWidget {
   const _QuizEditor({
     required this.titleController,
     required this.descriptionController,
+    required this.readingTimeController,
+    required this.resultsTimeController,
+    required this.questionOnlyOnDisplay,
+    required this.showChoicesOnParticipant,
     required this.question,
     required this.questionIndex,
     required this.loading,
+    required this.onQuestionOnlyOnDisplayChanged,
+    required this.onShowChoicesOnParticipantChanged,
     required this.onRemoveQuestion,
     required this.onSetCorrectChoice,
     required this.onRemoveChoice,
@@ -475,9 +501,15 @@ class _QuizEditor extends StatelessWidget {
 
   final TextEditingController titleController;
   final TextEditingController descriptionController;
+  final TextEditingController readingTimeController;
+  final TextEditingController resultsTimeController;
+  final bool questionOnlyOnDisplay;
+  final bool showChoicesOnParticipant;
   final QuizDraftQuestion? question;
   final int questionIndex;
   final bool loading;
+  final ValueChanged<bool> onQuestionOnlyOnDisplayChanged;
+  final ValueChanged<bool> onShowChoicesOnParticipantChanged;
   final ValueChanged<int> onRemoveQuestion;
   final void Function(QuizDraftQuestion question, int choiceIndex)
       onSetCorrectChoice;
@@ -517,6 +549,16 @@ class _QuizEditor extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          _QuizPresentationSettings(
+            readingTimeController: readingTimeController,
+            resultsTimeController: resultsTimeController,
+            questionOnlyOnDisplay: questionOnlyOnDisplay,
+            showChoicesOnParticipant: showChoicesOnParticipant,
+            onQuestionOnlyOnDisplayChanged: onQuestionOnlyOnDisplayChanged,
+            onShowChoicesOnParticipantChanged:
+                onShowChoicesOnParticipantChanged,
+          ),
+          const SizedBox(height: 16),
           if (activeQuestion == null)
             AppSectionCard(
               color: const Color(0xFFFFF8E1),
@@ -534,6 +576,114 @@ class _QuizEditor extends StatelessWidget {
                   onRemoveChoice(activeQuestion, choiceIndex),
               onAddChoice: () => onAddChoice(activeQuestion),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuizPresentationSettings extends StatelessWidget {
+  const _QuizPresentationSettings({
+    required this.readingTimeController,
+    required this.resultsTimeController,
+    required this.questionOnlyOnDisplay,
+    required this.showChoicesOnParticipant,
+    required this.onQuestionOnlyOnDisplayChanged,
+    required this.onShowChoicesOnParticipantChanged,
+  });
+
+  final TextEditingController readingTimeController;
+  final TextEditingController resultsTimeController;
+  final bool questionOnlyOnDisplay;
+  final bool showChoicesOnParticipant;
+  final ValueChanged<bool> onQuestionOnlyOnDisplayChanged;
+  final ValueChanged<bool> onShowChoicesOnParticipantChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBF0),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFFFE0A3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.connected_tv_outlined, color: Color(0xFF805300)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  appText(AppText.quizPresentationSettingsTitle),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: questionOnlyOnDisplay,
+            onChanged: onQuestionOnlyOnDisplayChanged,
+            title: Text(appText(AppText.quizQuestionOnlyOnDisplayLabel)),
+            subtitle: Text(appText(AppText.quizQuestionOnlyOnDisplayHelper)),
+          ),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: showChoicesOnParticipant,
+            onChanged: onShowChoicesOnParticipantChanged,
+            title: Text(appText(AppText.quizShowChoicesOnParticipantLabel)),
+            subtitle: Text(appText(AppText.quizShowChoicesOnParticipantHelper)),
+          ),
+          const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 600;
+              final fields = [
+                TextField(
+                  controller: readingTimeController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.record_voice_over_outlined),
+                    labelText: appText(AppText.readingTimeSecLabel),
+                    helperText: appText(AppText.readingTimeHelper),
+                  ),
+                ),
+                TextField(
+                  controller: resultsTimeController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.bar_chart_rounded),
+                    labelText: appText(AppText.resultsTimeSecLabel),
+                    helperText: appText(AppText.resultsTimeHelper),
+                  ),
+                ),
+              ];
+
+              if (compact) {
+                return Column(
+                  children: [
+                    fields[0],
+                    const SizedBox(height: 10),
+                    fields[1],
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: fields[0]),
+                  const SizedBox(width: 14),
+                  Expanded(child: fields[1]),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );

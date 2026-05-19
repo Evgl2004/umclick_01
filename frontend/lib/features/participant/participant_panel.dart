@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -42,6 +42,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   int _lastAnswerPoints = 0;
   String? _error;
   String _sessionStatus = 'waiting';
+  String _sessionPhase = 'lobby';
   bool _questionAnswered = false;
   int? _selectedChoiceId;
   bool _sessionFinished = false;
@@ -65,6 +66,18 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
 
   String? get _activeJoinToken =>
       _useJoinTokenFromLink ? _joinTokenFromLink : null;
+
+  int? get _correctChoiceId {
+    final choices =
+        (_revealPayload?['choices'] as List<dynamic>? ?? <dynamic>[])
+            .map((raw) => mapOrNull(raw) ?? <String, dynamic>{});
+    for (final choice in choices) {
+      if (choice['is_correct'] == true) {
+        return asInt(choice['id'], -1);
+      }
+    }
+    return null;
+  }
 
   String? get _activePin {
     if (_useJoinTokenFromLink) {
@@ -355,27 +368,52 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
 
         setState(() {
           _sessionStatus = payload['status']?.toString() ?? _sessionStatus;
-          _sessionFinished = _sessionStatus == 'finished';
+          _sessionPhase = payload['phase']?.toString() ?? _sessionPhase;
+          _sessionFinished =
+              _sessionStatus == 'finished' || _sessionStatus == 'aborted';
         });
 
         if (incomingQuestionId != activeQuestionId ||
             incomingQuestion == null) {
-          _applyQuestionState(incomingQuestion, payload['question_ends_at']);
+          _applyQuestionState(
+            incomingQuestion,
+            payload['question_ends_at'] ?? payload['phase_ends_at'],
+          );
         } else {
-          _startCountdown(parseDateTimeLocal(payload['question_ends_at']));
+          _startCountdown(parseDateTimeLocal(
+            payload['question_ends_at'] ?? payload['phase_ends_at'],
+          ));
         }
 
         if (isAnswerRevealed && incomingQuestion != null) {
           _countdownTimer?.cancel();
           setState(() {
+            _revealPayload = mapOrNull(payload['reveal']) ?? _revealPayload;
             _isQuestionExpired = true;
             _timeLeftLabel = '00:00';
           });
         }
         break;
+      case 'question_reading_started':
+        _countdownTimer?.cancel();
+        setState(() {
+          _sessionStatus = payload['status']?.toString() ?? 'live';
+          _sessionPhase = payload['phase']?.toString() ?? 'reading';
+          _sessionFinished = false;
+          _activeQuestion = null;
+          _revealPayload = null;
+          _questionAnswered = false;
+          _selectedChoiceId = null;
+          _lastAnswerPoints = 0;
+          _isQuestionExpired = false;
+          _timeLeftLabel = '--:--';
+        });
+        _startCountdown(parseDateTimeLocal(payload['phase_ends_at']));
+        break;
       case 'question_started':
         setState(() {
           _sessionStatus = payload['status']?.toString() ?? 'live';
+          _sessionPhase = payload['phase']?.toString() ?? 'answering';
           _sessionFinished = false;
           _lastAnswerPoints = 0;
         });
@@ -385,6 +423,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
       case 'answer_revealed':
         _countdownTimer?.cancel();
         setState(() {
+          _sessionStatus = payload['status']?.toString() ?? _sessionStatus;
+          _sessionPhase = payload['phase']?.toString() ?? 'results';
           _revealPayload = payload;
           _timeLeftLabel = '00:00';
           _isQuestionExpired = true;
@@ -395,7 +435,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
             (payload['leaderboard'] as List<dynamic>? ?? <dynamic>[]).toList();
         _countdownTimer?.cancel();
         setState(() {
-          _sessionStatus = 'finished';
+          _sessionStatus = payload['status']?.toString() ?? 'finished';
+          _sessionPhase = payload['phase']?.toString() ?? 'final';
           _sessionFinished = true;
           _activeQuestion = null;
           _finalLeaderboard = leaderboard;
@@ -448,12 +489,14 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
       setState(() {
         _joinPayload = payload;
         _activeQuestion = mapOrNull(payload['current_question']);
-        _revealPayload = null;
+        _revealPayload = isAnswerRevealed ? mapOrNull(payload['reveal']) : null;
         _finalLeaderboard = [];
         _totalPoints = 0;
         _lastAnswerPoints = 0;
         _sessionStatus = payload['session_status']?.toString() ?? 'waiting';
-        _sessionFinished = _sessionStatus == 'finished';
+        _sessionPhase = payload['phase']?.toString() ?? 'lobby';
+        _sessionFinished =
+            _sessionStatus == 'finished' || _sessionStatus == 'aborted';
         _questionAnswered = false;
         _selectedChoiceId = null;
         _isQuestionExpired = isAnswerRevealed;
@@ -466,7 +509,9 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
       if (isAnswerRevealed) {
         _countdownTimer?.cancel();
       } else {
-        _startCountdown(parseDateTimeLocal(payload['question_ends_at']));
+        _startCountdown(parseDateTimeLocal(
+          payload['question_ends_at'] ?? payload['phase_ends_at'],
+        ));
       }
 
       await _connectSocket(payload['session_id'] as int);
@@ -488,6 +533,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     if (_joinPayload == null ||
         _activeQuestion == null ||
         _questionAnswered ||
+        _sessionPhase != 'answering' ||
         _isQuestionExpired) {
       return;
     }
@@ -535,6 +581,12 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                   asInt(_joinPayload?['session_participant_id'], -1),
               totalPoints: _totalPoints,
             )
+          else if (_sessionPhase == 'reading')
+            ParticipantRoundMessage(
+              icon: Icons.connected_tv_outlined,
+              message: appText(AppText.participantLookAtDisplayMessage),
+              color: const Color(0xFF005F73),
+            )
           else if (_activeQuestion == null)
             ParticipantRoundMessage(
               icon: Icons.hourglass_top_outlined,
@@ -548,6 +600,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
               questionLocked: _questionAnswered || _isQuestionExpired,
               selectedChoiceId: _selectedChoiceId,
               timeLeftLabel: _timeLeftLabel,
+              correctChoiceId: _correctChoiceId,
+              answerRevealed: _revealPayload != null,
             ),
           if (_isQuestionExpired &&
               !_questionAnswered &&
@@ -559,9 +613,13 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
               color: Theme.of(context).colorScheme.error,
             ),
           ],
-          if (_revealPayload != null) ...[
-            const SizedBox(height: 14),
-            ParticipantRevealResultsCard(revealPayload: _revealPayload!),
+          if (_revealPayload != null && !_sessionFinished) ...[
+            const SizedBox(height: 10),
+            ParticipantRoundMessage(
+              icon: Icons.check_circle_outline,
+              message: appText(AppText.participantCorrectAnswerRevealed),
+              color: const Color(0xFF26890C),
+            ),
           ],
         ],
       ),
@@ -599,7 +657,8 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                       totalPoints: _totalPoints,
                       sessionStatus: _sessionStatus,
                       socketConnected: _socketConnected,
-                      hasActiveQuestion: _activeQuestion != null,
+                      hasActiveQuestion: _activeQuestion != null &&
+                          _sessionPhase == 'answering',
                       timeLeftLabel: _timeLeftLabel,
                     ),
                     const SizedBox(height: 16),

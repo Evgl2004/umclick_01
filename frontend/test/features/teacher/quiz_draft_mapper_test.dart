@@ -41,6 +41,10 @@ void main() {
       expect(data.quizId, 7);
       expect(data.title, 'History quiz');
       expect(data.description, 'Warm-up');
+      expect(data.displaySettings.readingTimeSec, 15);
+      expect(data.displaySettings.resultsTimeSec, 10);
+      expect(data.displaySettings.questionOnlyOnDisplay, isFalse);
+      expect(data.displaySettings.showChoicesOnParticipant, isTrue);
       expect(data.questions.first.textController.text, 'First question');
       expect(data.questions.first.choices.first.textController.text, 'Yes');
       expect(data.questions.last.textController.text, 'Second question');
@@ -103,12 +107,22 @@ void main() {
       final payload = mapper.toPayload(
         title: ' Math ',
         description: ' Warm-up ',
+        displaySettings: const QuizDisplaySettings(
+          questionOnlyOnDisplay: true,
+          showChoicesOnParticipant: false,
+          readingTimeSec: 12,
+          resultsTimeSec: 8,
+        ),
         questions: [question],
       );
 
       expect(payload, {
         'title': 'Math',
         'description': 'Warm-up',
+        'question_only_on_display': true,
+        'show_choices_on_participant': false,
+        'reading_time_sec': 12,
+        'results_time_sec': 8,
         'questions': [
           {
             'text': '2 + 2?',
@@ -128,6 +142,7 @@ void main() {
         () => mapper.toPayload(
           title: ' ',
           description: '',
+          displaySettings: const QuizDisplaySettings(),
           questions: [mapper.createQuestion()],
         ),
         throwsA(isA<FormatException>()),
@@ -148,6 +163,7 @@ void main() {
         () => mapper.toPayload(
           title: 'Quiz',
           description: '',
+          displaySettings: const QuizDisplaySettings(),
           questions: [question],
         ),
         throwsA(
@@ -175,6 +191,7 @@ void main() {
         () => mapper.toPayload(
           title: 'Quiz',
           description: '',
+          displaySettings: const QuizDisplaySettings(),
           questions: [question],
         ),
         throwsA(

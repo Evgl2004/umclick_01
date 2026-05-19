@@ -205,6 +205,28 @@ class ApiClient {
     return jsonDecode(details.body) as Map<String, dynamic>;
   }
 
+  Future<List<dynamic>> getSessions() async {
+    final response = await http.get(
+      _uri('/sessions/'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode >= 400) {
+      _throwError(response, 'Failed to load sessions');
+    }
+    return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getSessionDisplayState(int sessionId) async {
+    final response = await http.get(
+      _uri('/sessions/$sessionId/display-state/'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode >= 400) {
+      _throwError(response, 'Failed to load display state');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> startSession(int sessionId) async {
     final response = await http.post(
       _uri('/sessions/$sessionId/start/'),

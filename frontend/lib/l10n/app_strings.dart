@@ -59,6 +59,15 @@ enum AppText {
   removeChoiceTooltip,
   addChoiceButton,
   addQuestionButton,
+  quizPresentationSettingsTitle,
+  quizQuestionOnlyOnDisplayLabel,
+  quizQuestionOnlyOnDisplayHelper,
+  quizShowChoicesOnParticipantLabel,
+  quizShowChoicesOnParticipantHelper,
+  readingTimeSecLabel,
+  readingTimeHelper,
+  resultsTimeSecLabel,
+  resultsTimeHelper,
   selectQuizForSession,
   sessionQuiz,
   teacherSessionSetupTitle,
@@ -80,6 +89,7 @@ enum AppText {
   nextQuestionButton,
   revealAnswersButton,
   finishButton,
+  openDisplayButton,
   leaderboardButton,
   exportCsvButton,
   exportUrlSnack,
@@ -131,6 +141,10 @@ enum AppText {
   participantRoundLeaderboardTitle,
   participantNoLeaderboardYet,
   waitingForQuestionMessage,
+  participantLookAtDisplayMessage,
+  participantQuestionOnDisplayTitle,
+  participantChoiceFallback,
+  participantCorrectAnswerRevealed,
   timeOverMessage,
   consentCheckboxLabel,
   privacyConsentTitle,
@@ -194,10 +208,23 @@ enum AppText {
   leaderboardNoResults,
   leaderboardCloseButton,
   leaderboardStats,
+  sessionHistoryTitle,
+  sessionHistorySubtitle,
+  sessionHistoryEmpty,
+  refreshHistoryButton,
+  sessionHistoryDetailsButton,
+  sessionHistoryExportButton,
+  sessionHistoryCreated,
+  sessionHistoryFinished,
+  sessionHistoryParticipants,
+  sessionHistoryDetailsTitle,
+  sessionHistoryDetailsSubtitle,
   quizValidationTitleRequired,
   quizValidationAddQuestion,
   quizValidationQuestionTextRequired,
   quizValidationQuestionTimeLimit,
+  quizValidationReadingTime,
+  quizValidationResultsTime,
   quizValidationTwoChoices,
   quizValidationOneCorrectChoice,
   participantJoinTargetRequired,
@@ -212,6 +239,8 @@ enum AppText {
   apiRefreshTokenFailed,
   apiGetProfileFailed,
   apiLoadQuizzesFailed,
+  apiLoadSessionsFailed,
+  apiLoadDisplayStateFailed,
   apiCreateQuizFailed,
   apiUpdateQuizFailed,
   apiDeleteQuizFailed,
@@ -380,6 +409,42 @@ const _strings = <AppText, LocalizedString>{
       LocalizedString(ru: 'Добавить вариант', en: 'Add choice'),
   AppText.addQuestionButton:
       LocalizedString(ru: 'Добавить вопрос', en: 'Add question'),
+  AppText.quizPresentationSettingsTitle: LocalizedString(
+    ru: 'Режим демонстрации',
+    en: 'Presentation mode',
+  ),
+  AppText.quizQuestionOnlyOnDisplayLabel: LocalizedString(
+    ru: 'Вопрос только на экране демонстрации',
+    en: 'Question only on display screen',
+  ),
+  AppText.quizQuestionOnlyOnDisplayHelper: LocalizedString(
+    ru: 'Участник увидит игровые кнопки, а текст вопроса будет на общем экране.',
+    en: 'Participants see answer buttons only; the question stays on the shared screen.',
+  ),
+  AppText.quizShowChoicesOnParticipantLabel: LocalizedString(
+    ru: 'Показывать варианты ответов участнику',
+    en: 'Show answer text to participants',
+  ),
+  AppText.quizShowChoicesOnParticipantHelper: LocalizedString(
+    ru: 'Если выключить, на телефоне будут только цвет, фигура и номер варианта.',
+    en: 'When disabled, phones show only color, shape, and choice number.',
+  ),
+  AppText.readingTimeSecLabel: LocalizedString(
+    ru: 'Время на зачитывание вопроса (сек)',
+    en: 'Question reading time (sec)',
+  ),
+  AppText.readingTimeHelper: LocalizedString(
+    ru: 'Перед ответами общий экран показывает только вопрос. По умолчанию 15 секунд.',
+    en: 'Before answers, the display shows only the question. Default is 15 seconds.',
+  ),
+  AppText.resultsTimeSecLabel: LocalizedString(
+    ru: 'Время показа статистики (сек)',
+    en: 'Results display time (sec)',
+  ),
+  AppText.resultsTimeHelper: LocalizedString(
+    ru: 'После ответа общий экран показывает гистограмму и правильный вариант. По умолчанию 10 секунд.',
+    en: 'After answers, the display shows a histogram and correct choice. Default is 10 seconds.',
+  ),
   AppText.selectQuizForSession: LocalizedString(
     ru: 'Выберите викторину, чтобы создать live-сессию.',
     en: 'Select a quiz in builder to create a live session.',
@@ -431,6 +496,8 @@ const _strings = <AppText, LocalizedString>{
   AppText.revealAnswersButton:
       LocalizedString(ru: 'Показать ответы', en: 'Reveal answers'),
   AppText.finishButton: LocalizedString(ru: 'Завершить', en: 'Finish'),
+  AppText.openDisplayButton:
+      LocalizedString(ru: 'Экран демонстрации', en: 'Display screen'),
   AppText.leaderboardButton: LocalizedString(ru: 'Рейтинг', en: 'Leaderboard'),
   AppText.exportCsvButton: LocalizedString(ru: 'Экспорт CSV', en: 'Export CSV'),
   AppText.exportUrlSnack:
@@ -567,6 +634,20 @@ const _strings = <AppText, LocalizedString>{
   AppText.waitingForQuestionMessage: LocalizedString(
     ru: 'Ждём, когда преподаватель запустит следующий вопрос...',
     en: 'Waiting for teacher to start the next question...',
+  ),
+  AppText.participantLookAtDisplayMessage: LocalizedString(
+    ru: 'Смотрите на экран демонстрации. Сейчас ведущий зачитывает вопрос.',
+    en: 'Look at the display screen. The host is reading the question now.',
+  ),
+  AppText.participantQuestionOnDisplayTitle: LocalizedString(
+    ru: 'Вопрос на общем экране',
+    en: 'Question is on the shared screen',
+  ),
+  AppText.participantChoiceFallback:
+      LocalizedString(ru: 'Вариант {number}', en: 'Choice {number}'),
+  AppText.participantCorrectAnswerRevealed: LocalizedString(
+    ru: 'Правильный ответ выделен зелёной рамкой.',
+    en: 'Correct answer is highlighted with a green border.',
   ),
   AppText.timeOverMessage: LocalizedString(
     ru: 'Время вышло. Ждите результаты и следующий вопрос.',
@@ -797,6 +878,35 @@ const _strings = <AppText, LocalizedString>{
     ru: 'Очки: {points} | Верных: {correct}',
     en: 'Pts: {points} | Correct: {correct}',
   ),
+  AppText.sessionHistoryTitle: LocalizedString(
+    ru: 'История проведённых викторин',
+    en: 'Quiz session history',
+  ),
+  AppText.sessionHistorySubtitle: LocalizedString(
+    ru: 'Здесь видны прошлые запуски, статус, участники и быстрый экспорт результатов.',
+    en: 'See previous runs, status, participants, and quick result export.',
+  ),
+  AppText.sessionHistoryEmpty: LocalizedString(
+    ru: 'Проведённых сессий пока нет.',
+    en: 'No sessions have been run yet.',
+  ),
+  AppText.refreshHistoryButton:
+      LocalizedString(ru: 'Обновить историю', en: 'Refresh history'),
+  AppText.sessionHistoryDetailsButton:
+      LocalizedString(ru: 'Подробнее', en: 'Details'),
+  AppText.sessionHistoryExportButton: LocalizedString(ru: 'CSV', en: 'CSV'),
+  AppText.sessionHistoryCreated:
+      LocalizedString(ru: 'Создана: {value}', en: 'Created: {value}'),
+  AppText.sessionHistoryFinished:
+      LocalizedString(ru: 'Финиш: {value}', en: 'Finished: {value}'),
+  AppText.sessionHistoryParticipants:
+      LocalizedString(ru: 'Участники: {count}', en: 'Participants: {count}'),
+  AppText.sessionHistoryDetailsTitle:
+      LocalizedString(ru: 'Итоги сессии', en: 'Session results'),
+  AppText.sessionHistoryDetailsSubtitle: LocalizedString(
+    ru: 'PIN {pin} | статус: {status}',
+    en: 'PIN {pin} | status: {status}',
+  ),
   AppText.quizValidationTitleRequired: LocalizedString(
     ru: 'Укажите название викторины.',
     en: 'Quiz title is required.',
@@ -812,6 +922,14 @@ const _strings = <AppText, LocalizedString>{
   AppText.quizValidationQuestionTimeLimit: LocalizedString(
     ru: 'В вопросе {questionNumber} лимит времени должен быть от 5 до 180 секунд.',
     en: 'Question {questionNumber} time limit must be between 5 and 180 seconds.',
+  ),
+  AppText.quizValidationReadingTime: LocalizedString(
+    ru: 'Время на зачитывание вопроса должно быть от 3 до 120 секунд.',
+    en: 'Question reading time must be between 3 and 120 seconds.',
+  ),
+  AppText.quizValidationResultsTime: LocalizedString(
+    ru: 'Время показа статистики должно быть от 3 до 60 секунд.',
+    en: 'Results display time must be between 3 and 60 seconds.',
   ),
   AppText.quizValidationTwoChoices: LocalizedString(
     ru: 'В вопросе {questionNumber} должно быть минимум два непустых варианта ответа.',
@@ -866,6 +984,14 @@ const _strings = <AppText, LocalizedString>{
   AppText.apiLoadQuizzesFailed: LocalizedString(
     ru: 'Не удалось загрузить список викторин.',
     en: 'Failed to load quizzes.',
+  ),
+  AppText.apiLoadSessionsFailed: LocalizedString(
+    ru: 'Не удалось загрузить историю сессий.',
+    en: 'Failed to load sessions.',
+  ),
+  AppText.apiLoadDisplayStateFailed: LocalizedString(
+    ru: 'Не удалось загрузить экран демонстрации.',
+    en: 'Failed to load display state.',
   ),
   AppText.apiCreateQuizFailed: LocalizedString(
     ru: 'Не удалось создать викторину.',
@@ -946,6 +1072,7 @@ String sessionStatusText(Object? status) {
     'waiting' => uiText(ru: 'ожидание', en: 'waiting'),
     'live' => uiText(ru: 'идёт игра', en: 'live'),
     'finished' => uiText(ru: 'завершена', en: 'finished'),
+    'aborted' => uiText(ru: 'остановлена', en: 'aborted'),
     _ => uiText(ru: 'неизвестно', en: 'unknown'),
   };
 }

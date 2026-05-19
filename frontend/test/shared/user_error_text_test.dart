@@ -20,6 +20,14 @@ void main() {
       ),
       'Заполните текст вопроса 2.',
     );
+    expect(
+      userErrorText(
+        const FormatException(
+          'Reading time must be between 3 and 120 seconds.',
+        ),
+      ),
+      'Время на зачитывание вопроса должно быть от 3 до 120 секунд.',
+    );
   });
 
   test('localizes known API messages', () {
@@ -30,6 +38,14 @@ void main() {
         body: '{}',
       )),
       'Не удалось создать live-сессию.',
+    );
+    expect(
+      userErrorText(ApiException(
+        statusCode: 400,
+        message: 'Failed to load display state',
+        body: '{}',
+      )),
+      'Не удалось загрузить экран демонстрации.',
     );
   });
 

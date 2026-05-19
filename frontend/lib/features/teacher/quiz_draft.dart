@@ -33,3 +33,17 @@ class QuizDraftQuestion {
     }
   }
 }
+
+class QuizDisplaySettings {
+  const QuizDisplaySettings({
+    this.questionOnlyOnDisplay = false,
+    this.showChoicesOnParticipant = true,
+    this.readingTimeSec = 15,
+    this.resultsTimeSec = 10,
+  });
+
+  final bool questionOnlyOnDisplay;
+  final bool showChoicesOnParticipant;
+  final int readingTimeSec;
+  final int resultsTimeSec;
+}

@@ -156,7 +156,11 @@ class _LiveSessionSummary extends StatelessWidget {
           Text(
             appText(
               AppText.currentQuestion,
-              args: {'text': activeQuestion!['text']},
+              args: {
+                'text': activeQuestion!['text_hidden'] == true
+                    ? appText(AppText.participantQuestionOnDisplayTitle)
+                    : activeQuestion!['text']
+              },
             ),
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   color: Colors.white,

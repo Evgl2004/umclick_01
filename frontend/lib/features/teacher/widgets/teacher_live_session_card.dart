@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../../../l10n/app_strings.dart';
 import 'teacher_live_session_header.dart';
@@ -18,6 +18,7 @@ class TeacherLiveSessionCard extends StatelessWidget {
     required this.onNextQuestion,
     required this.onRevealAnswers,
     required this.onFinish,
+    required this.onOpenDisplay,
     required this.onShowLeaderboard,
     required this.onExportCsv,
   });
@@ -32,6 +33,7 @@ class TeacherLiveSessionCard extends StatelessWidget {
   final VoidCallback onNextQuestion;
   final VoidCallback onRevealAnswers;
   final VoidCallback onFinish;
+  final VoidCallback onOpenDisplay;
   final VoidCallback onShowLeaderboard;
   final VoidCallback onExportCsv;
 
@@ -39,9 +41,10 @@ class TeacherLiveSessionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final joinUrl = session['join_url'] as String;
     final status = session['status']?.toString() ?? '';
+    final phase = session['phase']?.toString() ?? 'lobby';
     final isWaiting = status == 'waiting';
     final isLive = status == 'live';
-    final isFinished = status == 'finished';
+    final isClosed = status == 'finished' || status == 'aborted';
     final hasActiveQuestion = activeQuestion != null;
 
     return Container(
@@ -82,11 +85,14 @@ class TeacherLiveSessionCard extends StatelessWidget {
           TeacherRoundControls(
             onStart: isWaiting ? onStart : null,
             onNextQuestion: isLive ? onNextQuestion : null,
-            onRevealAnswers:
-                isLive && hasActiveQuestion && revealPayload == null
-                    ? onRevealAnswers
-                    : null,
-            onFinish: isFinished ? null : onFinish,
+            onRevealAnswers: isLive &&
+                    phase == 'answering' &&
+                    hasActiveQuestion &&
+                    revealPayload == null
+                ? onRevealAnswers
+                : null,
+            onFinish: isClosed ? null : onFinish,
+            onOpenDisplay: isClosed ? null : onOpenDisplay,
             onShowLeaderboard: onShowLeaderboard,
             onExportCsv: onExportCsv,
           ),
