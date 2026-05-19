@@ -10,6 +10,7 @@ Frontend отвечает за:
 - конструктор викторин;
 - создание и ведение live-сессии;
 - QR/join ссылку для участников;
+- отдельный экран демонстрации для очной игры;
 - экран участника;
 - быструю регистрацию участника;
 - прохождение раунда;
@@ -24,6 +25,7 @@ frontend/lib/
   api/
   core/
   features/
+    display/
     legal/
     participant/
     teacher/
@@ -44,7 +46,7 @@ frontend/lib/
 
 Entry point helpers:
 
-- `resolveEntryPoint` - определяет home/legal route.
+- `resolveEntryPoint` - определяет home/legal/display route.
 - `resolveInitialHomeTab` - `/join` открывает вкладку участника.
 - `resolvePublicLegalApiBase` - берет API base URL из query или default.
 
@@ -57,6 +59,8 @@ Entry point helpers:
 - teacher auth;
 - quiz CRUD;
 - session lifecycle;
+- session history;
+- display state;
 - join preview;
 - participant join;
 - submit answer;
@@ -75,6 +79,7 @@ Entry point helpers:
 
 - `app_config.dart` - constants и default URLs.
 - `csv_download.dart` - условная web-реализация скачивания CSV-файла.
+- `display_window.dart` - условная web-реализация открытия окна демонстрации.
 - `value_utils.dart` - безопасный разбор map/int/datetime, форматирование времени.
 - `countdown_ticker.dart` - общий countdown timer.
 - `live_event_log.dart` - форматирование и ограничение event log.
@@ -111,7 +116,7 @@ Widgets:
 - `teacher_session_setup_card.dart` - создание live-сессии.
 - `teacher_live_session_card.dart` - оболочка live-сессии.
 - `teacher_live_session_header.dart` - PIN, QR, статусы.
-- `teacher_round_controls.dart` - старт, next, reveal, finish, leaderboard, export.
+- `teacher_round_controls.dart` - старт, next, reveal, finish, display, leaderboard, export.
 - `teacher_reveal_results_card.dart` - результаты раскрытого ответа.
 - `teacher_live_events_card.dart` - live event log.
 
@@ -132,6 +137,20 @@ Widgets:
 - `profile_card.dart` - имя, телефон, согласие, legal actions, join.
 - `question_card.dart` - вопрос и варианты ответа.
 - `live_session_widgets.dart` - live status, reveal results, events.
+
+## `features/display`
+
+- `display_session_page.dart` - полноэкранный экран демонстрации `/display`.
+
+Экран демонстрации использует teacher access token из `TeacherAuthSessionStore` и периодически запрашивает `GET /api/sessions/{id}/display-state/`.
+
+Он отображает фазы:
+
+- ожидание участников;
+- зачитывание вопроса;
+- прием ответов;
+- статистика с гистограммой;
+- финальный подиум.
 
 ## `features/legal`
 

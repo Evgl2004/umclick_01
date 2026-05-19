@@ -6,6 +6,7 @@
 
 - Преподаватель - создает викторины и управляет live-сессией.
 - Участник - подключается по PIN/QR/token, регистрируется быстро и отвечает на вопросы.
+- Экран демонстрации - отдельное окно `/display`, которое показывает вопрос, варианты, статистику и финальный рейтинг для аудитории.
 - Backend - хранит состояние, валидирует действия, считает очки, рассылает события.
 - Frontend - отображает состояние и отправляет действия пользователя.
 - Celery beat - автоматически раскрывает ответы после дедлайна вопроса.
@@ -137,6 +138,7 @@ Backend проверяет:
 - согласие обязательно;
 - PIN/token должен существовать;
 - finished session запрещена;
+- телефон можно оставить пустым, тогда backend создает внутренний guest-идентификатор без вывода в UI/CSV;
 - legal versions сохраняются в `Participant`;
 - `SessionParticipant` создается один раз на session + participant.
 
@@ -158,13 +160,32 @@ Backend:
 - переводит `status` в `live`;
 - очищает current question;
 - сбрасывает reveal state;
+- выставляет фазу `lobby`;
 - выставляет `started_at`.
 
 WebSocket событие:
 
 - `session_started`.
 
-## 8. Преподаватель запускает вопрос
+## 8. Экран демонстрации
+
+Маршрут:
+
+```text
+/display?session=<id>&api=<api-base>
+```
+
+Экран открывается из панели преподавателя и использует teacher JWT из локального хранилища браузера.
+
+Endpoint состояния:
+
+```text
+GET /api/sessions/{id}/display-state/
+```
+
+Display state содержит полные тексты вопроса и вариантов даже тогда, когда они скрыты от участника.
+
+## 9. Преподаватель запускает вопрос
 
 Endpoint:
 
@@ -176,20 +197,28 @@ Backend:
 
 - выбирает следующий вопрос;
 - сохраняет `current_question`;
-- выставляет `question_started_at`;
+- выставляет фазу `reading`;
+- выставляет `phase_started_at`;
+- сбрасывает `question_started_at`;
 - сбрасывает `revealed_question_id`;
-- рассчитывает `question_ends_at`.
+- рассчитывает `phase_ends_at` по `reading_time_sec`.
 
 WebSocket событие:
+
+- `question_reading_started`.
+
+После окончания времени зачитывания Celery beat автоматически переводит вопрос в фазу ответов:
 
 - `question_started`.
 
 Frontend:
 
-- teacher видит active question, таймер и answered count;
-- participant видит вопрос, варианты и таймер.
+- teacher видит фазу и таймер;
+- display показывает вопрос крупно, затем вопрос и варианты;
+- participant на фазе `reading` видит просьбу смотреть на экран демонстрации;
+- participant на фазе `answering` видит кнопки ответа и таймер.
 
-## 9. Участник отвечает
+## 10. Участник отвечает
 
 Endpoint:
 
@@ -206,6 +235,7 @@ Payload:
 Backend проверяет:
 
 - session должна быть `live`;
+- phase должна быть `answering`;
 - current question должен существовать;
 - question_id должен совпадать с active question;
 - answer нельзя отправить после reveal;
@@ -217,12 +247,13 @@ Scoring:
 
 - wrong answer -> 0;
 - correct answer -> от 200 до 1000 по скорости.
+- `elapsed_ms` сохраняется для tie-break по скорости.
 
 WebSocket событие:
 
 - `answer_submitted`.
 
-## 10. Ответ раскрывается
+## 11. Ответ раскрывается
 
 Ручной endpoint:
 
@@ -237,6 +268,8 @@ Celery beat -> auto_reveal_due_sessions -> reveal_current_question_once
 ```
 
 Backend гарантирует, что reveal происходит один раз на active question.
+
+При reveal session переходит в фазу `results`; `phase_ends_at` рассчитывается по `results_time_sec`.
 
 WebSocket событие:
 
@@ -253,7 +286,11 @@ Payload содержит:
 - revealed_by;
 - auto flag.
 
-## 11. Следующий вопрос или завершение
+Display показывает гистограмму ответов и правильный вариант. Participant получает подсветку правильной кнопки.
+
+После окончания времени статистики Celery beat автоматически запускает следующий вопрос или завершает сессию.
+
+## 12. Следующий вопрос или завершение
 
 Если есть следующий вопрос, teacher снова вызывает `next-question`.
 
@@ -270,11 +307,14 @@ Teacher также может завершить вручную:
 POST /api/sessions/{id}/finish/
 ```
 
-## 12. Leaderboard и CSV export
+Ручное завершение переводит session в `aborted`, чтобы отличать остановленную игру от штатно пройденной.
+
+## 13. Leaderboard, история и CSV export
 
 Endpoints:
 
 ```text
+GET /api/sessions/
 GET /api/sessions/{id}/leaderboard/
 GET /api/sessions/{id}/results/export/
 ```
@@ -283,15 +323,18 @@ Leaderboard сортируется:
 
 1. points desc;
 2. correct_answers desc;
-3. joined_at asc.
+3. answer_time_ms asc;
+4. joined_at asc.
 
 CSV columns:
 
 ```text
-participant_name,phone,points,correct_answers
+participant_name,phone,points,correct_answers,answer_time_ms
 ```
 
 Во frontend кнопка `Экспорт CSV` делает authenticated запрос через `ApiClient` и запускает скачивание файла в браузере. Это важно: endpoint требует JWT преподавателя, поэтому простая публичная ссылка на CSV не подходит.
+
+В панели преподавателя есть блок истории проведенных викторин: список live-сессий, быстрый CSV export и просмотр рейтинга выбранной сессии.
 
 ## Нетиповые сценарии, которые покрыты тестами
 

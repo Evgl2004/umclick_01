@@ -11,6 +11,7 @@ Backend отвечает за:
 - создание и управление live-сессиями;
 - подключение участников по PIN или `join_token`;
 - прием ответов и расчет очков;
+- хранение фаз очной live-игры и экрана демонстрации;
 - WebSocket события live-игры;
 - автоматическое раскрытие ответов;
 - leaderboard и CSV export;
@@ -49,7 +50,7 @@ Teacher registration может быть ограничена переменно
 
 Модели:
 
-- `Quiz` - title, description, timestamps.
+- `Quiz` - title, description, display settings, reading/results timers, timestamps.
 - `Question` - quiz, text, order, time_limit_sec.
 - `Choice` - question, text, is_correct, order.
 
@@ -66,10 +67,10 @@ Teacher registration может быть ограничена переменно
 
 Модели:
 
-- `LiveSession` - quiz, host_name, pin, join_token, status, current_question, timers.
+- `LiveSession` - quiz, host_name, pin, join_token, status, phase, current_question, timers.
 - `Participant` - phone, name, consent, legal versions.
 - `SessionParticipant` - связь participant с live session.
-- `ParticipantAnswer` - ответ, correctness, score_points.
+- `ParticipantAnswer` - ответ, correctness, score_points, elapsed_ms.
 
 Ключевые файлы:
 
@@ -110,6 +111,7 @@ Teacher session API:
 - `POST /api/sessions/{id}/finish/`
 - `GET /api/sessions/{id}/leaderboard/`
 - `GET /api/sessions/{id}/results/export/`
+- `GET /api/sessions/{id}/display-state/`
 
 Public participant API:
 
@@ -130,6 +132,7 @@ Endpoint:
 События:
 
 - `session_started`
+- `question_reading_started`
 - `question_started`
 - `answer_submitted`
 - `answer_revealed`
@@ -170,6 +173,7 @@ Scoring находится в `apps.session.serializers.score_for_answer`.
 - быстрый правильный ответ может дать до `1000`;
 - медленный правильный ответ не падает ниже `200`;
 - elapsed time ограничивается лимитом вопроса.
+- `elapsed_ms` сохраняется в ответе и используется для tie-break в рейтинге.
 
 ## Legal metadata
 

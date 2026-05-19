@@ -109,6 +109,7 @@ C:\Users\admin_eas\flutter\bin\flutter.bat run -d chrome --web-port 3000
 | `docs/backend.md` | Backend apps, models, endpoints, WebSocket, tests |
 | `docs/frontend.md` | Flutter структура, features, widgets, state, tests |
 | `docs/live-flow.md` | Полный игровой сценарий teacher/participant |
+| `docs/live-presentation-mode.md` | Задание и критерии очного режима с экраном демонстрации |
 | `docs/maintenance.md` | Правила поддержки проекта и документации |
 | `docs/deployment.md` | Как развернуть демо-стенд на сервере |
 | `docs/reviewer-guide.md` | Пошаговая инструкция для проверяющего пользователя |
