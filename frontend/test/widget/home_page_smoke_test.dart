@@ -32,11 +32,26 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pump();
 
+    expect(tester.takeException(), isNull);
     expect(find.byType(TeacherPanel), findsOneWidget);
     expect(find.byType(TeacherAuthCard), findsOneWidget);
     expect(find.text('Рабочий кабинет откроется после входа'), findsOneWidget);
     expect(find.byType(TeacherQuizBuilderCard), findsNothing);
     expect(find.byType(TeacherSessionSetupCard), findsNothing);
+  });
+
+  testWidgets('HomePage renders teacher tab on wide desktop layout',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 950));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(TeacherPanel), findsOneWidget);
+    expect(find.byType(TeacherAuthCard), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
   });
 
   testWidgets('HomePage can switch to participant tab', (tester) async {

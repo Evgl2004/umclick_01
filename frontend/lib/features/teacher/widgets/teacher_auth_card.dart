@@ -133,7 +133,7 @@ class TeacherAuthCard extends StatelessWidget {
           }
 
           return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Expanded(flex: 4, child: _TeacherAuthIntroPanel()),
               const SizedBox(width: 16),
