@@ -73,6 +73,7 @@ class SessionApiRegressionTests(APITestCase):
         session = LiveSession.objects.create(
             quiz=quiz,
             status=LiveSession.STATUS_LIVE,
+            phase=LiveSession.PHASE_ANSWERING,
             current_question=first_question,
             question_started_at=timezone.now(),
         )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.session.models import LiveSession
 from apps.session.realtime import broadcast_session_event, build_answer_reveal_payload
@@ -45,7 +46,9 @@ def reveal_current_question_once(
             return None
 
         session.revealed_question_id = session.current_question_id
-        session.save(update_fields=["revealed_question_id"])
+        session.phase = LiveSession.PHASE_RESULTS
+        session.phase_started_at = timezone.now()
+        session.save(update_fields=["revealed_question_id", "phase", "phase_started_at"])
 
         payload = build_answer_reveal_payload(session)
 

@@ -15,11 +15,27 @@ class LiveSession(models.Model):
     STATUS_WAITING = "waiting"
     STATUS_LIVE = "live"
     STATUS_FINISHED = "finished"
+    STATUS_ABORTED = "aborted"
+
+    PHASE_LOBBY = "lobby"
+    PHASE_READING = "reading"
+    PHASE_ANSWERING = "answering"
+    PHASE_RESULTS = "results"
+    PHASE_FINAL = "final"
 
     STATUS_CHOICES = [
         (STATUS_WAITING, "Waiting"),
         (STATUS_LIVE, "Live"),
         (STATUS_FINISHED, "Finished"),
+        (STATUS_ABORTED, "Aborted"),
+    ]
+
+    PHASE_CHOICES = [
+        (PHASE_LOBBY, "Lobby"),
+        (PHASE_READING, "Reading"),
+        (PHASE_ANSWERING, "Answering"),
+        (PHASE_RESULTS, "Results"),
+        (PHASE_FINAL, "Final"),
     ]
 
     quiz = models.ForeignKey(Quiz, related_name="sessions", on_delete=models.CASCADE)
@@ -27,6 +43,7 @@ class LiveSession(models.Model):
     pin = models.CharField(max_length=6, unique=True, db_index=True)
     join_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_WAITING)
+    phase = models.CharField(max_length=16, choices=PHASE_CHOICES, default=PHASE_LOBBY)
     current_question = models.ForeignKey(
         Question,
         related_name="active_sessions",
@@ -35,6 +52,7 @@ class LiveSession(models.Model):
         blank=True,
     )
     revealed_question_id = models.PositiveIntegerField(null=True, blank=True)
+    phase_started_at = models.DateTimeField(null=True, blank=True)
     question_started_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
@@ -51,7 +69,7 @@ class LiveSession(models.Model):
             self.pin = pin
         if self.status == self.STATUS_LIVE and self.started_at is None:
             self.started_at = timezone.now()
-        if self.status == self.STATUS_FINISHED and self.finished_at is None:
+        if self.status in {self.STATUS_FINISHED, self.STATUS_ABORTED} and self.finished_at is None:
             self.finished_at = timezone.now()
         super().save(*args, **kwargs)
 
@@ -99,6 +117,7 @@ class ParticipantAnswer(models.Model):
     choice = models.ForeignKey(Choice, related_name="answers", on_delete=models.SET_NULL, null=True, blank=True)
     is_correct = models.BooleanField(default=False)
     score_points = models.PositiveIntegerField(default=0)
+    elapsed_ms = models.PositiveIntegerField(default=0)
     answered_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

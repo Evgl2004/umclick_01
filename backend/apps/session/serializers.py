@@ -13,7 +13,7 @@ from rest_framework import serializers
 from apps.quiz.models import Choice, Question, Quiz
 from apps.session.legal import get_current_consent_versions
 from apps.session.models import LiveSession, Participant, ParticipantAnswer, SessionParticipant
-from apps.session.realtime import serialize_question_for_participants
+from apps.session.realtime import compute_phase_ends_at, serialize_question_for_participants
 
 MAX_CORRECT_POINTS = 1000
 MIN_CORRECT_POINTS = 200
@@ -77,7 +77,16 @@ class SessionQuizSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Quiz
-        fields = ["id", "title", "description", "questions"]
+        fields = [
+            "id",
+            "title",
+            "description",
+            "question_only_on_display",
+            "show_choices_on_participant",
+            "reading_time_sec",
+            "results_time_sec",
+            "questions",
+        ]
 
 
 class LiveSessionCreateSerializer(serializers.ModelSerializer):
@@ -93,6 +102,7 @@ class LiveSessionSerializer(serializers.ModelSerializer):
     qr_code_base64 = serializers.SerializerMethodField()
     participants_count = serializers.SerializerMethodField()
     current_question = serializers.SerializerMethodField()
+    phase_ends_at = serializers.SerializerMethodField()
     question_ends_at = serializers.SerializerMethodField()
     is_answer_revealed = serializers.SerializerMethodField()
 
@@ -103,12 +113,15 @@ class LiveSessionSerializer(serializers.ModelSerializer):
             "quiz",
             "host_name",
             "status",
+            "phase",
             "pin",
             "join_token",
             "join_url",
             "qr_code_base64",
             "participants_count",
             "current_question",
+            "phase_started_at",
+            "phase_ends_at",
             "question_started_at",
             "question_ends_at",
             "is_answer_revealed",
@@ -127,7 +140,7 @@ class LiveSessionSerializer(serializers.ModelSerializer):
         return obj.participants.count()
 
     def get_current_question(self, obj: LiveSession):
-        return serialize_question_for_participants(obj.current_question)
+        return serialize_question_for_participants(obj.current_question, obj)
 
     def get_is_answer_revealed(self, obj: LiveSession) -> bool:
         if obj.current_question_id is None:
@@ -136,6 +149,10 @@ class LiveSessionSerializer(serializers.ModelSerializer):
 
     def get_question_ends_at(self, obj: LiveSession):
         ends_at = compute_question_ends_at(obj, obj.current_question)
+        return ends_at.isoformat() if ends_at else None
+
+    def get_phase_ends_at(self, obj: LiveSession):
+        ends_at = compute_phase_ends_at(obj)
         return ends_at.isoformat() if ends_at else None
 
 
@@ -170,6 +187,8 @@ class ParticipantJoinSerializer(serializers.Serializer):
 
         if session.status == LiveSession.STATUS_FINISHED:
             raise serializers.ValidationError("Session is already finished.")
+        if session.status == LiveSession.STATUS_ABORTED:
+            raise serializers.ValidationError("Session was stopped by teacher.")
 
         attrs["session"] = session
         return attrs
@@ -239,6 +258,9 @@ class SubmitAnswerSerializer(serializers.Serializer):
         if session.status != LiveSession.STATUS_LIVE:
             raise serializers.ValidationError("Session is not active.")
 
+        if session.phase != LiveSession.PHASE_ANSWERING:
+            raise serializers.ValidationError("Question is not accepting answers right now.")
+
         if session.current_question_id is None:
             raise serializers.ValidationError("No active question right now. Wait for teacher signal.")
 
@@ -291,6 +313,7 @@ class SubmitAnswerSerializer(serializers.Serializer):
             choice=choice,
             is_correct=choice.is_correct,
             score_points=points,
+            elapsed_ms=elapsed_ms,
         )
 
         total_points = (
@@ -307,6 +330,7 @@ class SubmitAnswerSerializer(serializers.Serializer):
             "answer_id": answer.id,
             "is_correct": answer.is_correct,
             "score_points": answer.score_points,
+            "elapsed_ms": answer.elapsed_ms,
             "total_points": int(total_points or 0),
             "correct_answers": correct_answers,
         }
@@ -317,6 +341,7 @@ class LeaderboardRowSerializer(serializers.Serializer):
     phone = serializers.CharField()
     points = serializers.IntegerField()
     correct_answers = serializers.IntegerField()
+    answer_time_ms = serializers.IntegerField()
 
 
 def build_leaderboard(session: LiveSession):
@@ -326,8 +351,9 @@ def build_leaderboard(session: LiveSession):
         .annotate(
             points=Coalesce(Sum("answers__score_points"), 0),
             correct_answers=Count("answers", filter=Q(answers__is_correct=True)),
+            answer_time_ms=Coalesce(Sum("answers__elapsed_ms"), 0),
         )
-        .order_by("-points", "-correct_answers", "joined_at")
+        .order_by("-points", "-correct_answers", "answer_time_ms", "joined_at")
     )
     return [
         {
@@ -335,6 +361,7 @@ def build_leaderboard(session: LiveSession):
             "phone": display_participant_phone(row.participant.phone),
             "points": int(row.points or 0),
             "correct_answers": row.correct_answers,
+            "answer_time_ms": int(row.answer_time_ms or 0),
         }
         for row in rows
     ]

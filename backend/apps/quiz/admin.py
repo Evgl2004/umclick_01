@@ -15,7 +15,15 @@ class QuestionInline(admin.StackedInline):
 
 @admin.register(Quiz)
 class QuizAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "created_at")
+    list_display = (
+        "id",
+        "title",
+        "question_only_on_display",
+        "show_choices_on_participant",
+        "reading_time_sec",
+        "results_time_sec",
+        "created_at",
+    )
     search_fields = ("title",)
 
 

@@ -4,6 +4,10 @@
 class Quiz(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    question_only_on_display = models.BooleanField(default=False)
+    show_choices_on_participant = models.BooleanField(default=True)
+    reading_time_sec = models.PositiveIntegerField(default=15)
+    results_time_sec = models.PositiveIntegerField(default=10)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

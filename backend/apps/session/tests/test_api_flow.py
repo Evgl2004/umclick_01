@@ -7,6 +7,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.quiz.models import Choice, Question, Quiz
+from apps.session.flow import start_answering_for_current_question
 from apps.session.models import LiveSession, Participant, ParticipantAnswer, SessionParticipant
 from apps.session.serializers import build_leaderboard
 
@@ -132,6 +133,17 @@ class SessionApiFlowTests(APITestCase):
         self.assertEqual(response.data["closed_reason"], "Session is already finished.")
 
     @override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+    def test_teacher_finish_marks_live_session_as_aborted(self):
+        self.authenticate_teacher()
+        session, _, _, _ = self.create_session(status_value=LiveSession.STATUS_LIVE)
+
+        response = self.client.post(f"/api/sessions/{session.id}/finish/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], LiveSession.STATUS_ABORTED)
+        self.assertEqual(response.data["phase"], LiveSession.PHASE_FINAL)
+
+    @override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
     def test_participant_can_join_by_pin_and_token(self):
         session, _, _, _ = self.create_session()
 
@@ -217,7 +229,10 @@ class SessionApiFlowTests(APITestCase):
 
         self.assertEqual(start_response.status_code, status.HTTP_200_OK)
         self.assertEqual(next_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(next_response.data["question"]["id"], question.id)
+        self.assertEqual(next_response.data["current_question"]["id"], question.id)
+        self.assertEqual(next_response.data["phase"], LiveSession.PHASE_READING)
+        session.refresh_from_db()
+        start_answering_for_current_question(session)
 
         join_response = self.client.post(
             "/api/sessions/join/",
@@ -248,8 +263,9 @@ class SessionApiFlowTests(APITestCase):
     def test_late_answer_is_rejected_after_question_deadline(self):
         session, question, correct_choice, _ = self.create_session(status_value=LiveSession.STATUS_LIVE)
         session.current_question = question
+        session.phase = LiveSession.PHASE_ANSWERING
         session.question_started_at = timezone.now() - timedelta(seconds=question.time_limit_sec + 1)
-        session.save(update_fields=["current_question", "question_started_at"])
+        session.save(update_fields=["current_question", "phase", "question_started_at"])
         participant = Participant.objects.create(
             phone="+70000000001",
             name="Alice",
@@ -277,8 +293,9 @@ class SessionApiFlowTests(APITestCase):
     def test_public_session_state_hides_correct_choices(self):
         session, question, _, _ = self.create_session(status_value=LiveSession.STATUS_LIVE)
         session.current_question = question
+        session.phase = LiveSession.PHASE_ANSWERING
         session.question_started_at = timezone.now()
-        session.save(update_fields=["current_question", "question_started_at"])
+        session.save(update_fields=["current_question", "phase", "question_started_at"])
 
         response = self.client.get(f"/api/sessions/{session.id}/state/")
 
@@ -286,6 +303,34 @@ class SessionApiFlowTests(APITestCase):
         choice_payload = response.data["current_question"]["choices"][0]
         self.assertIn("text", choice_payload)
         self.assertNotIn("is_correct", choice_payload)
+
+    def test_display_state_keeps_full_text_when_participant_payload_is_hidden(self):
+        self.authenticate_teacher()
+        quiz, question, correct_choice, _ = self.create_quiz()
+        quiz.question_only_on_display = True
+        quiz.show_choices_on_participant = False
+        quiz.save(update_fields=["question_only_on_display", "show_choices_on_participant"])
+        session = LiveSession.objects.create(
+            quiz=quiz,
+            host_name="Teacher",
+            status=LiveSession.STATUS_LIVE,
+            phase=LiveSession.PHASE_ANSWERING,
+            current_question=question,
+            question_started_at=timezone.now(),
+        )
+
+        public_response = self.client.get(f"/api/sessions/{session.id}/state/")
+        display_response = self.client.get(f"/api/sessions/{session.id}/display-state/")
+
+        self.assertEqual(public_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(display_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(public_response.data["current_question"]["text"], "")
+        self.assertEqual(public_response.data["current_question"]["choices"][0]["text"], "")
+        self.assertEqual(display_response.data["display_question"]["text"], question.text)
+        display_choice_texts = [
+            choice["text"] for choice in display_response.data["display_question"]["choices"]
+        ]
+        self.assertIn(correct_choice.text, display_choice_texts)
 
     def test_leaderboard_and_csv_export_are_sorted_by_score(self):
         session, question, correct_choice, wrong_choice = self.create_session()
@@ -318,5 +363,5 @@ class SessionApiFlowTests(APITestCase):
         self.assertEqual(export_response.status_code, status.HTTP_200_OK)
         self.assertEqual(export_response["Content-Type"], "text/csv")
         csv_body = export_response.content.decode("utf-8")
-        self.assertIn("participant_name,phone,points,correct_answers", csv_body)
+        self.assertIn("participant_name,phone,points,correct_answers,answer_time_ms", csv_body)
         self.assertLess(csv_body.index("Bob"), csv_body.index("Alice"))

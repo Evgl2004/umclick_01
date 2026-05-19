@@ -2,7 +2,6 @@ import csv
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import HttpResponse
-from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -12,17 +11,14 @@ from apps.core.permissions import IsTeacher
 from apps.session.autoreveal import (
     cancel_auto_reveal,
     reveal_current_question_once,
-    schedule_auto_reveal,
 )
+from apps.session.flow import abort_session, start_reading_for_next_question
 from apps.session.legal import get_current_legal_documents
 from apps.session.models import LiveSession, ParticipantAnswer, SessionParticipant
 from apps.session.realtime import (
     broadcast_session_event,
+    build_display_session_state,
     build_public_session_state,
-    build_public_leaderboard,
-    compute_question_ends_at,
-    get_next_question,
-    serialize_question_for_participants,
 )
 from apps.session.serializers import (
     LeaderboardRowSerializer,
@@ -51,7 +47,7 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def start(self, request, pk=None):
         session = self.get_object()
-        if session.status == LiveSession.STATUS_FINISHED:
+        if session.status in {LiveSession.STATUS_FINISHED, LiveSession.STATUS_ABORTED}:
             return Response(
                 {"detail": "Session is already finished."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -59,15 +55,19 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
 
         cancel_auto_reveal(session.id)
         session.status = LiveSession.STATUS_LIVE
+        session.phase = LiveSession.PHASE_LOBBY
         session.current_question = None
         session.revealed_question_id = None
+        session.phase_started_at = None
         session.question_started_at = None
         session.save(
             update_fields=[
                 "status",
+                "phase",
                 "started_at",
                 "current_question",
                 "revealed_question_id",
+                "phase_started_at",
                 "question_started_at",
             ]
         )
@@ -80,23 +80,7 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
         session = self.get_object()
         cancel_auto_reveal(session.id)
 
-        session.status = LiveSession.STATUS_FINISHED
-        session.current_question = None
-        session.revealed_question_id = None
-        session.question_started_at = None
-        session.save(
-            update_fields=[
-                "status",
-                "finished_at",
-                "current_question",
-                "revealed_question_id",
-                "question_started_at",
-            ]
-        )
-
-        payload = build_public_session_state(session)
-        payload["leaderboard"] = build_public_leaderboard(session)
-        broadcast_session_event(session.id, "session_finished", payload)
+        abort_session(session)
         return Response(LiveSessionSerializer(session).data)
 
     @action(detail=True, methods=["post"], url_path="next-question")
@@ -109,49 +93,14 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
             )
 
         cancel_auto_reveal(session.id)
-        next_question = get_next_question(session)
-        if next_question is None:
-            session.status = LiveSession.STATUS_FINISHED
-            session.current_question = None
-            session.revealed_question_id = None
-            session.question_started_at = None
-            session.save(
-                update_fields=[
-                    "status",
-                    "finished_at",
-                    "current_question",
-                    "revealed_question_id",
-                    "question_started_at",
-                ]
-            )
-
-            payload = build_public_session_state(session)
-            payload["leaderboard"] = build_public_leaderboard(session)
-            broadcast_session_event(session.id, "session_finished", payload)
+        payload = start_reading_for_next_question(session)
+        if payload.get("status") == LiveSession.STATUS_FINISHED:
             return Response(
                 {
                     "detail": "No more questions. Session finished.",
                     "session": LiveSessionSerializer(session).data,
                 }
             )
-
-        session.current_question = next_question
-        session.revealed_question_id = None
-        session.question_started_at = timezone.now()
-        session.save(update_fields=["current_question", "revealed_question_id", "question_started_at"])
-
-        question_ends_at = compute_question_ends_at(session, next_question)
-        payload = {
-            "session_id": session.id,
-            "status": session.status,
-            "question": serialize_question_for_participants(next_question),
-            "question_started_at": session.question_started_at.isoformat() if session.question_started_at else None,
-            "question_ends_at": question_ends_at.isoformat() if question_ends_at else None,
-            "is_answer_revealed": False,
-        }
-        broadcast_session_event(session.id, "question_started", payload)
-
-        schedule_auto_reveal(session.id, next_question.id, next_question.time_limit_sec)
         return Response(payload)
 
     @action(detail=True, methods=["post"], url_path="reveal-answer")
@@ -193,6 +142,11 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
         session = self.get_object()
         return Response(build_public_session_state(session))
 
+    @action(detail=True, methods=["get"], url_path="display-state")
+    def display_state(self, request, pk=None):
+        session = self.get_object()
+        return Response(build_display_session_state(session))
+
     @action(detail=True, methods=["get"], url_path="results/export")
     def export_results(self, request, pk=None):
         session = self.get_object()
@@ -202,9 +156,17 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
         response["Content-Disposition"] = f'attachment; filename="session_{session.pin}_results.csv"'
 
         writer = csv.writer(response)
-        writer.writerow(["participant_name", "phone", "points", "correct_answers"])
+        writer.writerow(["participant_name", "phone", "points", "correct_answers", "answer_time_ms"])
         for row in leaderboard:
-            writer.writerow([row["participant_name"], row["phone"], row["points"], row["correct_answers"]])
+            writer.writerow(
+                [
+                    row["participant_name"],
+                    row["phone"],
+                    row["points"],
+                    row["correct_answers"],
+                    row["answer_time_ms"],
+                ]
+            )
 
         return response
 
@@ -257,10 +219,14 @@ class JoinSessionPreviewAPIView(APIView):
                 "session_pin": session.pin,
                 "session_status": session.status,
                 "participants_count": session_state.get("participants_count"),
-                "can_join": session.status != LiveSession.STATUS_FINISHED,
+                "phase": session.phase,
+                "can_join": session.status
+                not in {LiveSession.STATUS_FINISHED, LiveSession.STATUS_ABORTED},
                 "closed_reason": (
                     "Session is already finished."
                     if session.status == LiveSession.STATUS_FINISHED
+                    else "Session was stopped by teacher."
+                    if session.status == LiveSession.STATUS_ABORTED
                     else None
                 ),
                 "quiz": {
@@ -269,9 +235,12 @@ class JoinSessionPreviewAPIView(APIView):
                     "description": session.quiz.description,
                 },
                 "current_question": session_state.get("current_question"),
+                "phase_started_at": session_state.get("phase_started_at"),
+                "phase_ends_at": session_state.get("phase_ends_at"),
                 "question_started_at": session_state.get("question_started_at"),
                 "question_ends_at": session_state.get("question_ends_at"),
                 "is_answer_revealed": session_state.get("is_answer_revealed"),
+                "reveal": session_state.get("reveal"),
                 "legal_documents": get_current_legal_documents(),
             },
             status=status.HTTP_200_OK,
@@ -308,6 +277,7 @@ class JoinSessionAPIView(APIView):
                 "session_id": session.id,
                 "session_pin": session.pin,
                 "session_status": session.status,
+                "phase": session.phase,
                 "session_participant_id": session_participant.id,
                 "participants_count": participants_count,
                 "participant": {
@@ -329,9 +299,12 @@ class JoinSessionAPIView(APIView):
                     "description": session.quiz.description,
                 },
                 "current_question": session_state.get("current_question"),
+                "phase_started_at": session_state.get("phase_started_at"),
+                "phase_ends_at": session_state.get("phase_ends_at"),
                 "question_started_at": session_state.get("question_started_at"),
                 "question_ends_at": session_state.get("question_ends_at"),
                 "is_answer_revealed": session_state.get("is_answer_revealed"),
+                "reveal": session_state.get("reveal"),
                 "legal_documents": get_current_legal_documents(),
             },
             status=status.HTTP_200_OK,
