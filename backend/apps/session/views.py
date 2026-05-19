@@ -31,6 +31,7 @@ from apps.session.serializers import (
     ParticipantJoinSerializer,
     SubmitAnswerSerializer,
     build_leaderboard,
+    display_participant_phone,
 )
 
 
@@ -312,7 +313,7 @@ class JoinSessionAPIView(APIView):
                 "participant": {
                     "id": participant.id,
                     "name": participant.name,
-                    "phone": participant.phone,
+                    "phone": display_participant_phone(participant.phone),
                     "consent": participant.consent,
                     "consent_given_at": (
                         participant.consent_given_at.isoformat()

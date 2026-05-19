@@ -102,6 +102,11 @@ enum AppText {
   participantHeroLiveTitle,
   participantHeroLiveSubtitle,
   participantJoinCardTitle,
+  participantJoinByPinTitle,
+  participantJoinByQrTitle,
+  participantJoinByQrSubtitle,
+  participantAdvancedSettingsTitle,
+  participantAdvancedSettingsSubtitle,
   participantProfileCardTitle,
   participantLiveCardTitle,
   sessionPinLabel,
@@ -199,6 +204,7 @@ enum AppText {
   participantNameRequiredError,
   participantPhoneRequiredError,
   participantConsentRequiredError,
+  participantSessionNotFoundError,
   participantManualPinFallbackHint,
   participantSessionUnavailable,
   apiRegisterTeacherFailed,
@@ -478,6 +484,24 @@ const _strings = <AppText, LocalizedString>{
     ru: 'Подключение к сессии',
     en: 'Session connection',
   ),
+  AppText.participantJoinByPinTitle: LocalizedString(
+    ru: 'Введите PIN игры',
+    en: 'Enter game PIN',
+  ),
+  AppText.participantJoinByQrTitle: LocalizedString(
+    ru: 'Игра найдена по QR',
+    en: 'Game found by QR',
+  ),
+  AppText.participantJoinByQrSubtitle: LocalizedString(
+    ru: 'Проверьте название викторины и заполните короткую форму ниже.',
+    en: 'Check the quiz title and complete the short form below.',
+  ),
+  AppText.participantAdvancedSettingsTitle:
+      LocalizedString(ru: 'Технические настройки', en: 'Technical settings'),
+  AppText.participantAdvancedSettingsSubtitle: LocalizedString(
+    ru: 'Обычно не открывать. Здесь можно поменять адрес API для диагностики.',
+    en: 'Usually keep closed. Change the API URL here for diagnostics.',
+  ),
   AppText.participantProfileCardTitle: LocalizedString(
     ru: 'Быстрая регистрация',
     en: 'Quick registration',
@@ -496,10 +520,11 @@ const _strings = <AppText, LocalizedString>{
     en: 'Use token from join link',
   ),
   AppText.participantNameLabel: LocalizedString(ru: 'Имя', en: 'Name'),
-  AppText.participantPhoneLabel: LocalizedString(ru: 'Телефон', en: 'Phone'),
+  AppText.participantPhoneLabel:
+      LocalizedString(ru: 'Телефон (необязательно)', en: 'Phone (optional)'),
   AppText.participantPhoneHelper: LocalizedString(
-    ru: 'Используется для быстрой регистрации и выгрузки результатов.',
-    en: 'Used for quick registration and result export.',
+    ru: 'Можно оставить пустым. Если заполните, попадёт в выгрузку результатов.',
+    en: 'You can leave it blank. If filled, it appears in result export.',
   ),
   AppText.legalDocumentsButton:
       LocalizedString(ru: 'Документы и согласие', en: 'Privacy & consent'),
@@ -602,9 +627,9 @@ const _strings = <AppText, LocalizedString>{
     en: '1. Data We Collect',
   ),
   AppText.privacyDataCollectedBody: LocalizedString(
-    ru: 'Мы собираем телефон участника, отображаемое имя, сведения об участии в сессии, '
+    ru: 'Мы собираем телефон участника, если он указан, отображаемое имя, сведения об участии в сессии, '
         'историю ответов и технические журналы, необходимые для надежной работы сервиса.',
-    en: 'We collect participant phone number, display name, session participation metadata, '
+    en: 'We collect participant phone number when provided, display name, session participation metadata, '
         'answer history, and technical logs required for reliability and abuse prevention.',
   ),
   AppText.privacyPurposeTitle: LocalizedString(
@@ -658,9 +683,9 @@ const _strings = <AppText, LocalizedString>{
   AppText.consentScopeTitle:
       LocalizedString(ru: '1. Объем согласия', en: '1. Scope of Consent'),
   AppText.consentScopeBody: LocalizedString(
-    ru: 'Входя в сессию, участник соглашается на обработку телефона, имени, ответов, очков и времени участия.',
-    en: 'By joining a session, participant consents to processing of phone number, name, '
-        'quiz answers, score values, and participation timestamps.',
+    ru: 'Входя в сессию, участник соглашается на обработку имени, ответов, очков, времени участия и телефона, если он указан.',
+    en: 'By joining a session, participant consents to processing of name, '
+        'quiz answers, score values, participation timestamps, and phone number when provided.',
   ),
   AppText.consentActionsTitle:
       LocalizedString(ru: '2. Действия с данными', en: '2. Processing Actions'),
@@ -812,6 +837,10 @@ const _strings = <AppText, LocalizedString>{
     ru: 'Подтвердите согласие на обработку персональных данных.',
     en: 'Confirm personal data consent.',
   ),
+  AppText.participantSessionNotFoundError: LocalizedString(
+    ru: 'Сессия не найдена. Проверьте PIN или откройте свежий QR-код.',
+    en: 'Session was not found. Check the PIN or open a fresh QR code.',
+  ),
   AppText.participantManualPinFallbackHint: LocalizedString(
     ru: '\nЕсли QR-ссылка устарела, переключитесь на ручной ввод PIN.',
     en: '\nYou can switch to manual PIN input if this link is outdated.',
@@ -910,4 +939,13 @@ String appText(AppText key, {Map<String, Object?> args = const {}}) {
     result = result.replaceAll('{${entry.key}}', entry.value?.toString() ?? '');
   }
   return result;
+}
+
+String sessionStatusText(Object? status) {
+  return switch ((status ?? '').toString().toLowerCase()) {
+    'waiting' => uiText(ru: 'ожидание', en: 'waiting'),
+    'live' => uiText(ru: 'идёт игра', en: 'live'),
+    'finished' => uiText(ru: 'завершена', en: 'finished'),
+    _ => uiText(ru: 'неизвестно', en: 'unknown'),
+  };
 }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../api/api_client.dart';
+import '../l10n/app_language.dart';
 import '../l10n/app_strings.dart';
 
 String userErrorText(Object error) {
@@ -71,6 +72,11 @@ String? _joinValidationText(ApiException error) {
     return appText(AppText.participantConsentRequiredError);
   }
 
+  final nonFieldText = _firstErrorText(body['non_field_errors']);
+  if (nonFieldText != null) {
+    return _rawErrorText(nonFieldText);
+  }
+
   return null;
 }
 
@@ -98,6 +104,16 @@ bool _hasFieldError(Map<String, dynamic> body, String field) {
     return value.isNotEmpty;
   }
   return value.toString().trim().isNotEmpty;
+}
+
+String? _firstErrorText(Object? value) {
+  if (value is List && value.isNotEmpty) {
+    return value.first.toString();
+  }
+  if (value is String && value.trim().isNotEmpty) {
+    return value;
+  }
+  return null;
 }
 
 String _formatExceptionText(FormatException error) {
@@ -156,6 +172,16 @@ String _rawErrorText(String message) {
       appText(AppText.participantJoinTargetRequired),
     'Session is not available for joining.' =>
       appText(AppText.participantSessionUnavailable),
+    'PIN or join token is required.' =>
+      appText(AppText.participantJoinTargetRequired),
+    'Session was not found by provided PIN/token.' =>
+      appText(AppText.participantSessionNotFoundError),
+    'Session is already finished.' => uiText(
+        ru: 'Сессия уже завершена.',
+        en: 'Session is already finished.',
+      ),
+    'Consent is required to join quiz sessions.' =>
+      appText(AppText.participantConsentRequiredError),
     _ => message,
   };
 }

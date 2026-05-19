@@ -8,6 +8,7 @@ from rest_framework.test import APITestCase
 
 from apps.quiz.models import Choice, Question, Quiz
 from apps.session.models import LiveSession, Participant, ParticipantAnswer, SessionParticipant
+from apps.session.serializers import build_leaderboard
 
 
 User = get_user_model()
@@ -184,6 +185,27 @@ class SessionApiFlowTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("Consent is required", str(response.data))
         self.assertEqual(Participant.objects.count(), 0)
+
+    @override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+    def test_participant_can_join_without_phone(self):
+        session, _, _, _ = self.create_session()
+
+        response = self.client.post(
+            "/api/sessions/join/",
+            {
+                "pin": session.pin,
+                "phone": "",
+                "name": "Guest",
+                "consent": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        participant = Participant.objects.get()
+        self.assertTrue(participant.phone.startswith("guest:"))
+        self.assertEqual(response.data["participant"]["phone"], "")
+        self.assertEqual(build_leaderboard(session)[0]["phone"], "")
 
     @override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
     def test_live_answer_scores_once_and_blocks_duplicates(self):

@@ -599,7 +599,7 @@ void main() {
         ),
       );
 
-      await tester.enterText(find.byType(TextField).at(1), '123456');
+      await tester.enterText(find.byType(TextField).first, '123456');
       await tester.tap(find.text('Preview session'));
       await tester.tap(find.text('Use token from join link'));
       await tester.pump();
@@ -642,7 +642,8 @@ void main() {
       await tester.tap(find.text('Use PIN instead'));
       await tester.pump();
 
-      expect(find.text('Token: token-123'), findsOneWidget);
+      expect(find.text('Game found by QR'), findsOneWidget);
+      expect(find.text('Token: token-123'), findsNothing);
       expect(previewCalls, 1);
       expect(usePinCalls, 1);
     });

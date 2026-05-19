@@ -102,7 +102,7 @@ class _LiveSessionSummary extends StatelessWidget {
               icon: Icons.flag_outlined,
               label: appText(
                 AppText.statusValue,
-                args: {'status': session['status']},
+                args: {'status': sessionStatusText(session['status'])},
               ),
               background: Colors.white.withValues(alpha: 0.16),
               foreground: Colors.white,

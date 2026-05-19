@@ -52,6 +52,7 @@ class ParticipantProfileCard extends StatelessWidget {
           const SizedBox(height: 12),
           TextField(
             controller: phoneController,
+            keyboardType: TextInputType.phone,
             decoration: InputDecoration(
               labelText: appText(AppText.participantPhoneLabel),
               helperText: appText(AppText.participantPhoneHelper),

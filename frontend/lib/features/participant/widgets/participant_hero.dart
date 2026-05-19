@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../../../l10n/app_strings.dart';
 import '../../../shared/widgets/app_surfaces.dart';
@@ -23,8 +23,8 @@ class ParticipantHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusText =
-        appText(AppText.statusValue, args: {'status': sessionStatus});
+    final statusText = appText(AppText.statusValue,
+        args: {'status': sessionStatusText(sessionStatus)});
     final socketText = appText(
       AppText.webSocketState,
       args: {

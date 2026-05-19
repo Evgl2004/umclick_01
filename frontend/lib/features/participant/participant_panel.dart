@@ -81,9 +81,6 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     if (_nameController.text.trim().isEmpty) {
       return appText(AppText.participantNameRequiredError);
     }
-    if (_phoneController.text.trim().isEmpty) {
-      return appText(AppText.participantPhoneRequiredError);
-    }
     if (!_consent) {
       return appText(AppText.participantConsentRequiredError);
     }
@@ -566,8 +563,6 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
             const SizedBox(height: 14),
             ParticipantRevealResultsCard(revealPayload: _revealPayload!),
           ],
-          const SizedBox(height: 14),
-          ParticipantLiveEventsCard(events: _events),
         ],
       ),
     );

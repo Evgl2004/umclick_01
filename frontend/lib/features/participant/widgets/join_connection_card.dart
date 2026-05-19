@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/value_utils.dart';
 import '../../../l10n/app_strings.dart';
+import '../../../shared/user_error_text.dart';
 import '../../../shared/widgets/app_surfaces.dart';
 
 class ParticipantJoinConnectionCard extends StatelessWidget {
@@ -32,26 +33,18 @@ class ParticipantJoinConnectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasJoinToken = useJoinTokenFromLink && joinTokenFromLink != null;
+
     return AppSectionCard(
       color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.94),
       borderRadius: 28,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(appText(AppText.participantJoinCardTitle),
-              style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 14),
-          TextField(
-            controller: apiController,
-            decoration: InputDecoration(
-              labelText: appText(AppText.apiBaseUrlLabel),
-              helperText: appText(AppText.participantApiBaseUrlHelper),
-            ),
-          ),
-          const SizedBox(height: 14),
-          if (useJoinTokenFromLink && joinTokenFromLink != null)
-            _JoinTokenNotice(
-              joinToken: joinTokenFromLink!,
+          _JoinModeHeader(hasJoinToken: hasJoinToken),
+          const SizedBox(height: 12),
+          if (hasJoinToken)
+            _JoinTokenActions(
               loading: loading,
               loadingJoinPreview: loadingJoinPreview,
               onLoadJoinPreview: onLoadJoinPreview,
@@ -73,22 +66,98 @@ class ParticipantJoinConnectionCard extends StatelessWidget {
               preview: joinPreview,
             ),
           ],
+          const SizedBox(height: 14),
+          _ParticipantAdvancedSettings(apiController: apiController),
         ],
       ),
     );
   }
 }
 
-class _JoinTokenNotice extends StatelessWidget {
-  const _JoinTokenNotice({
-    required this.joinToken,
+class _JoinModeHeader extends StatelessWidget {
+  const _JoinModeHeader({required this.hasJoinToken});
+
+  final bool hasJoinToken;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE0F7FA),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Icon(
+            hasJoinToken ? Icons.qr_code_2 : Icons.pin_outlined,
+            color: const Color(0xFF005F73),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                hasJoinToken
+                    ? appText(AppText.participantJoinByQrTitle)
+                    : appText(AppText.participantJoinByPinTitle),
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              if (hasJoinToken) ...[
+                const SizedBox(height: 4),
+                Text(appText(AppText.participantJoinByQrSubtitle)),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ParticipantAdvancedSettings extends StatelessWidget {
+  const _ParticipantAdvancedSettings({required this.apiController});
+
+  final TextEditingController apiController;
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.tune_outlined),
+        title: Text(appText(AppText.participantAdvancedSettingsTitle)),
+        subtitle: Text(appText(AppText.participantAdvancedSettingsSubtitle)),
+        children: [
+          TextField(
+            controller: apiController,
+            decoration: InputDecoration(
+              labelText: appText(AppText.apiBaseUrlLabel),
+              helperText: appText(AppText.participantApiBaseUrlHelper),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _JoinTokenActions extends StatelessWidget {
+  const _JoinTokenActions({
     required this.loading,
     required this.loadingJoinPreview,
     required this.onLoadJoinPreview,
     required this.onUsePinInstead,
   });
 
-  final String joinToken;
   final bool loading;
   final bool loadingJoinPreview;
   final VoidCallback onLoadJoinPreview;
@@ -96,45 +165,22 @@ class _JoinTokenNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE0F7FA),
-        borderRadius: BorderRadius.circular(20),
-        border:
-            Border.all(color: const Color(0xFF0A9396).withValues(alpha: 0.32)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.link, color: Color(0xFF005F73)),
-              const SizedBox(width: 8),
-              Expanded(child: Text(appText(AppText.joinLinkDetected))),
-            ],
+          FilledButton.tonalIcon(
+            onPressed:
+                (loading || loadingJoinPreview) ? null : onLoadJoinPreview,
+            icon: const Icon(Icons.refresh),
+            label: Text(appText(AppText.refreshPreviewButton)),
           ),
-          const SizedBox(height: 8),
-          SelectableText(
-              appText(AppText.joinTokenLabel, args: {'token': joinToken})),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              OutlinedButton.icon(
-                onPressed:
-                    (loading || loadingJoinPreview) ? null : onLoadJoinPreview,
-                icon: const Icon(Icons.refresh),
-                label: Text(appText(AppText.refreshPreviewButton)),
-              ),
-              OutlinedButton.icon(
-                onPressed: loading ? null : onUsePinInstead,
-                icon: const Icon(Icons.pin_outlined),
-                label: Text(appText(AppText.usePinInsteadButton)),
-              ),
-            ],
+          OutlinedButton.icon(
+            onPressed: loading ? null : onUsePinInstead,
+            icon: const Icon(Icons.pin_outlined),
+            label: Text(appText(AppText.usePinInsteadButton)),
           ),
         ],
       ),
@@ -227,7 +273,7 @@ class _JoinPreviewCard extends StatelessWidget {
     final title =
         quiz['title']?.toString() ?? appText(AppText.untitledQuizLong);
     final description = quiz['description']?.toString() ?? '';
-    final statusLabel = preview['session_status']?.toString() ?? 'unknown';
+    final statusLabel = sessionStatusText(preview['session_status']);
     final participantsCount = asInt(preview['participants_count']);
     final canJoin = preview['can_join'] != false;
     final closedReason = preview['closed_reason']?.toString() ?? '';
@@ -291,8 +337,10 @@ class _JoinPreviewCard extends StatelessWidget {
           ),
           if (!canJoin && closedReason.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text(closedReason,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(
+              userErrorText(StateError(closedReason)),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ],
           if (loadingJoinPreview) ...[
             const SizedBox(height: 10),

@@ -58,5 +58,13 @@ void main() {
       )),
       appText(AppText.participantConsentRequiredError),
     );
+    expect(
+      userErrorText(ApiException(
+        statusCode: 400,
+        message: 'Failed to join session',
+        body: '{"non_field_errors":["Session is already finished."]}',
+      )),
+      'Сессия уже завершена.',
+    );
   });
 }

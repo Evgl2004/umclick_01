@@ -1,6 +1,7 @@
 import base64
 import io
 import os
+import uuid
 from datetime import timedelta
 
 import qrcode
@@ -16,6 +17,15 @@ from apps.session.realtime import serialize_question_for_participants
 
 MAX_CORRECT_POINTS = 1000
 MIN_CORRECT_POINTS = 200
+GUEST_PHONE_PREFIX = "guest:"
+
+
+def make_guest_phone() -> str:
+    return f"{GUEST_PHONE_PREFIX}{uuid.uuid4().hex[:26]}"
+
+
+def display_participant_phone(phone: str) -> str:
+    return "" if phone.startswith(GUEST_PHONE_PREFIX) else phone
 
 
 def build_join_url(session: LiveSession) -> str:
@@ -132,7 +142,7 @@ class LiveSessionSerializer(serializers.ModelSerializer):
 class ParticipantJoinSerializer(serializers.Serializer):
     pin = serializers.CharField(max_length=6, required=False, allow_blank=True)
     join_token = serializers.UUIDField(required=False)
-    phone = serializers.CharField(max_length=32)
+    phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
     name = serializers.CharField(max_length=255)
     consent = serializers.BooleanField()
 
@@ -165,7 +175,7 @@ class ParticipantJoinSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated_data):
-        phone = validated_data["phone"]
+        phone = (validated_data.get("phone") or "").strip() or make_guest_phone()
         name = validated_data["name"]
         consent = validated_data["consent"]
         session = validated_data["session"]
@@ -322,7 +332,7 @@ def build_leaderboard(session: LiveSession):
     return [
         {
             "participant_name": row.participant.name,
-            "phone": row.participant.phone,
+            "phone": display_participant_phone(row.participant.phone),
             "points": int(row.points or 0),
             "correct_answers": row.correct_answers,
         }
