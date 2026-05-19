@@ -27,12 +27,7 @@ def reveal_current_question_once(
     """Atomically reveal answers only once for the active session question."""
     with transaction.atomic():
         try:
-            session = (
-                LiveSession.objects.select_for_update()
-                .select_related("current_question")
-                .prefetch_related("current_question__choices")
-                .get(id=session_id)
-            )
+            session = LiveSession.objects.select_for_update().get(id=session_id)
         except LiveSession.DoesNotExist:
             return None
 
