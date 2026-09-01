@@ -8,11 +8,17 @@ venv/
 
 # Django static
 backend/staticfiles/
+backend/.coverage
+backend/htmlcov/
 
 # Env
 .env
 .env.demo
 .env.production
+.env.test.local
+
+# Локальные отчёты и временные материалы Codex
+.codex_work/
 
 # Flutter / Dart
 .dart_tool/

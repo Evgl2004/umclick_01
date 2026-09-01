@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$InstallBackend,
     [switch]$SkipFrontendBuild
 )
@@ -6,10 +6,20 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-Write-Host "Running backend checks..."
-& (Join-Path $PSScriptRoot "check-backend.ps1") -Install:$InstallBackend
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+$DevScript = Join-Path $RepoRoot "dev.ps1"
 
-Write-Host "Running frontend checks..."
-& (Join-Path $PSScriptRoot "check-frontend.ps1") -SkipBuild:$SkipFrontendBuild
+if ($InstallBackend) {
+    & $DevScript setup-python
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+}
 
-Write-Host "All local checks passed."
+$arguments = @("test-all")
+if ($SkipFrontendBuild) {
+    $arguments += "-SkipFrontendBuild"
+}
+
+& $DevScript @arguments
+exit $LASTEXITCODE

@@ -52,31 +52,24 @@ docker compose up --build
 - Backend API: `http://localhost:8000/api`
 - WebSocket: `ws://localhost:8000/ws/sessions/<session_uuid>/`
 
-## Локальные проверки
+## Локальная разработка и проверки
 
-Полная проверка проекта:
-
-```powershell
-.\scripts\check-all.ps1
-```
-
-Только backend:
+Единая точка входа из корня:
 
 ```powershell
-.\scripts\check-backend.ps1
+.\dev.ps1 setup-python
+.\dev.ps1 doctor
+.\dev.ps1 test-all
 ```
 
-Только frontend:
+Отдельные проверки:
 
 ```powershell
-.\scripts\check-frontend.ps1
+.\dev.ps1 test-backend -Coverage
+.\dev.ps1 test-frontend -SkipBuild
 ```
 
-Быстрая frontend-проверка без web build:
-
-```powershell
-.\scripts\check-frontend.ps1 -SkipBuild
-```
+Контур использует заранее установленный локальный PostgreSQL и отдельные `UMCLICK_TEST_DB_*`. Подготовка роли, `.env.test.local`, жизненный цикл временной базы и типовые ошибки описаны в [руководстве по локальной разработке](docs/development.md).
 
 ## Как посмотреть UI
 
@@ -114,6 +107,7 @@ C:\Users\admin_eas\flutter\bin\flutter.bat run -d chrome --web-port 3000
 | `docs/live-flow.md` | Полный игровой сценарий teacher/participant |
 | `docs/live-presentation-mode.md` | Задание и критерии очного режима с экраном демонстрации |
 | `docs/maintenance.md` | Правила поддержки проекта и документации |
+| `docs/development.md` | Локальная разработка и проверки в Windows |
 | `docs/deployment.md` | Как развернуть демо-стенд на сервере |
 | `docs/reviewer-guide.md` | Пошаговая инструкция для проверяющего пользователя |
 | `docs/testing.md` | Локальные проверки и текущая тестовая стратегия |
@@ -129,6 +123,7 @@ docs/             Project documentation
 deploy/           Demo deployment compose and nginx config
 scripts/          Local Windows quality-gate scripts
 infra/            Infrastructure notes/placeholders
+dev.ps1           Единая точка локальных проверок
 docker-compose.yml
 ```
 
