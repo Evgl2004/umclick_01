@@ -1,5 +1,7 @@
 # Viewing umclick UI
 
+Состояние после локального этапа А: этот документ сохраняет описание прежнего клиентского сценария и эксплуатации. Доступ и маршруты сервера изменены; актуальны [контракт А](block-1-stage-a-api.md) и [отчёт передачи](block-1-stage-a-handoff.md). Совместимость клиента, полное проведение и развёртывание проверяются после Б/В; старые числовые маршруты, JWT для показа и ответ без токена использовать нельзя.
+
 The fastest way to inspect implemented screens is to run Flutter Web. A manual static HTML rewrite is not recommended because it would not preserve Flutter layout, navigation, form states, language switching, or widget behavior.
 
 ## Option 1: Live Flutter Web

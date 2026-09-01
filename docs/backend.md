@@ -1,246 +1,66 @@
-﻿# Backend umclick
+# Серверная часть umclick
 
-Backend находится в `backend/` и построен на Django, Django REST Framework, Channels и Celery.
+Сервер находится в `backend/`: Django, Django REST Framework, Channels и Celery. Локальная реализация А меняет доступ и данные; она не совместима с прежним клиентским протоколом без адаптации В и не предназначена для отдельного развёртывания.
 
-## Назначение
+Основной источник точного контракта — [данные и доступ А](block-1-stage-a-api.md); фактические проверки и ограничения — [отчёт передачи](block-1-stage-a-handoff.md).
 
-Backend отвечает за:
+## Модули
 
-- регистрацию и JWT-аутентификацию преподавателя;
-- CRUD викторин;
-- создание и управление live-сессиями;
-- подключение участников по PIN или `join_token`;
-- прием ответов и расчет очков;
-- хранение фаз очной live-игры и экрана демонстрации;
-- WebSocket события live-игры;
-- автоматическое раскрытие ответов;
-- leaderboard и CSV export;
-- legal metadata и версии согласий.
+| Модуль | Ответственность |
+|---|---|
+| `apps.core` | JWT, регистрация без административных привилегий, роли, общая защита ORM и русские ошибки |
+| `apps.quiz` | Викторины с владельцем, вопросы и варианты, полная вложенная валидация, транзакции и неизменяемость после первого использования |
+| `apps.session` | Сессии с создателем, участие, раздельные токены, PIN, состояние, команды, история и выгрузка |
+| `umclick` | Настройки, маршруты, ASGI и Celery |
 
-## Структура каталогов
+В `apps.session/access.py` находятся проверка токенов и единый поиск актуальной сессии по PIN; в `participation.py` — создание/восстановление участия и собственные результаты. `realtime.py` разделяет получателей событий; `consumers.py` подтверждает доступ до подписки.
 
-```text
-backend/
-  apps/
-    core/
-    quiz/
-    session/
-  umclick/
-  manage.py
-  requirements.txt
-  Dockerfile
-```
+## Роли и история
 
-## `apps.core`
+Преподаватель — активная учётная запись в группе `teacher`; администратор — активная учётная запись с `is_staff`. Регистрация назначает только группу преподавателя. Назначение `teacher` и `participant` доступно через стандартную администрацию пользователей. `TEACHER_SIGNUP_CODE` по-прежнему может ограничивать регистрацию.
 
-Отвечает за пользователей-преподавателей и права.
+Преподаватель работает со своими викторинами и связанными сессиями. Все объектные действия, списки, команды, выгрузка и соединения проверяют права. Учётная запись участника видит свой профиль и свои разрешённые результаты; для ответов нужен отдельный токен участия.
 
-Ключевые файлы:
+Любая сессия, включая завершённую/остановленную, навсегда запрещает изменение использованной викторины, вопросов и вариантов. Прямое/каскадное удаление истории и перенос её связей запрещены. Администратор не имеет исключений. Неиспользованные черновики изменяемы и удаляемы; повторные сессии неизменённой викторины разрешены. Версии и архивирование ещё не реализованы.
 
-- `serializers.py` - `TeacherRegisterSerializer`, `TeacherSerializer`.
-- `views.py` - регистрация преподавателя и `me` endpoint.
-- `permissions.py` - `IsTeacher`, требует authenticated user и `is_staff`.
-- `urls.py` - auth endpoints проекта.
+## Основные маршруты
 
-Teacher registration может быть ограничена переменной `TEACHER_SIGNUP_CODE`.
+- Учётная запись: `/api/auth/register/`, `token/`, `token/refresh/`, `me/`.
+- Викторины: `/api/quizzes/` и `/api/quizzes/{id}/`.
+- Сессии преподавателя: `/api/sessions/`, `/api/sessions/{uuid}/`, действия `start`, `next-question`, `reveal-answer`, `finish`, `state`, `leaderboard`, `results/export`.
+- Публичные сведения: `/api/sessions/join/preview/`, `/api/sessions/legal/current/`.
+- Подключение/восстановление: `POST /api/sessions/join/`.
+- Участие и ответ: `/api/sessions/{uuid}/participation/`, `/api/sessions/{uuid}/answer/`.
+- Собственные результаты по JWT: `/api/sessions/my-results/`.
+- Выдача/отзыв показа: `/api/sessions/{uuid}/display-access/`, `display-access/{grant_id}/`.
+- Чтение показа: `/api/sessions/{uuid}/display-state/`.
 
-## `apps.quiz`
+Здесь UUID — публичный `join_token`, не секрет. Числовые маршруты сессий и общий `/api/sessions/answer/` удалены. Полная таблица методов, форматов и ошибок приведена в контракте А.
 
-Отвечает за структуру викторины.
+## Токены и соединение
 
-Модели:
+Схемы заголовка: `Bearer` для access JWT, `Participant` для участия и `Display` для показа. В базе хранятся отпечатки секретов. Потерянный токен зарегистрированного участия не перевыпускается: повторное подключение даёт 409, собственные профиль и результаты остаются доступны по JWT.
 
-- `Quiz` - title, description, display settings, reading/results timers, timestamps.
-- `Question` - quiz, text, order, time_limit_sec.
-- `Choice` - question, text, is_correct, order.
+Соединение `/ws/sessions/{uuid}/` не выдаёт данных до первого сообщения `auth` с типом доступа и токеном. Ожидание ограничено 10 секундами. Роль и сессия фиксируются; доступ повторно проверяется перед каждым событием и при периодической проверке. После фиксации транзакции публикуется имя события, получатель собирает допустимое состояние заново.
 
-Ключевые файлы:
+## Проведение и граница Б
 
-- `models.py` - модели викторин.
-- `serializers.py` - nested serializer для quiz -> questions -> choices.
-- `views.py` - `QuizViewSet`, teacher-only CRUD.
-- `migrations/0001_initial.py` - initial schema.
+Фазы `lobby/reading/answering/results/final`, автоматическое раскрытие и старый подсчёт пока сохранены. Правильный ответ оценивается прежними 200–1000 баллами, неправильный — нулём. Изменение ответа обновляет прежнюю итоговую запись. Это временная реализация, которую Б заменяет журналом попыток, новым рейтингом и согласованной финализацией.
 
-## `apps.session`
+Приём ответа теперь требует токен и проверку состояния под блокировкой сессии; немедленное подтверждение содержит только `accepted`. Полный фазовый протокол, временное окно доставки и версии команд здесь не объявляются готовыми.
 
-Самая важная предметная область: live game-flow.
+## Запуск и проверки
 
-Модели:
-
-- `LiveSession` - quiz, host_name, pin, join_token, status, phase, current_question, timers.
-- `Participant` - phone, name, consent, legal versions.
-- `SessionParticipant` - связь participant с live session.
-- `ParticipantAnswer` - ответ, correctness, score_points, elapsed_ms.
-
-Ключевые файлы:
-
-- `views.py` - REST endpoints live-сессий, join, answer, export.
-- `serializers.py` - session serializers, scoring, join validation, answer validation.
-- `realtime.py` - WebSocket payload helpers и broadcast.
-- `consumers.py` - Channels consumer.
-- `routing.py` - WebSocket routing.
-- `autoreveal.py` - атомарное раскрытие ответа.
-- `tasks.py` - Celery beat задача auto-reveal.
-- `legal.py` - текущие legal versions/links/contact.
-- `tests/` - unit, API flow и regression tests.
-
-## REST endpoints
-
-Auth:
-
-- `POST /api/auth/register/`
-- `POST /api/auth/token/`
-- `POST /api/auth/token/refresh/`
-- `GET /api/auth/me/`
-
-Teacher quiz API:
-
-- `GET /api/quizzes/`
-- `POST /api/quizzes/`
-- `GET /api/quizzes/{id}/`
-- `PUT /api/quizzes/{id}/`
-- `DELETE /api/quizzes/{id}/`
-
-Teacher session API:
-
-- `POST /api/sessions/`
-- `GET /api/sessions/{id}/`
-- `POST /api/sessions/{id}/start/`
-- `POST /api/sessions/{id}/next-question/`
-- `POST /api/sessions/{id}/reveal-answer/`
-- `POST /api/sessions/{id}/finish/`
-- `GET /api/sessions/{id}/leaderboard/`
-- `GET /api/sessions/{id}/results/export/`
-- `GET /api/sessions/{id}/display-state/`
-
-Public participant API:
-
-- `GET /api/sessions/join/preview/`
-- `POST /api/sessions/join/`
-- `POST /api/sessions/answer/`
-- `GET /api/sessions/{id}/state/`
-- `GET /api/sessions/legal/current/`
-
-## WebSocket
-
-Endpoint:
-
-```text
-/ws/sessions/<session_id>/
-```
-
-События:
-
-- `session_started`
-- `question_reading_started`
-- `question_started`
-- `answer_submitted`
-- `answer_revealed`
-- `participant_joined`
-- `session_finished`
-- `session_state`
-
-WebSocket слой не должен сам принимать бизнес-решения. Он передает состояние, подготовленное backend helpers.
-
-## Runtime
-
-Для локальной разработки backend может запускаться через Django `runserver`.
-
-Для демо-стенда и серверного запуска используется ASGI-сервер `daphne`:
-
-```bash
-python -m daphne -b 0.0.0.0 -p 8000 umclick.asgi:application
-```
-
-Это важно, потому что live-flow использует WebSocket через Django Channels.
-
-## CORS
-
-CORS управляется environment variables:
-
-- `CORS_ALLOW_ALL_ORIGINS` - разрешить все origins, удобно только для локальной разработки;
-- `CORS_ALLOWED_ORIGINS` - список разрешённых origins через запятую.
-
-Если `CORS_ALLOW_ALL_ORIGINS` не задан, значение зависит от `DJANGO_DEBUG`: в debug режиме CORS открыт, в server/demo режиме закрыт.
-
-## Scoring
-
-Scoring находится в `apps.session.serializers.score_for_answer`.
-
-Правила:
-
-- неправильный ответ дает `0`;
-- быстрый правильный ответ может дать до `1000`;
-- медленный правильный ответ не падает ниже `200`;
-- elapsed time ограничивается лимитом вопроса.
-- `elapsed_ms` сохраняется в ответе и используется для tie-break в рейтинге.
-
-## Legal metadata
-
-Legal versions берутся из environment variables:
-
-- `PRIVACY_POLICY_VERSION`
-- `PRIVACY_POLICY_URL`
-- `PERSONAL_DATA_CONSENT_VERSION`
-- `PERSONAL_DATA_CONSENT_URL`
-- `LEGAL_CONTACT_EMAIL`
-
-При join версии сохраняются в `Participant`.
-
-## Миграции
-
-Проверка актуальности:
+Для разработки используется `runserver`; серверный ASGI-запуск выполняется Daphne. Команда сама по себе не разрешает развёртывание:
 
 ```powershell
-cd backend
-.venv\Scripts\python.exe manage.py makemigrations --check --dry-run
+python -m daphne -b 127.0.0.1 -p 8000 umclick.asgi:application
 ```
 
-Если модель изменилась, миграция должна попасть в тот же логический коммит.
+Настройки PostgreSQL, Redis, CORS и правовых документов сохраняются в существующей конфигурации. Анонимное подключение не требует телефона и согласия; отсутствующий телефон — `NULL`. При явно переданном согласии сохраняются соответствующие версии.
 
-## Тесты
+Для полного набора А нужна отдельная PostgreSQL. Конфигурация `umclick.stage_a_checks` намеренно использует только локальный порт 55439 и синтетическую тестовую базу; она не подходит для рабочей службы. Порядок подготовки и команды находятся в [проверках](testing.md).
 
-Запуск:
+Миграция А не удаляет данные: неподготовленные старые игровые записи останавливают переход. Разовая подготовка тестовых данных — отдельный согласованный шаг до включения защиты. Сохранение пользователей и входа проверяется на старой схеме, без доступа к стенду.
 
-```powershell
-cd backend
-.venv\Scripts\python.exe manage.py test
-```
-
-Или из корня:
-
-```powershell
-.\scripts\check-backend.ps1
-```
-
-Текущие группы тестов:
-
-- `test_legal.py` - legal metadata.
-- `test_scoring.py` - scoring helpers.
-- `test_api_flow.py` - happy-path API flow.
-- `test_api_regressions.py` - нетиповые и запрещенные сценарии.
-
-## Локальная разработка backend
-
-Первичная установка:
-
-```powershell
-python -m venv backend\.venv
-backend\.venv\Scripts\python.exe -m pip install --upgrade pip
-backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
-```
-
-Проверка:
-
-```powershell
-.\scripts\check-backend.ps1
-```
-
-## Правила изменений backend
-
-- Любой новый endpoint должен иметь API test.
-- Любое изменение live-flow должно иметь regression test.
-- Любое изменение модели должно иметь migration.
-- Teacher-only endpoints должны использовать `IsTeacher`.
-- Public endpoints должны явно валидировать входные данные.
-- Нельзя полагаться на prefetched cache для критичных счетчиков после записи в БД.
+Новые ошибки, предупреждения, сообщения журналирования, документация, комментарии и докстринги пишутся на русском. Идентификаторы и исходная диагностика сторонних библиотек сохраняют формат.

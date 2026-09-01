@@ -19,7 +19,7 @@ umclick - MVP платформы интерактивных викторин в 
 - CRUD викторин для преподавателя.
 - Конструктор викторин во Flutter Web.
 - Live-сессии с PIN, QR и `join_token`.
-- Быстрая регистрация участника: телефон, имя, согласие.
+- Быстрое анонимное участие по имени; телефон и согласие необязательны.
 - Preview сессии до регистрации участника.
 - Подключение участника по PIN или token-ссылке.
 - WebSocket события live-сессии.
@@ -50,7 +50,7 @@ docker compose up --build
 
 - Frontend: `http://localhost:3000`
 - Backend API: `http://localhost:8000/api`
-- WebSocket: `ws://localhost:8000/ws/sessions/<session_id>/`
+- WebSocket: `ws://localhost:8000/ws/sessions/<session_uuid>/`
 
 ## Локальные проверки
 
@@ -105,6 +105,9 @@ C:\Users\admin_eas\flutter\bin\flutter.bat run -d chrome --web-port 3000
 
 | Документ | Назначение |
 | --- | --- |
+| [docs/block-1-requirements.md](docs/block-1-requirements.md) | Согласованные требования первого блока: три последовательных этапа, критерии приёмки и технические вопросы реализации; не описание готового кода |
+| [docs/block-1-stage-a-task.md](docs/block-1-stage-a-task.md) | Задание исполнителю этапа А «Данные и доступ»: границы, проверки и передача результата; реализация только после анализа и отдельного подтверждения |
+| [docs/block-1-stage-a-prompt.md](docs/block-1-stage-a-prompt.md) | Расширенный стартовый промт: документация, правила разработки, отчёт анализа и обязательная остановка до разрешения реализации |
 | `docs/architecture.md` | Общая архитектура, границы слоев, компоненты |
 | `docs/backend.md` | Backend apps, models, endpoints, WebSocket, tests |
 | `docs/frontend.md` | Flutter структура, features, widgets, state, tests |
@@ -131,7 +134,9 @@ docker-compose.yml
 
 ## Основные API группы
 
-Teacher API требует JWT и `is_staff=True`.
+Любая связанная сессия навсегда запрещает изменение/удаление использованной викторины и содержимого; история защищена от прямого и каскадного удаления. Версии и архивирование пока не реализованы. Локальная реализация А не является разрешением развёртывания.
+
+После А преподаватель использует JWT и группу `teacher`, администратор — `is_staff`; каждое действие проверяет владельца. Старый клиент ещё требует адаптации В. Подробности: [контракт А](docs/block-1-stage-a-api.md), [отчёт проверок](docs/block-1-stage-a-handoff.md).
 
 - `POST /api/auth/register/`
 - `POST /api/auth/token/`
@@ -140,19 +145,22 @@ Teacher API требует JWT и `is_staff=True`.
 - `GET|POST /api/quizzes/`
 - `GET|PUT|DELETE /api/quizzes/{id}/`
 - `POST /api/sessions/`
-- `POST /api/sessions/{id}/start/`
-- `POST /api/sessions/{id}/next-question/`
-- `POST /api/sessions/{id}/reveal-answer/`
-- `POST /api/sessions/{id}/finish/`
-- `GET /api/sessions/{id}/leaderboard/`
-- `GET /api/sessions/{id}/results/export/`
+- `POST /api/sessions/{uuid}/start/`
+- `POST /api/sessions/{uuid}/next-question/`
+- `POST /api/sessions/{uuid}/reveal-answer/`
+- `POST /api/sessions/{uuid}/finish/`
+- `GET /api/sessions/{uuid}/leaderboard/`
+- `GET /api/sessions/{uuid}/results/export/`
 
-Public participant API:
+Подключение и доступ участника:
 
 - `GET /api/sessions/join/preview/`
 - `POST /api/sessions/join/`
-- `POST /api/sessions/answer/`
-- `GET /api/sessions/{id}/state/`
+- `POST /api/sessions/{uuid}/answer/` — токен участия
+- `GET /api/sessions/{uuid}/participation/` — токен участия
+- `GET /api/sessions/my-results/` — собственные результаты по JWT
+- `POST /api/sessions/{uuid}/display-access/` — выдача показа владельцем
+- `GET /api/sessions/{uuid}/display-state/` — отдельный токен показа
 - `GET /api/sessions/legal/current/`
 
 ## Ветки

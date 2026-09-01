@@ -1,75 +1,77 @@
-# Testing umclick
+# Проверки umclick
 
-This document keeps the local quality checks in one place.
+Команды ниже относятся к локальной разработке. Они не разрешают развёртывание или очистку стенда. Результаты реализации А приведены в [отчёте передачи](block-1-stage-a-handoff.md).
 
-## Frontend
+## Серверная часть А
 
-Run all frontend checks from the repository root:
+Полный набор требует PostgreSQL: конкурентные проверки намеренно завершаются ошибкой при другом движке, а не пропускаются. SQLite не подтверждает блокировки строк и конкурентную уникальность PIN.
+
+Для повторения изолированного прогона установленные `initdb` и `pg_ctl` должны быть доступны. Создайте отдельный каталог внутри `.codex_work`; не направляйте команды на существующую рабочую базу. Например, при свободном порте 55439:
+
+```powershell
+initdb -D .codex_work/postgres-stage-a -U codex_stage_a --auth=trust --encoding=UTF8 --locale=C
+pg_ctl -D .codex_work/postgres-stage-a -l .codex_work/postgres-stage-a.log -o "-h 127.0.0.1 -p 55439" -w start
+```
+
+Это одноразовое локальное окружение с доступом только через петлевой адрес. Режим `trust` и ускоренное хеширование из тестовых настроек не используются для рабочей службы. Если каталог уже инициализирован, повторно `initdb` не запускается. Убедитесь, что подключение направлено именно к этому тестовому кластеру.
+
+Из корня:
+
+```powershell
+.\scripts\check-backend.ps1 -Settings umclick.stage_a_checks
+```
+
+Либо из `backend/`:
+
+```powershell
+.venv\Scripts\python.exe manage.py check --settings=umclick.stage_a_checks
+.venv\Scripts\python.exe manage.py makemigrations --check --dry-run --settings=umclick.stage_a_checks
+.venv\Scripts\python.exe manage.py test --settings=umclick.stage_a_checks --noinput
+```
+
+Проверки создают и штатно удаляют только `test_codex_stage_a`. Конфигурация соединяется с локальным служебным каталогом `postgres` для управления этой тестовой базой, не применяя к нему прикладные миграции. Для другого отдельного окружения можно настроить обычные переменные PostgreSQL и передать подходящий модуль настроек.
+
+После работы остановите только созданный кластер:
+
+```powershell
+pg_ctl -D .codex_work/postgres-stage-a -m fast -w stop
+```
+
+Скрипт проверки теперь проверяет код завершения каждой команды Python и не сообщает успех после ошибки. Параметр `-Install` устанавливает зависимости, только если такая установка отдельно нужна.
+
+## Покрытие сервера
+
+| Файл в `backend/apps/session/tests/` | Проверки |
+|---|---|
+| `test_legal.py`, `test_scoring.py` | Сохранённые проверки правовых сведений и прежнего подсчёта |
+| `test_api_flow.py`, `test_api_regressions.py` | Создание/проведение, изменение и поздний ответ, скрытая правильность, автоматические переходы, показ, рейтинг и CSV с новым доступом |
+| `test_stage_a.py` | Роли/владельцы, вложенная структура и откат, токены/восстановление, история, административные и массовые обходы |
+| `test_concurrency.py` | Отдельные соединения и подтверждённое ожидание блокировки PostgreSQL: PIN, первое использование против изменения/удаления, администрация, регистрация и завершение |
+| `test_migrations.py` | Старая схема, отказ на неподготовленных данных, явная синтетическая подготовка, сохранение пользователя и входа, отсутствие повторной очистки |
+| `test_websocket_access.py` | Настоящее ожидание 10 секунд, роли, чужие/истёкшие токены, отзыв открытого показа и изоляция событий |
+
+Прежние ожидания изменены по согласованному контракту: согласие не обязательно; присоединение выполняется до старта; доступ подтверждается токеном, адресуется UUID; немедленный ответ больше не раскрывает правильность/баллы. Предыдущие 29 сценариев сохранены по назначению, а подготовка данных и проверки результата адаптированы к А. Старые числа тестов из аудита не используются как доказательство нового запуска.
+
+Браузерная проверка администрации — отдельная часть АП-15: создание пользователя, назначение ролей без административных флагов, просмотр использованной викторины/вложенных вариантов после финала и отказ массового удаления. Автоматические запросы дополняют, но не заменяют эту проверку.
+
+## Клиент и общие проверки
+
+Клиент в А не изменяется и ещё использует прежний протокол. Его сквозная совместимость с новым сервером относится к В.
 
 ```powershell
 .\scripts\check-frontend.ps1
+.\scripts\check-frontend.ps1 -SkipBuild
+.\scripts\check-all.ps1
 ```
 
-Run from `frontend/`:
+Отдельные команды из `frontend/`:
 
-```bash
+```text
 flutter pub get
 dart format --set-exit-if-changed .
 flutter analyze
 flutter test
-flutter build web --pwa-strategy=none --dart-define UMCLICK_BUILD_LABEL=<commit-or-build-id>
+flutter build web --pwa-strategy=none --dart-define UMCLICK_BUILD_LABEL=<идентификатор-сборки>
 ```
 
-The local helper script uses `--pwa-strategy=none` for the demo build. This keeps
-the public review stand from serving an outdated Flutter service worker cache
-after a quick frontend redeploy. It also passes `UMCLICK_BUILD_LABEL` from the
-current Git commit by default, so the app header shows which frontend build is
-actually open in the browser.
-
-## Backend
-
-Run all backend checks from the repository root:
-
-```powershell
-.\scripts\check-backend.ps1
-```
-
-Create a local virtual environment once from the repository root:
-
-```bash
-python -m venv backend/.venv
-backend/.venv/Scripts/python.exe -m pip install --upgrade pip
-backend/.venv/Scripts/python.exe -m pip install -r backend/requirements.txt
-```
-
-Run from `backend/`:
-
-```bash
-.venv/Scripts/python.exe manage.py test
-```
-
-## All Local Checks
-
-Run from the repository root:
-
-```powershell
-.\scripts\check-all.ps1
-```
-
-Useful options:
-
-```powershell
-.\scripts\check-backend.ps1 -Install
-.\scripts\check-frontend.ps1 -SkipBuild
-.\scripts\check-all.ps1 -InstallBackend -SkipFrontendBuild
-```
-
-## Current Test Focus
-
-- Frontend pure logic: value parsing, event log formatting, join-link parsing, language selection, quiz draft payload mapping.
-- Frontend widget smoke: app shell, teacher tab, participant tab, and `/join`-style participant entry point.
-- Frontend widget interactions/regressions: auth actions, session setup gating, participant profile actions, PIN/token preview states, closed-session preview, and loading-state locks.
-- Backend pure logic: legal document version resolution and Kahoot-style scoring helpers.
-- Backend API flow: teacher quiz/session creation, public preview, join by PIN/token, consent enforcement, answer submission, duplicate/late-answer rejection, public state safety, leaderboard, CSV export.
-- Backend API regressions: teacher permission checks, missing/invalid join targets, finished-session joins, invalid round controls, inactive/wrong/revealed question answers.
-- Next layer: broader end-to-end checks through Docker/local orchestration.
+Параметр `--pwa-strategy=none` предотвращает сохранение прежней службы кэширования в демонстрационной сборке. Метка `UMCLICK_BUILD_LABEL` показывает фактическую сборку. Клиентские проверки охватывают разбор значений/ссылок, язык, формы, состояния подключения и базовое отображение. Их новый прогон, сборка, нагрузочная и сквозная приёмка не объявляются выполненными в А.
