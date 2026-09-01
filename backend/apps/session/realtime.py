@@ -5,12 +5,13 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import Coalesce
+from django.db import transaction
 
 from apps.session.models import LiveSession, ParticipantAnswer, SessionParticipant
 
 
-def session_group_name(session_id: int) -> str:
-    return f"session_{session_id}"
+def session_group_name(session_id: int, access_type: str) -> str:
+    return f'session_{session_id}_{access_type}'
 
 
 def compute_question_ends_at(session: LiveSession, question):
@@ -95,7 +96,7 @@ def build_public_session_state(session: LiveSession) -> dict:
     question_ends_at = compute_question_ends_at(session, session.current_question)
     phase_ends_at = compute_phase_ends_at(session)
     state = {
-        "session_id": session.id,
+        "session_id": str(session.join_token),
         "status": session.status,
         "phase": session.phase,
         "pin": session.pin,
@@ -132,7 +133,7 @@ def build_public_leaderboard(session: LiveSession) -> list[dict]:
         {
             "rank": index + 1,
             "session_participant_id": row.id,
-            "participant_name": row.participant.name,
+            "participant_name": row.name_snapshot,
             "points": int(row.points or 0),
             "correct_answers": row.correct_answers,
             "answer_time_ms": int(row.answer_time_ms or 0),
@@ -164,7 +165,7 @@ def build_answer_reveal_payload(session: LiveSession, *, for_display: bool = Fal
     phase_ends_at = compute_phase_ends_at(session)
     if question is None:
         return {
-            "session_id": session.id,
+            "session_id": str(session.join_token),
             "status": session.status,
             "phase": session.phase,
             "question": None,
@@ -212,7 +213,7 @@ def build_answer_reveal_payload(session: LiveSession, *, for_display: bool = Fal
         )
 
     return {
-        "session_id": session.id,
+        "session_id": str(session.join_token),
         "status": session.status,
         "phase": session.phase,
         "phase_started_at": session.phase_started_at.isoformat() if session.phase_started_at else None,
@@ -260,11 +261,8 @@ def broadcast_session_event(session_id: int, event: str, payload: dict) -> None:
     if channel_layer is None:
         return
 
-    async_to_sync(channel_layer.group_send)(
-        session_group_name(session_id),
-        {
-            "type": "session.event",
-            "event": event,
-            "payload": payload,
-        },
-    )
+    def send():
+        for role in ('account', 'participant', 'display'):
+            async_to_sync(channel_layer.group_send)(session_group_name(session_id, role),
+                                                   {'type': 'session.event', 'event': event})
+    transaction.on_commit(send)

@@ -1,9 +1,21 @@
 ﻿from rest_framework.permissions import BasePermission
 
 
+def is_admin(user):
+    return bool(user and user.is_authenticated and user.is_active and user.is_staff)
+
+
+def is_teacher(user):
+    return bool(user and user.is_authenticated and user.is_active and user.groups.filter(name='teacher').exists())
+
+
+def can_manage_session(user, session):
+    return is_admin(user) or (is_teacher(user) and session.quiz.owner_id == user.pk)
+
+
 class IsTeacher(BasePermission):
-    message = "Teacher authentication is required."
+    message = 'Требуются права преподавателя или администратора.'
 
     def has_permission(self, request, view):
         user = request.user
-        return bool(user and user.is_authenticated and user.is_staff)
+        return is_admin(user) or is_teacher(user)

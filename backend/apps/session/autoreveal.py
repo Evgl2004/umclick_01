@@ -8,12 +8,12 @@ from apps.session.realtime import broadcast_session_event, build_answer_reveal_p
 
 
 def cancel_auto_reveal(session_id: int) -> None:
-    """Compatibility no-op for Celery beat based timer mode."""
+    """Совместимый пустой обработчик для режима таймера Celery beat."""
     return None
 
 
 def schedule_auto_reveal(session_id: int, question_id: int, delay_seconds: int) -> None:
-    """Compatibility no-op for Celery beat based timer mode."""
+    """Совместимый пустой обработчик для режима таймера Celery beat."""
     return None
 
 
@@ -24,7 +24,7 @@ def reveal_current_question_once(
     revealed_by: str,
     auto: bool,
 ) -> dict | None:
-    """Atomically reveal answers only once for the active session question."""
+    """Атомарно раскрыть ответ на текущий вопрос только один раз."""
     with transaction.atomic():
         try:
             session = LiveSession.objects.select_for_update().get(id=session_id)

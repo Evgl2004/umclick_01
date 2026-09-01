@@ -13,12 +13,7 @@ def advance_session_if_due(
     *,
     now=None,
 ) -> tuple[LiveSession, bool]:
-    """Advance a live session when its current phase timer has expired.
-
-    Celery beat remains the main timer driver, but display/participant polling
-    also calls this helper so a demo cannot get stuck if a background tick is
-    delayed.
-    """
+    """Продвинуть истёкшую фазу; опрос состояния дополняет основной таймер Celery beat."""
     if session.status != LiveSession.STATUS_LIVE:
         return session, False
 

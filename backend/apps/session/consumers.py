@@ -1,67 +1,105 @@
 ﻿from channels.db import database_sync_to_async
+import asyncio
+import uuid
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from apps.core.permissions import can_manage_session
+from apps.session.access import resolve_access
 from apps.session.models import LiveSession
-from apps.session.realtime import build_public_session_state, session_group_name
+from apps.session.realtime import build_public_session_state, build_display_session_state, session_group_name
 
 
 class SessionConsumer(AsyncJsonWebsocketConsumer):
-    session_id: int
-    group_name: str
+    auth_timeout = 10
 
     async def connect(self):
-        session_id_raw = self.scope.get("url_route", {}).get("kwargs", {}).get("session_id")
         try:
-            self.session_id = int(session_id_raw)
-        except (TypeError, ValueError):
+            self.session_uuid = uuid.UUID(str(self.scope['url_route']['kwargs']['session_uuid']))
+        except (ValueError, KeyError, TypeError):
             await self.close(code=4000)
             return
-
-        session_exists = await database_sync_to_async(
-            lambda: LiveSession.objects.filter(id=self.session_id).exists()
-        )()
-        if not session_exists:
-            await self.close(code=4004)
-            return
-
-        self.group_name = session_group_name(self.session_id)
-        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        self.authorized = False
         await self.accept()
+        self.deadline_task = asyncio.create_task(self._wait_for_auth())
 
-        payload = await database_sync_to_async(self._load_public_state)()
-        await self.send_json(
-            {
-                "event": "session_state",
-                "payload": payload,
-            }
-        )
+    async def _wait_for_auth(self):
+        await asyncio.sleep(self.auth_timeout)
+        if not self.authorized:
+            await self.close(code=4001)
+
+    async def _watch_access(self):
+        while True:
+            await asyncio.sleep(1)
+            if await database_sync_to_async(self._state_if_allowed)() is None:
+                await self.close(code=4003)
+                return
 
     async def disconnect(self, close_code):
-        if hasattr(self, "group_name"):
+        for name in ('deadline_task', 'access_task'):
+            task = getattr(self, name, None)
+            if task and task is not asyncio.current_task():
+                task.cancel()
+        if hasattr(self, 'group_name'):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
+    async def receive(self, text_data=None, bytes_data=None, **kwargs):
+        try:
+            await super().receive(text_data=text_data, bytes_data=bytes_data, **kwargs)
+        except (ValueError, TypeError):
+            await self.close(code=4000)
+
     async def receive_json(self, content, **kwargs):
-        await self.send_json(
-            {
-                "event": "info",
-                "payload": {
-                    "message": "WebSocket is read-only in this MVP.",
-                },
-            }
-        )
+        if self.authorized or not isinstance(content, dict) or content.get('event') != 'auth':
+            await self.close(code=4003)
+            return
+        self.access_type = content.get('access_type')
+        self.secret = content.get('token')
+        if self.access_type not in {'account', 'participant', 'display'} or not isinstance(self.secret, str):
+            await self.close(code=4003)
+            return
+        state = await database_sync_to_async(self._state_if_allowed)()
+        if state is None:
+            await self.close(code=4003)
+            return
+        if self.deadline_task.done():
+            await self.close(code=4001)
+            return
+        self.authorized = True
+        self.deadline_task.cancel()
+        self.group_name = session_group_name(self.session_id, self.access_type)
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        # После подписки перечитываем состояние, чтобы не потерять переход в промежутке.
+        state = await database_sync_to_async(self._state_if_allowed)()
+        if state is None:
+            await self.close(code=4003)
+            return
+        await self.send_json({'event': 'session_state', 'payload': state})
+        self.access_task = asyncio.create_task(self._watch_access())
 
     async def session_event(self, event):
-        await self.send_json(
-            {
-                "event": event.get("event"),
-                "payload": event.get("payload", {}),
-            }
-        )
+        state = await database_sync_to_async(self._state_if_allowed)()
+        if state is None:
+            await self.close(code=4003)
+            return
+        await self.send_json({'event': event['event'], 'payload': state})
 
-    def _load_public_state(self) -> dict:
-        session = (
-            LiveSession.objects.select_related("current_question")
-            .prefetch_related("current_question__choices", "participants")
-            .get(id=self.session_id)
-        )
-        return build_public_session_state(session)
+    def _state_if_allowed(self):
+        from rest_framework.exceptions import APIException
+        session = LiveSession.objects.select_related('quiz', 'current_question').filter(join_token=self.session_uuid).first()
+        if session is None:
+            return None
+        try:
+            if self.access_type == 'account':
+                auth = JWTAuthentication()
+                token = auth.get_validated_token(self.secret)
+                if not can_manage_session(auth.get_user(token), session):
+                    return None
+            else:
+                access = resolve_access(self.access_type, self.secret)
+                if access.session_id != session.pk:
+                    return None
+        except (APIException, ValueError, TypeError):
+            return None
+        self.session_id = session.pk
+        return build_display_session_state(session) if self.access_type == 'display' else build_public_session_state(session)

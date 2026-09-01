@@ -1,6 +1,9 @@
 ﻿from rest_framework import serializers
 
 from apps.quiz.models import Choice, Question, Quiz
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from apps.quiz.validation import quiz_data, validate_quiz_data
 
 
 class ChoiceSerializer(serializers.ModelSerializer):
@@ -40,49 +43,76 @@ class QuizSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at", "updated_at"]
 
     def validate(self, attrs):
-        reading_time = attrs.get("reading_time_sec", 15)
-        results_time = attrs.get("results_time_sec", 10)
-        if reading_time < 3 or reading_time > 120:
-            raise serializers.ValidationError(
-                {"reading_time_sec": "Reading time must be between 3 and 120 seconds."}
-            )
-        if results_time < 3 or results_time > 60:
-            raise serializers.ValidationError(
-                {"results_time_sec": "Results time must be between 3 and 60 seconds."}
-            )
+        self._merged(attrs, self.instance)
         return attrs
 
+    def _merged(self, attrs, instance):
+        previous = quiz_data(instance) if instance else {}
+        data = {**previous, **attrs}
+        old_questions = {q['id']: q for q in previous.get('questions', [])}
+        questions, seen_questions = [], set()
+        for i, source in enumerate(data.get('questions', [])):
+            qid = source.get('id')
+            if qid is not None and (qid not in old_questions or qid in seen_questions):
+                raise serializers.ValidationError({f'questions.{i}.id': 'Вопрос не принадлежит викторине или повторяется.'})
+            seen_questions.add(qid)
+            question = {**old_questions.get(qid, {}), **source, 'order': i + 1}
+            old_choices = {c['id']: c for c in old_questions.get(qid, {}).get('choices', [])}
+            choices, seen_choices = [], set()
+            for j, item in enumerate(question.get('choices', [])):
+                cid = item.get('id')
+                if cid is not None and (cid not in old_choices or cid in seen_choices):
+                    raise serializers.ValidationError({f'questions.{i}.choices.{j}.id': 'Вариант не принадлежит вопросу или повторяется.'})
+                seen_choices.add(cid)
+                choices.append({**old_choices.get(cid, {}), **item, 'order': j + 1})
+            question['choices'] = choices
+            questions.append(question)
+        data['questions'] = questions
+        try:
+            validate_quiz_data(data)
+        except ValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict) from exc
+        return data
+
+    @transaction.atomic
     def create(self, validated_data):
-        questions_data = validated_data.pop("questions", [])
-        quiz = Quiz.objects.create(**validated_data)
-        self._create_questions(quiz, questions_data)
+        data = self._merged(validated_data, None)
+        questions = data.pop('questions')
+        quiz = Quiz.objects.create(**data)
+        self._save_questions(quiz, questions)
         return quiz
 
+    @transaction.atomic
     def update(self, instance, validated_data):
-        questions_data = validated_data.pop("questions", None)
-        instance.title = validated_data.get("title", instance.title)
-        instance.description = validated_data.get("description", instance.description)
-        instance.question_only_on_display = validated_data.get(
-            "question_only_on_display",
-            instance.question_only_on_display,
-        )
-        instance.show_choices_on_participant = validated_data.get(
-            "show_choices_on_participant",
-            instance.show_choices_on_participant,
-        )
-        instance.reading_time_sec = validated_data.get("reading_time_sec", instance.reading_time_sec)
-        instance.results_time_sec = validated_data.get("results_time_sec", instance.results_time_sec)
+        instance = Quiz.objects.select_for_update().get(pk=instance.pk)
+        data = self._merged(validated_data, instance)
+        questions = data.pop('questions')
+        for field, value in data.items():
+            setattr(instance, field, value)
         instance.save()
-
-        if questions_data is not None:
-            instance.questions.all().delete()
-            self._create_questions(instance, questions_data)
-
+        if 'questions' in validated_data:
+            self._save_questions(instance, questions)
         return instance
 
-    def _create_questions(self, quiz, questions_data):
-        for question_data in questions_data:
-            choices_data = question_data.pop("choices", [])
-            question = Question.objects.create(quiz=quiz, **question_data)
-            for choice_data in choices_data:
-                Choice.objects.create(question=question, **choice_data)
+    def _save_questions(self, quiz, questions):
+        retained = []
+        for source in questions:
+            data = dict(source)
+            choices = data.pop('choices')
+            qid = data.pop('id', None)
+            question = quiz.questions.get(pk=qid) if qid else Question(quiz=quiz)
+            for field, value in data.items():
+                setattr(question, field, value)
+            question.save()
+            retained.append(question.pk)
+            choice_ids = []
+            for source_choice in choices:
+                choice_data = dict(source_choice)
+                cid = choice_data.pop('id', None)
+                choice = question.choices.get(pk=cid) if cid else Choice(question=question)
+                for field, value in choice_data.items():
+                    setattr(choice, field, value)
+                choice.save()
+                choice_ids.append(choice.pk)
+            question.choices.exclude(pk__in=choice_ids).delete()
+        quiz.questions.exclude(pk__in=retained).delete()

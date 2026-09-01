@@ -28,6 +28,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "apps.core.middleware.HistoryProtectionMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -98,7 +99,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-LANGUAGE_CODE = "en-us"
+LANGUAGE_CODE = "ru"
 TIME_ZONE = os.getenv("DJANGO_TIME_ZONE", "UTC")
 USE_I18N = True
 USE_TZ = True
@@ -122,7 +123,9 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 REST_FRAMEWORK = {
+    "EXCEPTION_HANDLER": "apps.core.errors.exception_handler",
     "DEFAULT_AUTHENTICATION_CLASSES": [
+        "apps.session.access.ScopedTokenAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [

@@ -1,7 +1,6 @@
 import base64
 import io
 import os
-import uuid
 from datetime import timedelta
 
 import qrcode
@@ -11,7 +10,6 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.quiz.models import Choice, Question, Quiz
-from apps.session.legal import get_current_consent_versions
 from apps.session.models import LiveSession, Participant, ParticipantAnswer, SessionParticipant
 from apps.session.realtime import compute_phase_ends_at, serialize_question_for_participants
 
@@ -20,12 +18,8 @@ MIN_CORRECT_POINTS = 200
 GUEST_PHONE_PREFIX = "guest:"
 
 
-def make_guest_phone() -> str:
-    return f"{GUEST_PHONE_PREFIX}{uuid.uuid4().hex[:26]}"
-
-
-def display_participant_phone(phone: str) -> str:
-    return "" if phone.startswith(GUEST_PHONE_PREFIX) else phone
+def display_participant_phone(phone: str | None) -> str:
+    return '' if not phone or phone.startswith(GUEST_PHONE_PREFIX) else phone
 
 
 def build_join_url(session: LiveSession) -> str:
@@ -90,6 +84,13 @@ class SessionQuizSerializer(serializers.ModelSerializer):
 
 
 class LiveSessionCreateSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(source='join_token', read_only=True)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from apps.core.permissions import is_admin
+        user = self.context['request'].user
+        self.fields['quiz'].queryset = Quiz.objects.all() if is_admin(user) else Quiz.objects.filter(owner=user)
+
     class Meta:
         model = LiveSession
         fields = ["id", "quiz", "host_name", "status", "pin", "join_token", "created_at"]
@@ -97,6 +98,7 @@ class LiveSessionCreateSerializer(serializers.ModelSerializer):
 
 
 class LiveSessionSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(source='join_token', read_only=True)
     quiz = SessionQuizSerializer()
     join_url = serializers.SerializerMethodField()
     qr_code_base64 = serializers.SerializerMethodField()
@@ -156,137 +158,49 @@ class LiveSessionSerializer(serializers.ModelSerializer):
         return ends_at.isoformat() if ends_at else None
 
 
-class ParticipantJoinSerializer(serializers.Serializer):
-    pin = serializers.CharField(max_length=6, required=False, allow_blank=True)
-    join_token = serializers.UUIDField(required=False)
-    phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
-    name = serializers.CharField(max_length=255)
-    consent = serializers.BooleanField()
-
-    def validate(self, attrs):
-        if not attrs["consent"]:
-            raise serializers.ValidationError("Consent is required to join quiz sessions.")
-
-        pin = (attrs.get("pin") or "").strip()
-        join_token = attrs.get("join_token")
-        if not pin and not join_token:
-            raise serializers.ValidationError("PIN or join token is required.")
-
-        session_lookup = LiveSession.objects.select_related("quiz", "current_question").prefetch_related(
-            "current_question__choices",
-            "participants",
-        )
-
-        try:
-            if join_token is not None:
-                session = session_lookup.get(join_token=join_token)
-            else:
-                session = session_lookup.get(pin=pin)
-        except LiveSession.DoesNotExist as exc:
-            raise serializers.ValidationError("Session was not found by provided PIN/token.") from exc
-
-        if session.status == LiveSession.STATUS_FINISHED:
-            raise serializers.ValidationError("Session is already finished.")
-        if session.status == LiveSession.STATUS_ABORTED:
-            raise serializers.ValidationError("Session was stopped by teacher.")
-
-        attrs["session"] = session
-        return attrs
-
-    def create(self, validated_data):
-        phone = (validated_data.get("phone") or "").strip() or make_guest_phone()
-        name = validated_data["name"]
-        consent = validated_data["consent"]
-        session = validated_data["session"]
-
-        privacy_policy_version, personal_data_consent_version = get_current_consent_versions()
-        consent_given_at = timezone.now() if consent else None
-
-        participant, created = Participant.objects.get_or_create(
-            phone=phone,
-            defaults={
-                "name": name,
-                "consent": consent,
-                "consent_given_at": consent_given_at,
-                "privacy_policy_version": privacy_policy_version,
-                "personal_data_consent_version": personal_data_consent_version,
-            },
-        )
-        if not created:
-            participant.name = name
-            participant.consent = consent
-            participant.consent_given_at = consent_given_at
-            participant.privacy_policy_version = privacy_policy_version
-            participant.personal_data_consent_version = personal_data_consent_version
-            participant.save(
-                update_fields=[
-                    "name",
-                    "consent",
-                    "consent_given_at",
-                    "privacy_policy_version",
-                    "personal_data_consent_version",
-                ]
-            )
-
-        session_participant, _ = SessionParticipant.objects.get_or_create(
-            session=session,
-            participant=participant,
-        )
-
-        return {
-            "session": session,
-            "session_participant": session_participant,
-            "participant": participant,
-        }
-
-
 class SubmitAnswerSerializer(serializers.Serializer):
-    session_participant_id = serializers.IntegerField()
     question_id = serializers.IntegerField()
     choice_id = serializers.IntegerField()
 
     def validate(self, attrs):
-        try:
-            session_participant = SessionParticipant.objects.select_related(
-                "session",
-                "session__current_question",
-            ).get(id=attrs["session_participant_id"])
-        except SessionParticipant.DoesNotExist as exc:
-            raise serializers.ValidationError("Participant session link was not found.") from exc
+        from apps.core.errors import Conflict
+        session_participant = self.context['participation']
+        if 'session_participant_id' in self.initial_data and self.initial_data['session_participant_id'] != session_participant.pk:
+            raise serializers.ValidationError('Нельзя отправить ответ за другое участие.')
 
         session = session_participant.session
         if session.status != LiveSession.STATUS_LIVE:
-            raise serializers.ValidationError("Session is not active.")
+            raise Conflict('Сессия не принимает ответы.')
 
         if session.phase != LiveSession.PHASE_ANSWERING:
-            raise serializers.ValidationError("Question is not accepting answers right now.")
+            raise Conflict('Сейчас вопрос не принимает ответы.')
 
         if session.current_question_id is None:
-            raise serializers.ValidationError("No active question right now. Wait for teacher signal.")
+            raise Conflict('Нет активного вопроса. Дождитесь команды преподавателя.')
 
         if session.current_question_id != attrs["question_id"]:
-            raise serializers.ValidationError("This question is not active right now.")
+            raise Conflict('Этот вопрос сейчас не активен.')
 
         if session.revealed_question_id == attrs["question_id"]:
-            raise serializers.ValidationError("Answers for this question are already revealed.")
+            raise Conflict('Ответ на этот вопрос уже раскрыт.')
 
         if session.question_started_at is None:
-            raise serializers.ValidationError("Question timer is not initialized.")
+            raise Conflict('Таймер вопроса не запущен.')
 
         try:
             question = Question.objects.get(id=attrs["question_id"], quiz_id=session.quiz_id)
         except Question.DoesNotExist as exc:
-            raise serializers.ValidationError("Question was not found in this session quiz.") from exc
+            raise serializers.ValidationError('Вопрос не принадлежит викторине этой сессии.') from exc
 
         try:
             choice = Choice.objects.get(id=attrs["choice_id"], question_id=question.id)
         except Choice.DoesNotExist as exc:
-            raise serializers.ValidationError("Choice was not found for this question.") from exc
+            raise serializers.ValidationError('Вариант не принадлежит вопросу.') from exc
 
         question_ends_at = compute_question_ends_at(session, question)
         now = timezone.now()
         if question_ends_at and now > question_ends_at:
-            raise serializers.ValidationError("Time is over for this question.")
+            raise Conflict('Время ответа истекло.')
 
         elapsed_ms = int(max(0, (now - session.question_started_at).total_seconds() * 1000))
 
@@ -357,7 +271,7 @@ def build_leaderboard(session: LiveSession):
     )
     return [
         {
-            "participant_name": row.participant.name,
+            "participant_name": row.name_snapshot,
             "phone": display_participant_phone(row.participant.phone),
             "points": int(row.points or 0),
             "correct_answers": row.correct_answers,
