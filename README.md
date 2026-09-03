@@ -94,6 +94,8 @@ C:\Users\admin_eas\flutter\bin\flutter.bat run -d chrome --web-port 3000
 | [docs/block-1-requirements.md](docs/block-1-requirements.md) | Согласованные требования первого блока: три последовательных этапа, критерии приёмки и технические вопросы реализации; не описание готового кода |
 | [docs/block-1-stage-a-task.md](docs/block-1-stage-a-task.md) | Задание исполнителю этапа А «Данные и доступ»: границы, проверки и передача результата; реализация только после анализа и отдельного подтверждения |
 | [docs/block-1-stage-a-prompt.md](docs/block-1-stage-a-prompt.md) | Расширенный стартовый промт: документация, правила разработки, отчёт анализа и обязательная остановка до разрешения реализации |
+| [docs/block-1-stage-b-task.md](docs/block-1-stage-b-task.md) | Задание исполнителю этапа Б «Проведение викторины»: серверные этапы, попытки, время, рейтинг, команды, восстановление и проверки ПР-11–ПР-26 |
+| [docs/block-1-stage-b-prompt.md](docs/block-1-stage-b-prompt.md) | Расширенный стартовый промт Б: анализ без изменений, проработка ВОП-02, правила разработки и отдельное разрешение реализации |
 | `docs/architecture.md` | Общая архитектура, границы слоев, компоненты |
 | `docs/backend.md` | Backend apps, models, endpoints, WebSocket, tests |
 | `docs/frontend.md` | Flutter структура, features, widgets, state, tests |
