@@ -13,7 +13,6 @@ _REQUIRED_ENVIRONMENT_KEYS = (
     "UMCLICK_TEST_DB_PORT",
     "UMCLICK_TEST_DB_USER",
     "UMCLICK_TEST_DB_PASSWORD",
-    "UMCLICK_TEST_DB_MAINTENANCE_NAME",
     "UMCLICK_TEST_DB_NAME",
 )
 _SAFE_IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
@@ -54,24 +53,15 @@ if not 1 <= _database_port <= 65535:
     )
 
 _database_user = _test_environment["UMCLICK_TEST_DB_USER"]
-_maintenance_database = _test_environment["UMCLICK_TEST_DB_MAINTENANCE_NAME"]
 _test_database = _test_environment["UMCLICK_TEST_DB_NAME"]
 
 if not _SAFE_IDENTIFIER.fullmatch(_database_user):
     raise ImproperlyConfigured(
         "Имя пользователя PostgreSQL содержит недопустимые символы."
     )
-if not _SAFE_IDENTIFIER.fullmatch(_maintenance_database):
-    raise ImproperlyConfigured(
-        "Имя служебной базы PostgreSQL содержит недопустимые символы."
-    )
 if not _SAFE_TEST_DATABASE.fullmatch(_test_database):
     raise ImproperlyConfigured(
-        "Имя временной базы должно соответствовать шаблону test_umclick_*."
-    )
-if _maintenance_database == _test_database:
-    raise ImproperlyConfigured(
-        "Служебная и временная тестовая базы не могут совпадать."
+        "Имя постоянной тестовой базы должно соответствовать шаблону test_umclick_*."
     )
 
 DEBUG = True
@@ -80,7 +70,7 @@ SECRET_KEY = "umclick-local-tests-synthetic-secret-not-for-production"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": _maintenance_database,
+        "NAME": _test_database,
         "USER": _database_user,
         "PASSWORD": _test_environment["UMCLICK_TEST_DB_PASSWORD"],
         "HOST": _database_host,
