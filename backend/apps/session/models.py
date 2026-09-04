@@ -1,5 +1,5 @@
-import uuid
 import secrets
+import uuid
 
 from django.conf import settings
 from django.db import IntegrityError, models, transaction
@@ -23,8 +23,12 @@ class LiveSession(GuardedModel):
     PHASE_LOBBY = "lobby"
     PHASE_READING = "reading"
     PHASE_ANSWERING = "answering"
+    PHASE_DELIVERY = "delivery"
     PHASE_RESULTS = "results"
     PHASE_FINAL = "final"
+
+    GAMEPLAY_SCHEMA_LEGACY = "legacy"
+    GAMEPLAY_SCHEMA_V2 = "v2"
 
     STATUS_CHOICES = [
         (STATUS_WAITING, "Waiting"),
@@ -37,8 +41,14 @@ class LiveSession(GuardedModel):
         (PHASE_LOBBY, "Lobby"),
         (PHASE_READING, "Reading"),
         (PHASE_ANSWERING, "Answering"),
+        (PHASE_DELIVERY, "Доставка"),
         (PHASE_RESULTS, "Results"),
         (PHASE_FINAL, "Final"),
+    ]
+
+    GAMEPLAY_SCHEMA_CHOICES = [
+        (GAMEPLAY_SCHEMA_LEGACY, "Временная схема этапа А"),
+        (GAMEPLAY_SCHEMA_V2, "Схема проведения этапа Б"),
     ]
 
     quiz = models.ForeignKey(Quiz, related_name="sessions", on_delete=models.PROTECT)
@@ -48,12 +58,27 @@ class LiveSession(GuardedModel):
     join_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_WAITING)
     phase = models.CharField(max_length=16, choices=PHASE_CHOICES, default=PHASE_LOBBY)
+    gameplay_schema = models.CharField(
+        max_length=16,
+        choices=GAMEPLAY_SCHEMA_CHOICES,
+        default=GAMEPLAY_SCHEMA_V2,
+        editable=False,
+    )
+    state_revision = models.PositiveBigIntegerField(default=0, editable=False)
     current_question = models.ForeignKey(
         Question,
         related_name="active_sessions",
         on_delete=models.PROTECT,
         null=True,
         blank=True,
+    )
+    current_run = models.ForeignKey(
+        "SessionQuestionRun",
+        related_name="current_for_sessions",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        editable=False,
     )
     revealed_question_id = models.PositiveIntegerField(null=True, blank=True)
     phase_started_at = models.DateTimeField(null=True, blank=True)
@@ -76,12 +101,20 @@ class LiveSession(GuardedModel):
                 old = LiveSession.objects.using(using).select_for_update().filter(pk=self.pk).first()
             if self.current_question_id and not Question.objects.using(using).filter(pk=self.current_question_id, quiz_id=self.quiz_id).exists():
                 raise HistoryConflict('Текущий вопрос не принадлежит викторине сессии.')
+            if self.current_run_id:
+                run_matches = SessionQuestionRun.objects.using(using).filter(
+                    pk=self.current_run_id,
+                    session_id=self.pk,
+                    question_id=self.current_question_id,
+                ).exists()
+                if not run_matches:
+                    raise HistoryConflict('Текущий запуск вопроса не соответствует сессии и текущему вопросу.')
             if old is None:
                 quiz = Quiz.objects.using(using).select_for_update().get(pk=self.quiz_id)
                 from apps.quiz.validation import validate_quiz_instance
                 validate_quiz_instance(quiz)
             else:
-                fixed = ['quiz_id', 'created_by_id', 'join_token', 'pin', 'created_at']
+                fixed = ['quiz_id', 'created_by_id', 'join_token', 'pin', 'created_at', 'gameplay_schema']
                 if old.status in {self.STATUS_FINISHED, self.STATUS_ABORTED}:
                     fixed = [field.attname for field in self._meta.concrete_fields]
                 if any(getattr(old, field) != getattr(self, field) for field in fixed):
@@ -184,7 +217,7 @@ class SessionParticipant(GuardedModel):
                 raise
 
 
-class ParticipantAnswer(GuardedModel):
+class LegacyParticipantAnswer(GuardedModel):
     session_participant = models.ForeignKey(
         SessionParticipant,
         related_name="answers",
@@ -215,9 +248,267 @@ class ParticipantAnswer(GuardedModel):
                 raise HistoryConflict('Сессия не принимает ответы; история защищена.')
             if self.question.quiz_id != session.quiz_id or (self.choice_id and self.choice.question_id != self.question_id):
                 raise HistoryConflict('Ответ не соответствует вопросу этой сессии.')
-            if self.pk and ParticipantAnswer.objects.filter(pk=self.pk).exclude(session_participant_id=self.session_participant_id, question_id=self.question_id).exists():
+            if self.pk and LegacyParticipantAnswer.objects.filter(pk=self.pk).exclude(session_participant_id=self.session_participant_id, question_id=self.question_id).exists():
                 raise HistoryConflict('Перенос исторического ответа запрещён.')
             return super().save(*args, **kwargs)
+
+
+class SessionQuestionRun(GuardedModel):
+    session = models.ForeignKey(LiveSession, related_name='question_runs', on_delete=models.PROTECT)
+    question = models.ForeignKey(Question, related_name='session_runs', on_delete=models.PROTECT)
+    ordinal = models.PositiveIntegerField()
+    reading_started_at = models.DateTimeField()
+    reading_ends_at = models.DateTimeField()
+    answering_started_at = models.DateTimeField()
+    planned_answer_deadline_at = models.DateTimeField()
+    planned_delivery_deadline_at = models.DateTimeField()
+    answer_deadline_at = models.DateTimeField()
+    delivery_deadline_at = models.DateTimeField()
+    finalized_at = models.DateTimeField(null=True, blank=True)
+    results_started_at = models.DateTimeField(null=True, blank=True)
+    results_ends_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['session_id', 'ordinal', 'id']
+        constraints = [
+            models.UniqueConstraint(fields=['session', 'question'], name='uniq_run_session_question'),
+            models.UniqueConstraint(fields=['session', 'ordinal'], name='uniq_run_session_ordinal'),
+            models.CheckConstraint(
+                condition=models.Q(reading_started_at__lte=models.F('reading_ends_at')),
+                name='run_reading_dates_ordered',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(reading_ends_at__lte=models.F('answering_started_at')),
+                name='run_answering_after_reading',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(answering_started_at__lte=models.F('planned_answer_deadline_at')),
+                name='run_planned_answer_ordered',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    planned_delivery_deadline_at=models.F('planned_answer_deadline_at') + timedelta(seconds=3),
+                ),
+                name='run_planned_delivery_3s',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(answering_started_at__lte=models.F('answer_deadline_at')),
+                name='run_answer_deadline_ordered',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(answer_deadline_at__lte=models.F('delivery_deadline_at')),
+                name='run_delivery_deadline_ordered',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(delivery_deadline_at=models.F('answer_deadline_at') + timedelta(seconds=3)),
+                name='run_delivery_3s',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(answer_deadline_at__lte=models.F('planned_answer_deadline_at')),
+                name='run_answer_not_extended',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(delivery_deadline_at__lte=models.F('planned_delivery_deadline_at')),
+                name='run_delivery_not_extended',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(finalized_at__isnull=True, results_started_at__isnull=True, results_ends_at__isnull=True)
+                    | models.Q(finalized_at__isnull=False, results_started_at__isnull=False, results_ends_at__isnull=False)
+                ),
+                name='run_results_dates_complete',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(results_started_at__isnull=True)
+                    | models.Q(results_started_at__lte=models.F('results_ends_at'))
+                ),
+                name='run_results_dates_ordered',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Запуск {self.ordinal} сессии {self.session_id}'
+
+    def save(self, *args, **kwargs):
+        using = kwargs.get('using') or self._state.db or 'default'
+        if self.question_id and self.session_id:
+            quiz_id = LiveSession.objects.using(using).values_list('quiz_id', flat=True).get(pk=self.session_id)
+            if not Question.objects.using(using).filter(pk=self.question_id, quiz_id=quiz_id).exists():
+                raise HistoryConflict('Запуск вопроса не соответствует викторине сессии.')
+        if self.pk:
+            previous = type(self).objects.using(using).get(pk=self.pk)
+            fixed = ('session_id', 'question_id', 'ordinal', 'reading_started_at', 'reading_ends_at',
+                     'answering_started_at', 'planned_answer_deadline_at', 'planned_delivery_deadline_at')
+            if any(getattr(previous, field) != getattr(self, field) for field in fixed):
+                raise HistoryConflict('Перенос запуска вопроса и изменение его исходных сроков запрещены.')
+            if previous.finalized_at and any(
+                getattr(previous, field) != getattr(self, field)
+                for field in ('answer_deadline_at', 'delivery_deadline_at', 'finalized_at', 'results_started_at', 'results_ends_at')
+            ):
+                raise HistoryConflict('Изменение финализированного запуска вопроса запрещено.')
+        return super().save(*args, **kwargs)
+
+
+class AnswerAttempt(GuardedModel):
+    run = models.ForeignKey(SessionQuestionRun, related_name='attempts', on_delete=models.PROTECT)
+    session_participant = models.ForeignKey(
+        SessionParticipant,
+        related_name='answer_attempts',
+        on_delete=models.PROTECT,
+    )
+    choice = models.ForeignKey(Choice, related_name='answer_attempts', on_delete=models.PROTECT)
+    submission_id = models.UUIDField()
+    payload_digest = models.CharField(max_length=64, editable=False)
+    admitted_at = models.DateTimeField()
+    ordinal = models.PositiveSmallIntegerField()
+
+    class Meta:
+        ordering = ['admitted_at', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['run', 'session_participant', 'submission_id'],
+                name='uniq_attempt_submission',
+            ),
+            models.UniqueConstraint(
+                fields=['run', 'session_participant', 'ordinal'],
+                name='uniq_attempt_ordinal',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(ordinal__gte=1, ordinal__lte=20),
+                name='attempt_ordinal_1_20',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['run', 'session_participant', 'admitted_at'], name='attempt_run_part_time_idx'),
+        ]
+
+    def __str__(self):
+        return f'Попытка {self.ordinal} участия {self.session_participant_id}'
+
+    def save(self, *args, **kwargs):
+        using = kwargs.get('using') or self._state.db or 'default'
+        if self.pk:
+            raise HistoryConflict('Изменение сохранённой попытки запрещено.')
+        run = SessionQuestionRun.objects.using(using).get(pk=self.run_id)
+        participant = SessionParticipant.objects.using(using).get(pk=self.session_participant_id)
+        if participant.session_id != run.session_id:
+            raise HistoryConflict('Попытка не соответствует участию в сессии запуска.')
+        if not Choice.objects.using(using).filter(pk=self.choice_id, question_id=run.question_id).exists():
+            raise HistoryConflict('Вариант попытки не соответствует вопросу запуска.')
+        if len(self.payload_digest) != 64 or not 1 <= self.ordinal <= 20:
+            raise HistoryConflict('Попытка содержит недопустимые технические данные.')
+        return super().save(*args, **{**kwargs, 'force_insert': True})
+
+
+class FinalAnswer(GuardedModel):
+    OUTCOME_ANSWERED = 'answered'
+    OUTCOME_UNANSWERED = 'unanswered'
+    OUTCOME_CHOICES = [
+        (OUTCOME_ANSWERED, 'Ответ дан'),
+        (OUTCOME_UNANSWERED, 'Ответ не дан'),
+    ]
+
+    run = models.ForeignKey(SessionQuestionRun, related_name='final_answers', on_delete=models.PROTECT)
+    session_participant = models.ForeignKey(
+        SessionParticipant,
+        related_name='final_answers',
+        on_delete=models.PROTECT,
+    )
+    selected_attempt = models.ForeignKey(
+        AnswerAttempt,
+        related_name='selected_by_finals',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+    )
+    timing_attempt = models.ForeignKey(
+        AnswerAttempt,
+        related_name='timed_by_finals',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+    )
+    outcome = models.CharField(max_length=16, choices=OUTCOME_CHOICES)
+    is_correct = models.BooleanField(default=False)
+    actual_elapsed_ms = models.PositiveIntegerField(null=True, blank=True)
+    ranking_elapsed_ms = models.PositiveIntegerField(null=True, blank=True)
+    finalized_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ['run_id', 'session_participant_id']
+        constraints = [
+            models.UniqueConstraint(fields=['run', 'session_participant'], name='uniq_final_run_participant'),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        outcome='answered',
+                        selected_attempt__isnull=False,
+                        timing_attempt__isnull=False,
+                        actual_elapsed_ms__isnull=False,
+                        ranking_elapsed_ms__isnull=False,
+                    )
+                    | models.Q(
+                        outcome='unanswered',
+                        selected_attempt__isnull=True,
+                        timing_attempt__isnull=True,
+                        actual_elapsed_ms__isnull=True,
+                        ranking_elapsed_ms__isnull=True,
+                        is_correct=False,
+                    )
+                ),
+                name='final_outcome_fields_match',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Итог участия {self.session_participant_id} запуска {self.run_id}'
+
+    def save(self, *args, **kwargs):
+        using = kwargs.get('using') or self._state.db or 'default'
+        if self.pk:
+            raise HistoryConflict('Изменение итогового ответа запрещено.')
+        participant = SessionParticipant.objects.using(using).get(pk=self.session_participant_id)
+        if participant.session_id != self.run.session_id:
+            raise HistoryConflict('Итог не соответствует участию в сессии запуска.')
+        attempts = [attempt for attempt in (self.selected_attempt, self.timing_attempt) if attempt is not None]
+        if any(
+            attempt.run_id != self.run_id or attempt.session_participant_id != self.session_participant_id
+            for attempt in attempts
+        ):
+            raise HistoryConflict('Итог ссылается на попытку другого запуска или участия.')
+        return super().save(*args, **{**kwargs, 'force_insert': True})
+
+
+class SessionCommand(GuardedModel):
+    session = models.ForeignKey(LiveSession, related_name='commands', on_delete=models.PROTECT)
+    command_id = models.UUIDField()
+    kind = models.CharField(max_length=32)
+    expected_revision = models.PositiveBigIntegerField()
+    payload_digest = models.CharField(max_length=64, editable=False)
+    applied_revision = models.PositiveBigIntegerField()
+    response = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['session_id', 'created_at', 'id']
+        constraints = [
+            models.UniqueConstraint(fields=['session', 'command_id'], name='uniq_session_command_id'),
+            models.CheckConstraint(
+                condition=models.Q(applied_revision=models.F('expected_revision') + 1),
+                name='command_revision_incremented',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Команда {self.kind} сессии {self.session_id}'
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise HistoryConflict('Изменение применённой команды запрещено.')
+        if len(self.payload_digest) != 64:
+            raise HistoryConflict('Команда содержит недопустимый отпечаток запроса.')
+        return super().save(*args, **{**kwargs, 'force_insert': True})
 
 
 class SessionDisplayAccess(GuardedModel):

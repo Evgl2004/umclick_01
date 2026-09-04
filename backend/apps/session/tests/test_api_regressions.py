@@ -1,8 +1,13 @@
 from django.contrib.auth import get_user_model
+import uuid
 from rest_framework.test import APITestCase
-from apps.session.models import ParticipantAnswer
+from apps.session.advance import advance_session_if_due
+from apps.session.gameplay import record_answer_attempt
+from apps.session.models import AnswerAttempt
 from apps.session.realtime import build_public_leaderboard
-from apps.session.tests.helpers import teacher, game, participate, url, quiz_payload
+from apps.session.tests.helpers import activate_gameplay, command_payload, teacher, game, participate, url, quiz_payload
+from datetime import timedelta
+from unittest.mock import patch
 
 
 class SessionApiRegressionTests(APITestCase):
@@ -31,33 +36,42 @@ class SessionApiRegressionTests(APITestCase):
     def test_round_controls_reject_invalid_session_states(self):
         g = game(self.teacher)
         self.client.force_authenticate(self.teacher)
-        for action in ('next-question', 'reveal-answer'):
-            self.assertEqual(self.client.post(url(g.session, action)).status_code, 409)
-        self.assertEqual(self.client.post(url(g.session, 'start')).status_code, 200)
-        self.assertEqual(self.client.post(url(g.session, 'start')).status_code, 409)
-        self.assertEqual(self.client.post(url(g.session, 'reveal-answer')).status_code, 409)
+        self.assertEqual(
+            self.client.post(url(g.session, 'next-question'), command_payload(g.session), format='json').status_code,
+            409,
+        )
+        self.assertEqual(self.client.post(url(g.session, 'reveal-answer')).status_code, 404)
+        first = command_payload(g.session)
+        self.assertEqual(self.client.post(url(g.session, 'start'), first, format='json').status_code, 200)
+        self.assertEqual(self.client.post(url(g.session, 'start'), first, format='json').status_code, 200)
+        self.assertEqual(self.client.post(url(g.session, 'start'), command_payload(g.session), format='json').status_code, 409)
+        self.assertEqual(self.client.post(url(g.session, 'reveal-answer')).status_code, 404)
         self.assertEqual(self.client.patch(url(g.session, '').replace('//', '/'), {'status': 'waiting'}).status_code, 405)
 
     def test_answer_rejects_inactive_session_wrong_question_and_revealed_question(self):
         g = game(self.teacher, active=True)
         self.client.credentials(HTTP_AUTHORIZATION='Participant ' + g.secret)
         other = g.quiz.questions.last()
-        self.assertEqual(self.client.post(url(g.session, 'answer'), {'question_id': other.pk, 'choice_id': other.choices.first().pk}).status_code, 409)
-        self.assertEqual(self.client.post(url(g.session, 'answer'), {'question_id': g.question.pk, 'choice_id': other.choices.first().pk}).status_code, 400)
+        self.assertEqual(self.client.post(url(g.session, 'answer'), {'question_id': other.pk, 'choice_id': other.choices.first().pk, 'submission_id': str(uuid.uuid4())}).status_code, 409)
+        self.assertEqual(self.client.post(url(g.session, 'answer'), {'question_id': g.question.pk, 'choice_id': other.choices.first().pk, 'submission_id': str(uuid.uuid4())}).status_code, 400)
         g.session.revealed_question_id = g.question.pk
         g.session.save(update_fields=['revealed_question_id'])
-        self.assertEqual(self.client.post(url(g.session, 'answer'), {'question_id': g.question.pk, 'choice_id': g.correct.pk}).status_code, 409)
+        self.assertEqual(self.client.post(url(g.session, 'answer'), {'question_id': g.question.pk, 'choice_id': g.correct.pk, 'submission_id': str(uuid.uuid4())}).status_code, 200)
         g.session.status = 'finished'; g.session.save()
-        self.assertEqual(self.client.post(url(g.session, 'answer'), {'question_id': g.question.pk, 'choice_id': g.correct.pk}).status_code, 409)
-        self.assertFalse(ParticipantAnswer.objects.exists())
+        self.assertEqual(self.client.post(url(g.session, 'answer'), {'question_id': g.question.pk, 'choice_id': g.correct.pk, 'submission_id': str(uuid.uuid4())}).status_code, 409)
+        self.assertEqual(AnswerAttempt.objects.count(), 1)
 
     def test_public_leaderboard_has_places_without_phone_numbers(self):
         g = game(self.teacher)
         second, _ = participate(g.session, name='Борис')
-        g.session.status = 'live'; g.session.save()
-        ParticipantAnswer.objects.create(session_participant=g.link, question=g.question, choice=g.correct, is_correct=True, score_points=900)
-        ParticipantAnswer.objects.create(session_participant=second, question=g.question, choice=g.correct, is_correct=True, score_points=700)
+        run = activate_gameplay(g.session, g.question)
+        for participation in (g.link, second):
+            with patch('apps.session.gameplay.database_now', return_value=run.answering_started_at + timedelta(seconds=5)):
+                record_answer_attempt(session_id=g.session.pk, participation_id=participation.pk,
+                                      question_id=g.question.pk, choice_id=g.correct.pk, submission_id=uuid.uuid4())
+        advance_session_if_due(g.session, now=run.delivery_deadline_at + timedelta(seconds=1))
         rows = build_public_leaderboard(g.session)
-        self.assertEqual([row['rank'] for row in rows], [1, 2])
-        self.assertEqual([row['points'] for row in rows], [900, 700])
+        self.assertEqual([row['rank'] for row in rows], [1, 1])
+        self.assertEqual([row['correct_time_ms'] for row in rows], [5000, 5000])
+        self.assertTrue(all('points' not in row for row in rows))
         self.assertTrue(all('phone' not in row for row in rows))

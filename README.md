@@ -23,10 +23,10 @@ umclick - MVP платформы интерактивных викторин в 
 - Preview сессии до регистрации участника.
 - Подключение участника по PIN или token-ссылке.
 - WebSocket события live-сессии.
-- Управление раундом: start, next question, reveal answer, finish.
-- Таймер вопроса и auto-reveal через Celery beat.
-- Kahoot-style scoring по скорости ответа.
-- Leaderboard и CSV export результатов.
+- Версионированные команды сессии: отдельные запуск сессии и викторины, досрочное завершение вопроса, следующий вопрос и остановка.
+- Серверные сроки фаз `lobby/reading/answering/delivery/results/final` и восстановление через Celery beat.
+- Неизменяемый журнал до 20 попыток, однократный итог и рейтинг по правильности и времени правильных ответов.
+- Ролевые WebSocket-снимки, рейтинг и CSV-выгрузка без баллов для новой схемы проведения.
 - Legal metadata, версии согласий и публичные legal screens.
 - RU/EN переключение интерфейса, русский по умолчанию.
 - Локальные backend/frontend тесты и regression-покрытие.
@@ -96,6 +96,8 @@ C:\Users\admin_eas\flutter\bin\flutter.bat run -d chrome --web-port 3000
 | [docs/block-1-stage-a-prompt.md](docs/block-1-stage-a-prompt.md) | Расширенный стартовый промт: документация, правила разработки, отчёт анализа и обязательная остановка до разрешения реализации |
 | [docs/block-1-stage-b-task.md](docs/block-1-stage-b-task.md) | Задание исполнителю этапа Б «Проведение викторины»: серверные этапы, попытки, время, рейтинг, команды, восстановление и проверки ПР-11–ПР-26 |
 | [docs/block-1-stage-b-prompt.md](docs/block-1-stage-b-prompt.md) | Расширенный стартовый промт Б: анализ без изменений, проработка ВОП-02, правила разработки и отдельное разрешение реализации |
+| [docs/block-1-stage-b-api.md](docs/block-1-stage-b-api.md) | Фактический серверный контракт этапа Б: фазы, команды, попытки, итоги, время, рейтинг и события |
+| [docs/block-1-stage-b-handoff.md](docs/block-1-stage-b-handoff.md) | Передача реализации Б: миграции, ВОП-02, проверки БП-01–БП-16 и граница этапа В |
 | `docs/architecture.md` | Общая архитектура, границы слоев, компоненты |
 | `docs/backend.md` | Backend apps, models, endpoints, WebSocket, tests |
 | `docs/frontend.md` | Flutter структура, features, widgets, state, tests |
@@ -124,7 +126,7 @@ docker-compose.yml
 
 Любая связанная сессия навсегда запрещает изменение/удаление использованной викторины и содержимого; история защищена от прямого и каскадного удаления. Версии и архивирование пока не реализованы. Локальная реализация А не является разрешением развёртывания.
 
-После А преподаватель использует JWT и группу `teacher`, администратор — `is_staff`; каждое действие проверяет владельца. Старый клиент ещё требует адаптации В. Подробности: [контракт А](docs/block-1-stage-a-api.md), [отчёт проверок](docs/block-1-stage-a-handoff.md).
+После А преподаватель использует JWT и группу `teacher`, администратор — `is_staff`; каждое действие проверяет владельца. Серверный протокол проведения реализован в Б, но Flutter-клиент ещё требует адаптации В. Подробности: [контракт А](docs/block-1-stage-a-api.md) и [контракт Б](docs/block-1-stage-b-api.md).
 
 - `POST /api/auth/register/`
 - `POST /api/auth/token/`
@@ -134,8 +136,9 @@ docker-compose.yml
 - `GET|PUT|DELETE /api/quizzes/{id}/`
 - `POST /api/sessions/`
 - `POST /api/sessions/{uuid}/start/`
+- `POST /api/sessions/{uuid}/start-quiz/`
+- `POST /api/sessions/{uuid}/end-question/`
 - `POST /api/sessions/{uuid}/next-question/`
-- `POST /api/sessions/{uuid}/reveal-answer/`
 - `POST /api/sessions/{uuid}/finish/`
 - `GET /api/sessions/{uuid}/leaderboard/`
 - `GET /api/sessions/{uuid}/results/export/`
@@ -150,6 +153,8 @@ docker-compose.yml
 - `POST /api/sessions/{uuid}/display-access/` — выдача показа владельцем
 - `GET /api/sessions/{uuid}/display-state/` — отдельный токен показа
 - `GET /api/sessions/legal/current/`
+
+Управляющая команда передаёт `command_id`, `state_revision`, `phase` и `question_run_id`. Ответ участника передаёт `question_id`, `choice_id` и уникальный `submission_id`; клиентские `run_id` и отметка времени не принимаются. Маршрут прежнего немедленного раскрытия удалён.
 
 ## Ветки
 

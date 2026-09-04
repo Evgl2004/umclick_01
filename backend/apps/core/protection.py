@@ -53,7 +53,15 @@ def prevent_history_delete(sender, instance, using, **kwargs):
     from apps.quiz.models import Quiz
 
     label = sender._meta.label_lower
-    if label in {'session.livesession', 'session.sessionparticipant', 'session.participantanswer'}:
+    if label in {
+        'session.livesession',
+        'session.sessionparticipant',
+        'session.legacyparticipantanswer',
+        'session.sessionquestionrun',
+        'session.answerattempt',
+        'session.finalanswer',
+        'session.sessioncommand',
+    }:
         raise HistoryConflict('Удаление игровой истории запрещено.')
     if label.startswith('quiz.'):
         quiz_id = instance.pk if label == 'quiz.quiz' else (

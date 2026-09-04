@@ -12,7 +12,9 @@ from rest_framework.test import APITestCase
 from apps.core.protection import HistoryConflict
 from apps.quiz.models import Quiz, Question, Choice
 from apps.session.access import issue_secret
-from apps.session.models import LiveSession, Participant, SessionParticipant, ParticipantAnswer, SessionDisplayAccess
+from apps.session.models import LegacyParticipantAnswer, LiveSession, Participant, SessionParticipant, SessionDisplayAccess
+
+ParticipantAnswer = LegacyParticipantAnswer
 from apps.session.tests.helpers import teacher, quiz, game, participate, url, quiz_payload
 
 

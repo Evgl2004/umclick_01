@@ -5,6 +5,16 @@ from django.test import TransactionTestCase
 
 
 class MigrationTransitionTests(TransactionTestCase):
+    reset_sequences = True
+
+    @staticmethod
+    def targets_with_session(executor, session_migration):
+        return [
+            node
+            for node in executor.loader.graph.leaf_nodes()
+            if node[0] != 'session'
+        ] + [('session', session_migration)]
+
     def test_old_schema_requires_explicit_preparation_and_preserves_accounts(self):
         self.assertEqual(connection.vendor, 'postgresql')
         self.assertTrue(connection.settings_dict['NAME'].startswith('test_'))
@@ -48,4 +58,91 @@ class MigrationTransitionTests(TransactionTestCase):
             MigrationExecutor(connection).migrate(latest)
             self.assertTrue(type(current).objects.filter(pk=current.pk).exists())
         finally:
+            MigrationExecutor(connection).migrate(latest)
+
+    def test_stage_b_migration_preserves_legacy_history_and_marks_safe_sessions(self):
+        executor = MigrationExecutor(connection)
+        latest = executor.loader.graph.leaf_nodes()
+        stage_a = self.targets_with_session(executor, '0004_alter_livesession_options_and_more')
+        try:
+            executor.migrate(stage_a)
+            old_apps = executor.loader.project_state(stage_a).apps
+            user = old_apps.get_model('auth', 'User').objects.create(username='stage-b-owner')
+            quiz_model = old_apps.get_model('quiz', 'Quiz')
+            question_model = old_apps.get_model('quiz', 'Question')
+            choice_model = old_apps.get_model('quiz', 'Choice')
+            session_model = old_apps.get_model('session', 'LiveSession')
+            participant_model = old_apps.get_model('session', 'Participant')
+            link_model = old_apps.get_model('session', 'SessionParticipant')
+            answer_model = old_apps.get_model('session', 'ParticipantAnswer')
+
+            content = quiz_model.objects.create(owner=user, title='Историческая викторина')
+            question = question_model.objects.create(quiz=content, text='Исторический вопрос')
+            choice = choice_model.objects.create(question=question, text='Верно', is_correct=True)
+            safe = session_model.objects.create(quiz=content, created_by=user, pin='121212')
+            terminal = session_model.objects.create(
+                quiz=content,
+                created_by=user,
+                pin='343434',
+                status='finished',
+                phase='final',
+            )
+            participant = participant_model.objects.create(name='Исторический участник')
+            link = link_model.objects.create(
+                session=terminal,
+                participant=participant,
+                token_digest='a' * 64,
+                name_snapshot='Исторический участник',
+            )
+            old_answer = answer_model.objects.create(
+                session_participant=link,
+                question=question,
+                choice=choice,
+                is_correct=True,
+                score_points=900,
+                elapsed_ms=1234,
+            )
+
+            executor = MigrationExecutor(connection)
+            executor.migrate(latest)
+            new_apps = executor.loader.project_state(latest).apps
+            new_session_model = new_apps.get_model('session', 'LiveSession')
+            legacy_answer_model = new_apps.get_model('session', 'LegacyParticipantAnswer')
+            self.assertEqual(new_session_model.objects.get(pk=safe.pk).gameplay_schema, 'v2')
+            self.assertEqual(new_session_model.objects.get(pk=terminal.pk).gameplay_schema, 'legacy')
+            preserved = legacy_answer_model.objects.get(pk=old_answer.pk)
+            self.assertEqual((preserved.score_points, preserved.elapsed_ms), (900, 1234))
+            self.assertFalse(new_apps.get_model('session', 'AnswerAttempt').objects.exists())
+            self.assertFalse(new_apps.get_model('session', 'FinalAnswer').objects.exists())
+        finally:
+            MigrationExecutor(connection).migrate(latest)
+
+    def test_stage_b_migration_stops_on_active_legacy_question(self):
+        executor = MigrationExecutor(connection)
+        latest = executor.loader.graph.leaf_nodes()
+        stage_a = self.targets_with_session(executor, '0004_alter_livesession_options_and_more')
+        old_apps = None
+        try:
+            executor.migrate(stage_a)
+            old_apps = executor.loader.project_state(stage_a).apps
+            user = old_apps.get_model('auth', 'User').objects.create(username='blocked-stage-b-owner')
+            content = old_apps.get_model('quiz', 'Quiz').objects.create(owner=user, title='Активная викторина')
+            question = old_apps.get_model('quiz', 'Question').objects.create(quiz=content, text='Активный вопрос')
+            old_apps.get_model('quiz', 'Choice').objects.create(question=question, text='Верно', is_correct=True)
+            session = old_apps.get_model('session', 'LiveSession').objects.create(
+                quiz=content,
+                created_by=user,
+                pin='565656',
+                status='live',
+                phase='reading',
+                current_question=question,
+            )
+            with self.assertRaisesMessage(RuntimeError, 'Найдены активные или противоречивые сессии'):
+                MigrationExecutor(connection).migrate(latest)
+            self.assertTrue(old_apps.get_model('session', 'LiveSession').objects.filter(pk=session.pk).exists())
+        finally:
+            if old_apps is not None:
+                old_apps.get_model('session', 'LiveSession').objects.all().delete()
+                old_apps.get_model('quiz', 'Quiz').objects.all().delete()
+                old_apps.get_model('auth', 'User').objects.filter(username='blocked-stage-b-owner').delete()
             MigrationExecutor(connection).migrate(latest)

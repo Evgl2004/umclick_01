@@ -7,7 +7,7 @@ from rest_framework.exceptions import AuthenticationFailed
 from apps.core.errors import Conflict
 from apps.session.access import ScopedAccess, issue_secret, resolve_join_session
 from apps.session.legal import get_current_consent_versions
-from apps.session.models import LiveSession, Participant, SessionParticipant, ParticipantAnswer
+from apps.session.models import FinalAnswer, LegacyParticipantAnswer, LiveSession, Participant, SessionParticipant
 
 
 class JoinInput(serializers.Serializer):
@@ -60,6 +60,21 @@ def own_result(participation):
     result = {'session_uuid': str(session.join_token), 'session_participant_id': participation.pk,
               'name': participation.name_snapshot, 'status': session.status, 'quiz_title': session.quiz.title}
     if session.status in {LiveSession.STATUS_FINISHED, LiveSession.STATUS_ABORTED}:
-        result['answers'] = list(ParticipantAnswer.objects.filter(session_participant=participation).values(
-            'question_id', 'choice_id', 'is_correct', 'score_points', 'elapsed_ms'))
+        if session.gameplay_schema == LiveSession.GAMEPLAY_SCHEMA_LEGACY:
+            result['answers'] = list(LegacyParticipantAnswer.objects.filter(session_participant=participation).values(
+                'question_id', 'choice_id', 'is_correct', 'score_points', 'elapsed_ms'))
+        else:
+            result['answers'] = [
+                {
+                    'question_id': final.run.question_id,
+                    'choice_id': final.selected_attempt.choice_id if final.selected_attempt_id else None,
+                    'outcome': final.outcome,
+                    'is_correct': final.is_correct,
+                    'actual_elapsed_ms': final.actual_elapsed_ms,
+                    'ranking_elapsed_ms': final.ranking_elapsed_ms,
+                }
+                for final in FinalAnswer.objects.filter(session_participant=participation)
+                .select_related('run', 'selected_attempt')
+                .order_by('run__ordinal')
+            ]
     return result

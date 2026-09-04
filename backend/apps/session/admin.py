@@ -1,6 +1,15 @@
 from django.contrib import admin
 
-from apps.session.models import LiveSession, Participant, ParticipantAnswer, SessionParticipant
+from apps.session.models import (
+    AnswerAttempt,
+    FinalAnswer,
+    LegacyParticipantAnswer,
+    LiveSession,
+    Participant,
+    SessionCommand,
+    SessionParticipant,
+    SessionQuestionRun,
+)
 
 
 class HistoryAdmin(admin.ModelAdmin):
@@ -50,8 +59,8 @@ class SessionParticipantAdmin(HistoryAdmin):
     list_filter = ("session",)
 
 
-@admin.register(ParticipantAnswer)
-class ParticipantAnswerAdmin(HistoryAdmin):
+@admin.register(LegacyParticipantAnswer)
+class LegacyParticipantAnswerAdmin(HistoryAdmin):
     list_display = (
         "id",
         "session_participant",
@@ -63,3 +72,25 @@ class ParticipantAnswerAdmin(HistoryAdmin):
         "answered_at",
     )
     list_filter = ("is_correct",)
+
+
+@admin.register(SessionQuestionRun)
+class SessionQuestionRunAdmin(HistoryAdmin):
+    list_display = ('id', 'session', 'question', 'ordinal', 'answer_deadline_at', 'delivery_deadline_at', 'finalized_at')
+    list_filter = ('finalized_at',)
+
+
+@admin.register(AnswerAttempt)
+class AnswerAttemptAdmin(HistoryAdmin):
+    list_display = ('id', 'run', 'session_participant', 'choice', 'submission_id', 'ordinal', 'admitted_at')
+
+
+@admin.register(FinalAnswer)
+class FinalAnswerAdmin(HistoryAdmin):
+    list_display = ('id', 'run', 'session_participant', 'outcome', 'is_correct', 'ranking_elapsed_ms')
+    list_filter = ('outcome', 'is_correct')
+
+
+@admin.register(SessionCommand)
+class SessionCommandAdmin(HistoryAdmin):
+    list_display = ('id', 'session', 'kind', 'command_id', 'expected_revision', 'applied_revision', 'created_at')

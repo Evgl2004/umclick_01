@@ -11,13 +11,23 @@ from apps.core.errors import Conflict
 from apps.core.permissions import IsTeacher, is_admin
 from apps.session.access import issue_secret, scoped_session, resolve_join_session
 from apps.session.advance import advance_session_if_due
-from apps.session.autoreveal import reveal_current_question_once
-from apps.session.flow import abort_session, start_reading_for_next_question
+from apps.session.gameplay import execute_manual_command
 from apps.session.legal import get_current_legal_documents
 from apps.session.models import LiveSession, SessionParticipant, SessionDisplayAccess
 from apps.session.participation import JoinInput, join_session, own_result
-from apps.session.realtime import broadcast_session_event, build_display_session_state, build_public_session_state
-from apps.session.serializers import LiveSessionCreateSerializer, LiveSessionSerializer, SubmitAnswerSerializer, build_leaderboard
+from apps.session.realtime import (
+    broadcast_session_event,
+    build_account_session_state,
+    build_display_session_state,
+    build_participant_session_state,
+)
+from apps.session.serializers import (
+    LiveSessionCreateSerializer,
+    LiveSessionSerializer,
+    SessionCommandInputSerializer,
+    SubmitAnswerSerializer,
+    build_leaderboard,
+)
 
 
 class LiveSessionViewSet(viewsets.ModelViewSet):
@@ -39,46 +49,36 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
         serializer.save(created_by=self.request.user)
 
     @action(detail=True, methods=['post'])
-    @transaction.atomic
     def start(self, request, pk=None):
-        session = self.get_queryset().select_for_update(of=('self',)).get(pk=self.get_object().pk)
-        if session.status != LiveSession.STATUS_WAITING:
-            raise Conflict('Сессия уже запущена или завершена.')
-        session.status = LiveSession.STATUS_LIVE
-        session.save(update_fields=['status', 'started_at'])
-        broadcast_session_event(session.pk, 'session_started', {})
-        return Response(LiveSessionSerializer(session).data)
+        return self._command(request, pk, 'start_session')
+
+    @action(detail=True, methods=['post'], url_path='start-quiz')
+    def start_quiz(self, request, pk=None):
+        return self._command(request, pk, 'start_quiz')
+
+    @action(detail=True, methods=['post'], url_path='end-question')
+    def end_question(self, request, pk=None):
+        return self._command(request, pk, 'end_question')
 
     @action(detail=True, methods=['post'])
-    @transaction.atomic
     def finish(self, request, pk=None):
-        session = LiveSession.objects.select_for_update().get(pk=self.get_object().pk)
-        if session.finished_at:
-            raise Conflict('Сессия уже завершена.')
-        abort_session(session)
-        return Response(LiveSessionSerializer(session).data)
+        return self._command(request, pk, 'abort_session')
 
     @action(detail=True, methods=['post'], url_path='next-question')
-    @transaction.atomic
     def next_question(self, request, pk=None):
-        session = LiveSession.objects.select_for_update().get(pk=self.get_object().pk)
-        if session.status != LiveSession.STATUS_LIVE:
-            raise Conflict('Для перехода к вопросу нужна активная сессия.')
-        return Response(start_reading_for_next_question(session))
+        return self._command(request, pk, 'next_question')
 
-    @action(detail=True, methods=['post'], url_path='reveal-answer')
-    def reveal_answer(self, request, pk=None):
+    def _command(self, request, pk, kind):
         session = self.get_object()
-        payload = reveal_current_question_once(session.pk, expected_question_id=session.current_question_id,
-                                               revealed_by='teacher', auto=False)
-        if payload is None:
-            raise Conflict('Сейчас нельзя раскрыть ответ.')
-        return Response(payload)
+        form = SessionCommandInputSerializer(data=request.data)
+        form.is_valid(raise_exception=True)
+        response, repeated = execute_manual_command(session.pk, kind, form.validated_data)
+        return Response({**response, 'repeated': repeated})
 
     @action(detail=True, methods=['get'])
     def state(self, request, pk=None):
         session, _ = advance_session_if_due(self.get_object())
-        return Response(build_public_session_state(session))
+        return Response(build_account_session_state(session))
 
     @action(detail=True, methods=['get'], url_path='results/export')
     def export_results(self, request, pk=None):
@@ -86,14 +86,23 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
         response = HttpResponse(content_type='text/csv; charset=utf-8')
         response['Content-Disposition'] = f'attachment; filename="session_{session.join_token}_results.csv"'
         writer = csv.writer(response)
-        writer.writerow(['Имя участника', 'Телефон', 'Баллы', 'Правильные ответы', 'Время ответа, мс'])
-        for row in build_leaderboard(session):
-            writer.writerow([row['participant_name'], row['phone'], row['points'], row['correct_answers'], row['answer_time_ms']])
+        rows = build_leaderboard(session)
+        if session.gameplay_schema == LiveSession.GAMEPLAY_SCHEMA_LEGACY:
+            writer.writerow(['Место', 'Имя участника', 'Телефон', 'Баллы', 'Правильные ответы', 'Время ответа, мс'])
+            for row in rows:
+                writer.writerow([row['rank'], row['participant_name'], row['phone'], row['points'], row['correct_answers'], row['answer_time_ms']])
+        else:
+            writer.writerow(['Место', 'Имя участника', 'Телефон', 'Правильные ответы', 'Сумма времени правильных ответов, мс'])
+            for row in rows:
+                writer.writerow([row['rank'], row['participant_name'], row['phone'], row['correct_answers'], row['correct_time_ms']])
         return response
 
     @action(detail=True, methods=['get'])
     def leaderboard(self, request, pk=None):
-        return Response(build_leaderboard(self.get_object()))
+        session = self.get_object()
+        if session.gameplay_schema == LiveSession.GAMEPLAY_SCHEMA_V2 and not session.question_runs.filter(finalized_at__isnull=False).exists():
+            raise Conflict('Рейтинг ещё не сформирован.')
+        return Response(build_leaderboard(session))
 
     @action(detail=True, methods=['post'], url_path='display-access')
     @transaction.atomic
@@ -165,7 +174,7 @@ class ParticipationAPIView(APIView):
         session, _ = advance_session_if_due(session)
         participation = SessionParticipant.objects.get(pk=request.auth.record_id)
         payload = own_result(participation)
-        payload['state'] = build_public_session_state(session)
+        payload['state'] = build_participant_session_state(session, participation.pk)
         return Response(payload)
 
 
@@ -181,16 +190,13 @@ class DisplayStateAPIView(APIView):
 class SubmitAnswerAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
-    @transaction.atomic
     def post(self, request, session_uuid):
         session = scoped_session(request, session_uuid, 'participant')
-        LiveSession.objects.select_for_update().get(pk=session.pk)
         participation = SessionParticipant.objects.get(pk=request.auth.record_id)
         form = SubmitAnswerSerializer(data=request.data, context={'participation': participation})
         form.is_valid(raise_exception=True)
         form.save()
-        broadcast_session_event(session.pk, 'answer_submitted', {})
-        return Response({'accepted': True})
+        return Response({'accepted': True, 'message': 'Ответ зафиксирован'})
 
 
 class OwnResultsAPIView(APIView):

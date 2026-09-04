@@ -13,7 +13,17 @@ class Conflict(APIException):
     default_code = 'state_conflict'
 
 
+class StateConflict(Conflict):
+    """Конфликт с типизированным снимком актуального серверного состояния."""
+
+    def __init__(self, message: str, state: dict):
+        super().__init__(message)
+        self.response_data = {'detail': message, 'state': state}
+
+
 def exception_handler(exc, context):
+    if isinstance(exc, StateConflict):
+        return Response(exc.response_data, status=exc.status_code)
     if isinstance(exc, (HistoryConflict, ProtectedError)):
         payload = {'detail': 'Операция запрещена: использованное содержимое и игровая история защищены.'}
         session_uuid = getattr(exc, 'blocking_session_uuid', None)

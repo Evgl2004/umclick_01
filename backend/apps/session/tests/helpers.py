@@ -1,11 +1,13 @@
+from datetime import timedelta
 from types import SimpleNamespace
+import uuid
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.utils import timezone
 
 from apps.quiz.models import Quiz, Question, Choice
 from apps.session.access import issue_secret
-from apps.session.models import LiveSession, Participant, SessionParticipant
+from apps.session.models import LiveSession, Participant, SessionParticipant, SessionQuestionRun
 
 
 def teacher(name='teacher'):
@@ -30,23 +32,55 @@ def participate(session, name='Участник', user=None):
     return link, secret
 
 
+def activate_gameplay(session, question):
+    now = timezone.now()
+    run = SessionQuestionRun.objects.create(
+        session=session,
+        question=question,
+        ordinal=1,
+        reading_started_at=now - timedelta(seconds=1),
+        reading_ends_at=now,
+        answering_started_at=now,
+        planned_answer_deadline_at=now + timedelta(seconds=question.time_limit_sec),
+        planned_delivery_deadline_at=now + timedelta(seconds=question.time_limit_sec + 3),
+        answer_deadline_at=now + timedelta(seconds=question.time_limit_sec),
+        delivery_deadline_at=now + timedelta(seconds=question.time_limit_sec + 3),
+    )
+    session.status = 'live'
+    session.phase = 'answering'
+    session.current_question = question
+    session.current_run = run
+    session.question_started_at = now
+    session.phase_started_at = now
+    session.started_at = now
+    session.state_revision = 2
+    session.save()
+    return run
+
+
 def game(owner, active=False, **options):
     content = quiz(owner, **options)
     session = LiveSession.objects.create(quiz=content, created_by=owner)
     link, secret = participate(session)
     question = content.questions.first()
     if active:
-        session.status = 'live'
-        session.phase = 'answering'
-        session.current_question = question
-        session.question_started_at = timezone.now()
-        session.save()
+        activate_gameplay(session, question)
     return SimpleNamespace(quiz=content, session=session, link=link, secret=secret, question=question,
                            correct=question.choices.get(is_correct=True), wrong=question.choices.get(is_correct=False))
 
 
 def url(session, action):
     return f'/api/sessions/{session.join_token}/{action}/'
+
+
+def command_payload(session, *, command_id=None):
+    session.refresh_from_db()
+    return {
+        'command_id': str(command_id or uuid.uuid4()),
+        'state_revision': session.state_revision,
+        'phase': session.phase,
+        'question_run_id': session.current_run_id,
+    }
 
 
 def quiz_payload():

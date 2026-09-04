@@ -7,7 +7,12 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from apps.core.permissions import can_manage_session
 from apps.session.access import resolve_access
 from apps.session.models import LiveSession
-from apps.session.realtime import build_public_session_state, build_display_session_state, session_group_name
+from apps.session.realtime import (
+    build_account_session_state,
+    build_display_session_state,
+    build_participant_session_state,
+    session_group_name,
+)
 
 
 class SessionConsumer(AsyncJsonWebsocketConsumer):
@@ -74,7 +79,7 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
         if state is None:
             await self.close(code=4003)
             return
-        await self.send_json({'event': 'session_state', 'payload': state})
+        await self.send_json({'event': 'session_state', 'schema_version': 2, 'payload': state})
         self.access_task = asyncio.create_task(self._watch_access())
 
     async def session_event(self, event):
@@ -82,7 +87,11 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
         if state is None:
             await self.close(code=4003)
             return
-        await self.send_json({'event': event['event'], 'payload': state})
+        await self.send_json({
+            'event': event['event'],
+            'schema_version': event.get('schema_version', 2),
+            'payload': state,
+        })
 
     def _state_if_allowed(self):
         from rest_framework.exceptions import APIException
@@ -102,4 +111,8 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
         except (APIException, ValueError, TypeError):
             return None
         self.session_id = session.pk
-        return build_display_session_state(session) if self.access_type == 'display' else build_public_session_state(session)
+        if self.access_type == 'display':
+            return build_display_session_state(session)
+        if self.access_type == 'participant':
+            return build_participant_session_state(session, access.record_id)
+        return build_account_session_state(session)
