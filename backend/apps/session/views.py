@@ -9,7 +9,9 @@ from rest_framework.views import APIView
 
 from apps.core.errors import Conflict
 from apps.core.permissions import IsTeacher, is_admin
-from apps.session.access import issue_secret, scoped_session, resolve_join_session
+from apps.core.rate_limit import enforce_rate_limits, limit_per_minute, limit_per_second
+from apps.core.request_identity import client_address
+from apps.session.access import ScopedAccess, issue_secret, scoped_session, resolve_join_session
 from apps.session.advance import advance_session_if_due
 from apps.session.gameplay import execute_manual_command
 from apps.session.legal import get_current_legal_documents
@@ -69,6 +71,9 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
         return self._command(request, pk, 'next_question')
 
     def _command(self, request, pk, kind):
+        enforce_rate_limits(
+            [limit_per_second('command', f'account:{request.user.pk}', 2, 10)]
+        )
         session = self.get_object()
         form = SessionCommandInputSerializer(data=request.data)
         form.is_valid(raise_exception=True)
@@ -77,6 +82,9 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def state(self, request, pk=None):
+        enforce_rate_limits(
+            [limit_per_second('state', f'account:{request.user.pk}', 5, 20)]
+        )
         session, _ = advance_session_if_due(self.get_object())
         return Response(build_account_session_state(session))
 
@@ -108,11 +116,23 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def display_access(self, request, pk=None):
         session = LiveSession.objects.select_for_update().get(pk=self.get_object().pk)
+        active_grants = list(
+            SessionDisplayAccess.objects.select_for_update()
+            .filter(session=session, revoked_at__isnull=True)
+            .order_by('issued_at', 'id')
+        )
+        if active_grants:
+            revoked_at = timezone.now()
+            for active_grant in active_grants:
+                active_grant.revoked_at = revoked_at
+                active_grant.save(update_fields=['revoked_at'])
         secret, digest = issue_secret('display')
         grant = SessionDisplayAccess(session=session, token_digest=digest)
         if not grant.is_valid:
             raise Conflict('Срок доступа к показу этой сессии истёк.')
         grant.save()
+        if active_grants:
+            broadcast_session_event(session.pk, 'access_revoked', {})
         response = Response({'id': str(grant.pk), 'display_token': secret}, status=201)
         response['Cache-Control'] = 'no-store'
         return response
@@ -123,10 +143,11 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
         from django.shortcuts import get_object_or_404
         session = self.get_object()
         grant = get_object_or_404(SessionDisplayAccess.objects.select_for_update(), pk=grant_id, session=session)
-        if grant.revoked_at is None:
+        revoked = grant.revoked_at is None
+        if revoked:
             grant.revoked_at = timezone.now()
             grant.save(update_fields=['revoked_at'])
-        broadcast_session_event(session.pk, 'access_revoked', {})
+            broadcast_session_event(session.pk, 'access_revoked', {})
         return Response(status=204)
 
 
@@ -144,6 +165,10 @@ class JoinSessionPreviewAPIView(APIView):
         query = dict(pin=request.query_params.get('pin'), join_token=request.query_params.get('join_token') or request.query_params.get('token'))
         form = JoinInput(data={key: value for key, value in query.items() if value})
         form.is_valid(raise_exception=True)
+        if form.validated_data.get('pin'):
+            enforce_rate_limits(
+                [limit_per_minute('join_pin', client_address(request), 60, 120)]
+            )
         session = resolve_join_session(pin=form.validated_data.get('pin'), join_token=form.validated_data.get('join_token'))
         return Response({'session_uuid': str(session.join_token), 'can_join': session.status == LiveSession.STATUS_WAITING,
                          'quiz': {'title': session.quiz.title, 'description': session.quiz.description},
@@ -156,8 +181,21 @@ class JoinSessionAPIView(APIView):
     def post(self, request):
         form = JoinInput(data=request.data)
         form.is_valid(raise_exception=True)
+        limits = []
+        address = client_address(request)
+        if form.validated_data.get('pin'):
+            limits.append(limit_per_minute('join_pin', address, 60, 120))
+        if isinstance(request.auth, ScopedAccess) and request.auth.kind == 'participant':
+            limits.append(
+                limit_per_second('state', f'participant:{request.auth.record_id}', 5, 20)
+            )
+        else:
+            limits.append(limit_per_minute('join_create', address, 60, 60))
+        enforce_rate_limits(limits)
         participation, secret = join_session(request, form.validated_data)
+        session, _ = advance_session_if_due(participation.session)
         payload = own_result(participation)
+        payload['state'] = build_participant_session_state(session, participation.pk)
         if secret:
             payload['participant_token'] = secret
             broadcast_session_event(participation.session_id, 'participant_joined', {})
@@ -171,6 +209,9 @@ class ParticipationAPIView(APIView):
 
     def get(self, request, session_uuid):
         session = scoped_session(request, session_uuid, 'participant')
+        enforce_rate_limits(
+            [limit_per_second('state', f'participant:{request.auth.record_id}', 5, 20)]
+        )
         session, _ = advance_session_if_due(session)
         participation = SessionParticipant.objects.get(pk=request.auth.record_id)
         payload = own_result(participation)
@@ -183,6 +224,9 @@ class DisplayStateAPIView(APIView):
 
     def get(self, request, session_uuid):
         session = scoped_session(request, session_uuid, 'display')
+        enforce_rate_limits(
+            [limit_per_second('state', f'display:{request.auth.record_id}', 5, 20)]
+        )
         session, _ = advance_session_if_due(session)
         return Response(build_display_session_state(session))
 
@@ -192,6 +236,9 @@ class SubmitAnswerAPIView(APIView):
 
     def post(self, request, session_uuid):
         session = scoped_session(request, session_uuid, 'participant')
+        enforce_rate_limits(
+            [limit_per_second('answer', f'participant:{request.auth.record_id}', 10, 40)]
+        )
         participation = SessionParticipant.objects.get(pk=request.auth.record_id)
         form = SubmitAnswerSerializer(data=request.data, context={'participation': participation})
         form.is_valid(raise_exception=True)

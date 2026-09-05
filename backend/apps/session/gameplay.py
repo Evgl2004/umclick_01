@@ -162,8 +162,11 @@ def record_answer_attempt(
 
 
 def _basic_state(session: LiveSession) -> dict:
+    from apps.session.realtime import EVENT_SCHEMA_VERSION
+
     run = session.current_run if session.current_run_id else None
     return {
+        'schema_version': EVENT_SCHEMA_VERSION,
         'session_id': str(session.join_token),
         'status': session.status,
         'phase': session.phase,

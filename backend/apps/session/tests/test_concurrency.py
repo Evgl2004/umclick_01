@@ -14,7 +14,15 @@ from apps.core.errors import Conflict
 from apps.quiz.models import Quiz
 from apps.session.advance import advance_session_if_due
 from apps.session.gameplay import database_now, execute_manual_command, record_answer_attempt
-from apps.session.models import AnswerAttempt, FinalAnswer, LiveSession, SessionCommand, SessionParticipant, SessionQuestionRun
+from apps.session.models import (
+    AnswerAttempt,
+    FinalAnswer,
+    LiveSession,
+    SessionCommand,
+    SessionDisplayAccess,
+    SessionParticipant,
+    SessionQuestionRun,
+)
 from apps.session.tests.helpers import activate_gameplay, command_payload, participate, teacher, quiz, game, url
 
 
@@ -550,3 +558,30 @@ class PostgreSQLConcurrencyTests(TransactionTestCase):
             )
         self.assertFalse(advanced)
         self.assertEqual(session.phase, LiveSession.PHASE_ANSWERING)
+
+    def test_concurrent_display_grants_leave_only_one_active(self):
+        g = game(self.owner)
+        ready = Barrier(2)
+
+        def issue_display_grant():
+            connections.close_all()
+            try:
+                client = APIClient()
+                client.force_authenticate(self.owner)
+                ready.wait(timeout=5)
+                response = client.post(url(g.session, 'display-access'))
+                return response.status_code, response.data['id']
+            finally:
+                connections.close_all()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            issued = list(pool.map(lambda _: issue_display_grant(), range(2)))
+
+        self.assertEqual([status for status, _ in issued], [201, 201])
+        grants = SessionDisplayAccess.objects.filter(session=g.session)
+        self.assertEqual(grants.count(), 2)
+        self.assertEqual(grants.filter(revoked_at__isnull=True).count(), 1)
+        self.assertIn(
+            str(grants.get(revoked_at__isnull=True).pk),
+            [grant_id for _, grant_id in issued],
+        )

@@ -1,5 +1,5 @@
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 import uuid
 from django.utils import timezone
 from rest_framework.test import APITestCase
@@ -70,6 +70,9 @@ class SessionApiFlowTests(APITestCase):
             response = self.client.post('/api/sessions/join/', {**target, 'name': 'Анна'})
             self.assertEqual(response.status_code, 200, response.data)
             self.assertTrue(response.data['participant_token'])
+            self.assertEqual(response.data['state']['schema_version'], 2)
+            self.assertEqual(response.data['state']['session_id'], str(g.session.join_token))
+            self.assertEqual(response.data['state']['phase'], 'lobby')
 
     def test_join_does_not_require_consent(self):
         # Прежнее обязательное согласие отменено согласованным правилом Б1-02.
@@ -154,6 +157,49 @@ class SessionApiFlowTests(APITestCase):
         display = self.client.get(url(g.session, 'display-state')).data
         self.assertEqual(display['display_question']['text'], g.question.text)
         self.assertTrue(all(choice['text'] for choice in display['display_question']['choices']))
+
+    def test_new_display_grant_revokes_previous_and_delete_is_idempotent(self):
+        g = game(self.teacher)
+        self.authenticate_teacher()
+        first = self.client.post(url(g.session, 'display-access'))
+        second = self.client.post(url(g.session, 'display-access'))
+
+        self.assertEqual((first.status_code, second.status_code), (201, 201))
+        first_grant = SessionDisplayAccess.objects.get(pk=first.data['id'])
+        second_grant = SessionDisplayAccess.objects.get(pk=second.data['id'])
+        self.assertIsNotNone(first_grant.revoked_at)
+        self.assertIsNone(second_grant.revoked_at)
+
+        first_delete = self.client.delete(
+            url(g.session, f'display-access/{first_grant.pk}'),
+        )
+        repeated_delete = self.client.delete(
+            url(g.session, f'display-access/{first_grant.pk}'),
+        )
+        self.assertEqual(
+            (first_delete.status_code, repeated_delete.status_code),
+            (204, 204),
+        )
+        second_grant.refresh_from_db()
+        self.assertIsNone(second_grant.revoked_at)
+
+    def test_display_replacement_broadcast_is_deferred_until_commit(self):
+        g = game(self.teacher)
+        self.authenticate_teacher()
+        self.assertEqual(
+            self.client.post(url(g.session, 'display-access')).status_code,
+            201,
+        )
+        layer = type('Layer', (), {'group_send': AsyncMock()})()
+
+        with patch('apps.session.realtime.get_channel_layer', return_value=layer):
+            with self.captureOnCommitCallbacks(execute=True) as callbacks:
+                replacement = self.client.post(url(g.session, 'display-access'))
+                self.assertEqual(replacement.status_code, 201)
+                self.assertEqual(layer.group_send.await_count, 0)
+
+            self.assertEqual(len(callbacks), 1)
+            self.assertEqual(layer.group_send.await_count, 3)
 
     def test_leaderboard_and_csv_export_use_correct_finals_without_points(self):
         g = game(self.teacher)

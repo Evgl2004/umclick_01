@@ -188,7 +188,6 @@ class StageAAccessTests(APITestCase):
     def test_display_token_types_revocation_and_exact_expiry(self):
         g = game(self.owner)
         first = self.client.post(url(g.session, 'display-access')).data
-        second = self.client.post(url(g.session, 'display-access')).data
         self.client.force_authenticate(None)
         self.client.credentials(HTTP_AUTHORIZATION='Display ' + first['display_token'])
         self.assertEqual(self.client.get(url(g.session, 'display-state')).status_code, 200)
@@ -197,11 +196,23 @@ class StageAAccessTests(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION='Participant ' + first['display_token'])
         self.assertEqual(self.client.get(url(g.session, 'participation')).status_code, 401)
         self.client.credentials(); self.client.force_authenticate(self.owner)
-        self.assertEqual(self.client.delete(url(g.session, 'display-access/' + first['id'])).status_code, 204)
+        second = self.client.post(url(g.session, 'display-access')).data
         self.client.force_authenticate(None)
         self.client.credentials(HTTP_AUTHORIZATION='Display ' + first['display_token'])
-        self.assertEqual(self.client.get(url(g.session, 'display-state')).status_code, 401)
+        replaced = self.client.get(url(g.session, 'display-state'))
+        self.assertEqual(replaced.status_code, 401)
+        self.assertEqual(replaced.data['code'], 'access_revoked')
+        self.client.credentials(); self.client.force_authenticate(self.owner)
+        self.assertEqual(self.client.delete(url(g.session, 'display-access/' + second['id'])).status_code, 204)
+        self.client.force_authenticate(None)
         self.client.credentials(HTTP_AUTHORIZATION='Display ' + second['display_token'])
+        revoked = self.client.get(url(g.session, 'display-state'))
+        self.assertEqual(revoked.status_code, 401)
+        self.assertEqual(revoked.data['code'], 'access_revoked')
+        self.client.credentials(); self.client.force_authenticate(self.owner)
+        third = self.client.post(url(g.session, 'display-access')).data
+        self.client.force_authenticate(None)
+        self.client.credentials(HTTP_AUTHORIZATION='Display ' + third['display_token'])
         g.session.status = 'finished'; g.session.save()
         boundary = g.session.finished_at + timedelta(hours=1)
         with patch('django.utils.timezone.now', return_value=boundary - timedelta(microseconds=1)):

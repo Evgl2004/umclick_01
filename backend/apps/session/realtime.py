@@ -165,21 +165,40 @@ def build_account_session_state(session: LiveSession) -> dict:
     return state
 
 
+def _materialize_participant_attempts(
+    run_id: int,
+    participation_id: int,
+) -> list[dict]:
+    return list(
+        AnswerAttempt.objects.filter(
+            run_id=run_id,
+            session_participant_id=participation_id,
+        )
+        .order_by('admitted_at', 'id')
+        .values('ordinal', 'choice_id', 'admitted_at', 'id')[:20]
+    )
+
+
 def _participant_answer_state(session: LiveSession, participation_id: int | None):
     run = _current_run(session)
     if run is None or participation_id is None:
-        return {'has_answer': False, 'selected_choice_id': None}
-    latest = AnswerAttempt.objects.filter(
-        run=run,
-        session_participant_id=participation_id,
-    ).order_by('-admitted_at', '-id').first()
+        return {'has_answer': False, 'selected_choice_id': None, 'answer_version': 0}
+    attempts = _materialize_participant_attempts(run.pk, participation_id)
+    answer_version = max((attempt['ordinal'] for attempt in attempts), default=0)
+    latest = attempts[-1] if attempts else None
     if run.finalized_at:
         final = FinalAnswer.objects.filter(run=run, session_participant_id=participation_id).first()
         if final is None:
-            return {'has_answer': False, 'selected_choice_id': None, 'final': None}
+            return {
+                'has_answer': False,
+                'selected_choice_id': None,
+                'answer_version': answer_version,
+                'final': None,
+            }
         return {
             'has_answer': final.outcome == FinalAnswer.OUTCOME_ANSWERED,
             'selected_choice_id': final.selected_attempt.choice_id if final.selected_attempt_id else None,
+            'answer_version': answer_version,
             'final': {
                 'outcome': final.outcome,
                 'choice_id': final.selected_attempt.choice_id if final.selected_attempt_id else None,
@@ -190,7 +209,8 @@ def _participant_answer_state(session: LiveSession, participation_id: int | None
         }
     result = {
         'has_answer': latest is not None,
-        'selected_choice_id': latest.choice_id if latest else None,
+        'selected_choice_id': latest['choice_id'] if latest else None,
+        'answer_version': answer_version,
     }
     return result
 

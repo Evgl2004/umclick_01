@@ -1,8 +1,10 @@
 import uuid
 from datetime import timedelta
+from threading import Thread
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.db import close_old_connections
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 
 from apps.core.protection import HistoryConflict
@@ -212,7 +214,9 @@ class StageBAnswerTests(TestCase):
             repeated = self.answer(self.game.correct, submission_id=submission_id)
             conflict = self.answer(self.game.wrong, submission_id=submission_id)
         self.assertEqual((first.status_code, repeated.status_code, conflict.status_code), (200, 200, 409))
-        self.assertEqual(first.data, repeated.data)
+        expected = {'accepted': True, 'message': 'Ответ зафиксирован'}
+        self.assertEqual(first.data, expected)
+        self.assertEqual(repeated.data, expected)
         self.assertEqual(AnswerAttempt.objects.count(), 1)
         self.assertEqual(AnswerAttempt.objects.get().admitted_at, saved.admitted_at)
 
@@ -277,22 +281,27 @@ class StageBAnswerTests(TestCase):
 
     def test_delivery_boundary_is_inclusive_and_later_attempt_does_not_change_final(self):
         run = self.game.session.current_run
+        expected = {'accepted': True, 'message': 'Ответ зафиксирован'}
         with patch('apps.session.gameplay.database_now', return_value=run.delivery_deadline_at):
-            self.assertEqual(self.answer(self.game.correct).status_code, 200)
+            admitted = self.answer(self.game.correct)
         with patch('apps.session.gameplay.database_now', return_value=run.delivery_deadline_at + timedelta(microseconds=1)):
-            self.assertEqual(self.answer(self.game.wrong).status_code, 200)
+            late = self.answer(self.game.wrong)
+        self.assertEqual(admitted.data, expected)
+        self.assertEqual(late.data, expected)
         advance_session_if_due(self.game.session, now=run.delivery_deadline_at + timedelta(seconds=1))
         final = FinalAnswer.objects.get(run=run, session_participant=self.game.link)
         self.assertEqual(final.selected_attempt.choice_id, self.game.correct.pk)
         self.assertTrue(final.is_correct)
         self.assertEqual(AnswerAttempt.objects.filter(run=run).count(), 2)
         with patch('apps.session.gameplay.database_now', return_value=run.delivery_deadline_at + timedelta(seconds=2)):
-            self.assertEqual(self.answer(self.game.wrong).status_code, 200)
+            after_finalization = self.answer(self.game.wrong)
+        self.assertEqual(after_finalization.data, expected)
         state = build_participant_session_state(
             LiveSession.objects.select_related('quiz', 'current_question', 'current_run').get(pk=self.game.session.pk),
             self.game.link.pk,
         )
         self.assertEqual(state['answer']['selected_choice_id'], self.game.correct.pk)
+        self.assertEqual(state['answer']['answer_version'], 3)
         self.assertEqual(AnswerAttempt.objects.filter(run=run).count(), 3)
         with self.assertRaises(HistoryConflict):
             final.ranking_elapsed_ms = 1
@@ -317,3 +326,93 @@ class StageBAnswerTests(TestCase):
         final = FinalAnswer.objects.get(run=run, session_participant=self.game.link)
         self.assertEqual(final.selected_attempt.choice_id, self.game.correct.pk)
         self.assertEqual((final.actual_elapsed_ms, final.ranking_elapsed_ms), (13000, 10000))
+
+
+class StageBParticipantSnapshotConcurrencyTests(TransactionTestCase):
+    def setUp(self):
+        self.owner = teacher('snapshot-teacher')
+        self.game = game(self.owner, active=True)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION='Participant ' + self.game.secret)
+
+    def answer(self, choice, *, admitted_at):
+        with patch('apps.session.gameplay.database_now', return_value=admitted_at):
+            return self.client.post(
+                url(self.game.session, 'answer'),
+                {
+                    'question_id': self.game.question.pk,
+                    'choice_id': choice.pk,
+                    'submission_id': str(uuid.uuid4()),
+                },
+                format='json',
+            )
+
+    def test_choice_and_version_come_from_the_same_materialized_attempts(self):
+        started_at = self.game.session.current_run.answering_started_at
+        first = self.answer(
+            self.game.correct,
+            admitted_at=started_at + timedelta(seconds=1),
+        )
+        self.assertEqual(first.status_code, 200)
+
+        from apps.session import realtime
+
+        original = realtime._materialize_participant_attempts
+        writer_errors = []
+
+        def materialize_then_insert(run_id, participation_id):
+            rows = original(run_id, participation_id)
+
+            def insert_later_attempt():
+                close_old_connections()
+                try:
+                    AnswerAttempt.objects.create(
+                        run_id=run_id,
+                        session_participant_id=participation_id,
+                        choice=self.game.wrong,
+                        submission_id=uuid.uuid4(),
+                        payload_digest='a' * 64,
+                        admitted_at=started_at + timedelta(seconds=2),
+                        ordinal=2,
+                    )
+                except Exception as error:  # pragma: no cover - surfaced below
+                    writer_errors.append(error)
+                finally:
+                    close_old_connections()
+
+            writer = Thread(target=insert_later_attempt)
+            writer.start()
+            writer.join(timeout=5)
+            self.assertFalse(writer.is_alive())
+            return rows
+
+        session = LiveSession.objects.select_related(
+            'quiz',
+            'current_question',
+            'current_run',
+        ).get(pk=self.game.session.pk)
+        with patch(
+            'apps.session.realtime._materialize_participant_attempts',
+            side_effect=materialize_then_insert,
+        ):
+            concurrent_state = build_participant_session_state(
+                session,
+                self.game.link.pk,
+            )
+
+        self.assertEqual(writer_errors, [])
+        self.assertEqual(
+            (
+                concurrent_state['answer']['selected_choice_id'],
+                concurrent_state['answer']['answer_version'],
+            ),
+            (self.game.correct.pk, 1),
+        )
+        fresh_state = build_participant_session_state(session, self.game.link.pk)
+        self.assertEqual(
+            (
+                fresh_state['answer']['selected_choice_id'],
+                fresh_state['answer']['answer_version'],
+            ),
+            (self.game.wrong.pk, 2),
+        )

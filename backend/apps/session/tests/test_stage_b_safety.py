@@ -47,7 +47,14 @@ class StageBRoleSafetyTests(TestCase):
         self.assertNotIn('reveal', account)
         self.assertEqual(participant['answer']['selected_choice_id'], self.game.correct.pk)
         self.assertNotIn('final', participant['answer'])
-        self.assertEqual(other['answer'], {'has_answer': False, 'selected_choice_id': None})
+        self.assertEqual(
+            other['answer'],
+            {
+                'has_answer': False,
+                'selected_choice_id': None,
+                'answer_version': 0,
+            },
+        )
         self.assertNotIn('reveal', participant)
         self.assertNotIn('leaderboard', participant)
         self.assertTrue(all('is_correct' not in choice for choice in participant['current_question']['choices']))
