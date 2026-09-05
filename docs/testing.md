@@ -37,7 +37,59 @@
 - неизменность закрытых агрегатов после поздней аудиторской попытки;
 - изоляцию сбоя одной ролевой отправки без ложной ошибки успешной операции.
 
-Проверка плана не задаёт нормативов задержки или пропускной способности. Сценарий примерно с 30 участниками и до 600 попыток на вопрос, всплеск перед финализацией, измерение задержек, ожиданий блокировок и насыщения подключений, несколько процессов приложения, Redis и сквозной стенд относятся к этапу В и здесь не выполняются. Полное соответствие БП-01–БП-16 зафиксировано в [акте передачи этапа Б](block-1-stage-b-handoff.md).
+Проверка плана не задаёт нормативов задержки или пропускной способности. Полное соответствие БП-01–БП-16 зафиксировано в [акте передачи этапа Б](block-1-stage-b-handoff.md). Отдельные многопроцессные и ограниченные нагрузочные проверки этапа В описаны ниже; они также не устанавливают SLO.
+
+### Redis и несколько ASGI-процессов этапа В
+
+Обычный `check-backend.ps1` не требует внешнего Redis и явно пропускает две интеграционные проверки. Для их запуска нужен уже работающий Redis на loopback; сценарий не устанавливает, не запускает и не перенастраивает службу. Каждый прогон обязан использовать новое пространство `umclick:test:<UUID>`:
+
+```powershell
+$runId = [guid]::NewGuid().ToString()
+$python = 'C:\Program Files\PostgreSQL\17\pgAdmin 4\python\python.exe'
+$env:UMCLICK_RUN_REDIS_INTEGRATION = 'true'
+$env:UMCLICK_STAGE_V_REDIS_URL = 'redis://127.0.0.1:6379/0'
+$env:UMCLICK_STAGE_V_REDIS_NAMESPACE = "umclick:test:$runId"
+try {
+    $ping = "import sys; sys.path.insert(0, r'backend/.venv/Lib/site-packages'); import redis; ok=redis.Redis.from_url('redis://127.0.0.1:6379/0', socket_timeout=1).ping(); print('PONG' if ok else 'NO_PONG'); raise SystemExit(0 if ok else 1)"
+    & $python -B -X utf8 -c $ping
+    if ($LASTEXITCODE -ne 0) { throw 'Python-клиент Redis не получил PONG.' }
+    .\scripts\check-backend.ps1
+}
+finally {
+    $cleanup = "import sys; sys.path.insert(0, r'backend/.venv/Lib/site-packages'); import redis; c=redis.Redis.from_url('redis://127.0.0.1:6379/0', socket_timeout=1); p=sys.argv[1]+':*'; k=list(c.scan_iter(match=p)); c.delete(*k) if k else None; print('OWN_KEYS_AFTER=' + str(sum(1 for _ in c.scan_iter(match=p)))); c.close()"
+    & $python -B -X utf8 -c $cleanup $env:UMCLICK_STAGE_V_REDIS_NAMESPACE
+    Remove-Item Env:UMCLICK_RUN_REDIS_INTEGRATION -ErrorAction SilentlyContinue
+    Remove-Item Env:UMCLICK_STAGE_V_REDIS_URL -ErrorAction SilentlyContinue
+    Remove-Item Env:UMCLICK_STAGE_V_REDIS_NAMESPACE -ErrorAction SilentlyContinue
+}
+```
+
+Тест выполняет производственный Lua через настоящий Redis, включая детерминированную границу 40/41, пополнение, WebSocket-пределы и освобождение аренды. `tearDown()` удаляет вычисленные ключи адресных тестов, а внешний `finally` удаляет остальные технические Channels-ключи только того же уникального пространства. Итог обязан вывести `OWN_KEYS_AFTER=0`; `FLUSHALL` и `FLUSHDB` запрещены.
+
+Минимальная двухпроцессная проверка без контейнеров:
+
+```powershell
+& 'C:\Program Files\PostgreSQL\17\pgAdmin 4\python\python.exe' -B -X utf8 scripts\check-stage-v-multiprocess.py
+```
+
+Оба Daphne-процесса получают `DJANGO_SETTINGS_MODULE=umclick.test_settings`, проверяют фактические `current_database()` и роль, подключаются к одной выделенной `test_umclick_*` и одному уникальному Redis-пространству. `InMemoryChannelLayer` отклоняется. В `finally` завершаются все запущенные процессы, освобождаются порты и удаляются только собственные ключи. Ошибочный путь остановки отдельно проверяется параметром `--fail-after-first`; ненулевой код в нём ожидаем и должен проверяться внешней оболочкой.
+
+Ограниченная нагрузочная проверка:
+
+```powershell
+& 'C:\Program Files\PostgreSQL\17\pgAdmin 4\python\python.exe' -B -X utf8 scripts\check-stage-v-load.py
+```
+
+Сценарий не принимает внешний адрес, сам запускает один Daphne только на `127.0.0.1`, требует `test_umclick_*`, использует 30 участников и до 20 попыток каждого — всего 600 на один вопрос. Он публикует одну JSON-строку с количеством успехов/ошибок, p50/p95/p99/max, общей длительностью и фактической частотой ответов. Норматив производительности не задан. После прогона адресно удаляются только созданный граф тестовой базы и собственные ключи Redis; порт должен повторно захватываться.
+
+Граница `try/finally` устанавливается до первой мутации базы. Два управляемых ошибочных пути отдельно доказывают очистку частичного графа после создания пользователя и после создания викторины; оба запуска обязаны вернуть ненулевой код и нулевые собственные строки/ключи. Loopback-порт на этих ранних шагах ещё не выделяется, поэтому ожидается `ports_released: 0`:
+
+```powershell
+& 'C:\Program Files\PostgreSQL\17\pgAdmin 4\python\python.exe' -B -X utf8 scripts\check-stage-v-load.py --fail-after-user
+& 'C:\Program Files\PostgreSQL\17\pgAdmin 4\python\python.exe' -B -X utf8 scripts\check-stage-v-load.py --fail-after-quiz
+```
+
+Эти сценарии не проверяют Nginx, мобильную вёрстку, публичный стенд, ресурсы хоста или внешний запрет прямого доступа к backend. Такие пункты нельзя помечать успешными по результату loopback-прогона.
 
 ## Клиентская часть
 
