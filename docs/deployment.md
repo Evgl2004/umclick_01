@@ -1,6 +1,6 @@
 # Демо-развёртывание umclick
 
-Документ описывает лёгкое развёртывание для пользовательской проверки MVP. Это не финальная production-схема: здесь нет HTTPS-терминации, резервного копирования, мониторинга, ротации логов и полноценной политики хранения персональных данных.
+Документ описывает лёгкое развёртывание для пользовательской проверки MVP. Это не финальная production-схема: здесь нет HTTPS-терминации, автоматического резервного копирования, мониторинга, ротации логов и полноценной политики хранения персональных данных.
 
 ## Когда использовать
 
@@ -178,6 +178,119 @@ http://<server-ip-or-domain>
 ```bash
 docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml up -d --build
 ```
+
+### Контролируемое обновление этапа В и очистка игровых данных
+
+Очистка игровых данных не является частью обычного запуска, миграций или сборки. Её можно выполнять только отдельным решением для точно указанного стенда. Учётные записи, роли, сессии входа и история миграций при этом сохраняются. Викторины, вопросы, варианты, live-сессии, участия, доступы показа, команды, попытки и итоговые ответы удаляются.
+
+До остановки сервиса зафиксируйте текущий commit, ожидаемые имя базы и роль из `.env.demo`, свободное место и состав контейнеров. Не выводите значения паролей и секретов в журнал. Соберите новые образы, но пока не запускайте их:
+
+```bash
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml build
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml ps
+```
+
+Остановите все внешние маршруты и процессы, способные писать игровые данные, оставив PostgreSQL запущенным:
+
+```bash
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml stop frontend backend celery-worker celery-beat
+```
+
+Загрузите доверенные значения окружения в текущий административный shell и проверьте защитные условия. Значения `POSTGRES_DB=postgres`, `template0` и `template1` недопустимы:
+
+```bash
+set -a
+. ./.env.demo
+set +a
+test -n "$POSTGRES_DB" && test -n "$POSTGRES_USER"
+test "$POSTGRES_DB" != postgres && test "$POSTGRES_DB" != template0 && test "$POSTGRES_DB" != template1
+```
+
+Инвентаризация не изменяет данные. Для контейнера backend ожидаемый адрес PostgreSQL равен `db`:
+
+```bash
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml run --rm --no-deps backend \
+  python manage.py stage_v_game_data --inventory \
+  --expected-database "$POSTGRES_DB" --expected-host db --expected-port 5432 \
+  --expected-role "$POSTGRES_USER"
+```
+
+Сохраните вывод вместе с идентификатором commit. Затем создайте резервную копию в каталоге доказательств обновления, проверьте её каталог и вычислите контрольную сумму:
+
+```bash
+mkdir -p update-evidence
+BACKUP="update-evidence/stage-v-before-$(date -u +%Y%m%dT%H%M%SZ).dump"
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml exec -T db \
+  pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --no-owner --no-privileges > "$BACKUP"
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml exec -T db \
+  pg_restore --list < "$BACKUP" > "$BACKUP.list"
+BACKUP_SHA="$(sha256sum "$BACKUP" | awk '{print $1}')"
+test "${#BACKUP_SHA}" -eq 64
+```
+
+До изменения рабочей базы обязательно восстановите копию в отдельную временную базу того же PostgreSQL. Её имя создаётся в специальном пространстве и проверяется до последующего удаления:
+
+```bash
+RESTORE_DB="test_umclick_restore_$(date -u +%Y%m%d%H%M%S)"
+case "$RESTORE_DB" in test_umclick_restore_*) ;; *) exit 1 ;; esac
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml exec -T db \
+  createdb -U "$POSTGRES_USER" --maintenance-db "$POSTGRES_DB" \
+  -O "$POSTGRES_USER" "$RESTORE_DB"
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml exec -T db \
+  pg_restore -U "$POSTGRES_USER" -d "$RESTORE_DB" --single-transaction \
+  --no-owner --no-privileges < "$BACKUP"
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml run --rm --no-deps \
+  -e POSTGRES_DB="$RESTORE_DB" backend python manage.py stage_v_game_data --inventory \
+  --expected-database "$RESTORE_DB" --expected-host db --expected-port 5432 \
+  --expected-role "$POSTGRES_USER"
+```
+
+Сохраните вывод восстановленной инвентаризации и сравните все счётчики с исходными. Только после совпадения временную базу можно удалить:
+
+```bash
+case "$RESTORE_DB" in test_umclick_restore_*) ;; *) exit 1 ;; esac
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml exec -T db \
+  dropdb -U "$POSTGRES_USER" --maintenance-db "$POSTGRES_DB" "$RESTORE_DB"
+```
+
+Проверочный откат выполняет тот же набор блокировок и удалений, но не фиксирует транзакцию. Поля `before` и `after` должны совпасть, а `transaction` должен быть равен `rolled_back`:
+
+```bash
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml run --rm --no-deps backend \
+  python manage.py stage_v_game_data --rollback-test \
+  --expected-database "$POSTGRES_DB" --expected-host db --expected-port 5432 \
+  --expected-role "$POSTGRES_USER" \
+  --confirm "DELETE-STAGE-V-GAME-DATA:$POSTGRES_DB"
+```
+
+Фиксация очистки разрешена только после отдельного подтверждения результата резервирования и пробного отката. Она требует одновременно точной переменной-предохранителя, фразы подтверждения и SHA-256 проверенной копии:
+
+```bash
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml run --rm --no-deps \
+  -e UMCLICK_ALLOW_GAME_DATA_CLEANUP="$POSTGRES_DB|db|5432|$POSTGRES_USER|$BACKUP_SHA" backend \
+  python manage.py stage_v_game_data --apply \
+  --expected-database "$POSTGRES_DB" --expected-host db --expected-port 5432 \
+  --expected-role "$POSTGRES_USER" \
+  --confirm "DELETE-STAGE-V-GAME-DATA:$POSTGRES_DB" --backup-sha256 "$BACKUP_SHA"
+```
+
+После успешной фиксации повторите `--inventory`: все поля `game_data` должны быть равны нулю, а значения `preserved` — совпасть с исходными. Затем примените миграции, запустите сервисы и выполните приёмку через внешний URL:
+
+```bash
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml run --rm migrate
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml up -d
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml ps
+```
+
+При ошибке не продолжайте обновление. Пока процессы приложения остановлены, верните ранее проверенную версию кода и восстановите резервную копию одной транзакцией:
+
+```bash
+docker compose --env-file .env.demo -f deploy/docker-compose.demo.yml exec -T db \
+  pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists \
+  --single-transaction --no-owner --no-privileges < "$BACKUP"
+```
+
+После восстановления повторите инвентаризацию и только затем запускайте прежнюю версию приложения. В доказательствах обновления сохраняются: commit, исходная и восстановленная инвентаризации, каталог копии, её SHA-256, результат пробного отката, результат фиксации, итоговая инвентаризация и результаты внешней приёмки. Сам файл резервной копии должен храниться в защищённом месте отдельно от публичного каталога приложения.
 
 ## Остановка
 
