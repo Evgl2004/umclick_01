@@ -86,6 +86,9 @@ Entry point helpers:
 - `countdown_ticker.dart` - общий countdown timer.
 - `live_event_log.dart` - форматирование и ограничение event log.
 - `live_socket_connection.dart` - техническое WebSocket подключение и JSON parsing.
+- `role_access_token_store.dart` - хранение уже полученных ролевых токенов по роли, UUID и доверенному origin; Display дополнительно разделён по UUID выдачи.
+- `session_state_reducer.dart` - принятие только схемы 2, защита от устаревшей ревизии и монотонное объединение счётчиков.
+- `ranking_format.dart` - единое отображение времени рейтинга с точностью до миллисекунд.
 
 Правило: `core` не должен знать про конкретные экраны teacher/participant.
 
