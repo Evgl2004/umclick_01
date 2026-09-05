@@ -11,6 +11,13 @@ DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
 allowed_hosts_raw = os.getenv("DJANGO_ALLOWED_HOSTS", "*")
 ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_raw.split(",") if host.strip()]
 
+trusted_proxy_cidrs_raw = os.getenv("TRUSTED_PROXY_CIDRS", "")
+TRUSTED_PROXY_CIDRS = [
+    value.strip()
+    for value in trusted_proxy_cidrs_raw.split(",")
+    if value.strip()
+]
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -141,6 +148,14 @@ SIMPLE_JWT = {
 
 REDIS_URL = os.getenv("REDIS_URL", "")
 CHANNEL_LAYER_REDIS_URL = os.getenv("CHANNEL_LAYER_REDIS_URL", REDIS_URL)
+RATE_LIMIT_REDIS_URL = os.getenv("RATE_LIMIT_REDIS_URL", REDIS_URL)
+RATE_LIMIT_NAMESPACE = os.getenv("RATE_LIMIT_NAMESPACE", "umclick:limit:v1")
+RATE_LIMIT_HMAC_SECRET = os.getenv("RATE_LIMIT_HMAC_SECRET", SECRET_KEY)
+RATE_LIMITS_ENABLED = os.getenv("RATE_LIMITS_ENABLED", "true").lower() == "true"
+WS_LIMIT_REDIS_URL = os.getenv("WS_LIMIT_REDIS_URL", RATE_LIMIT_REDIS_URL)
+WS_LIMIT_NAMESPACE = os.getenv("WS_LIMIT_NAMESPACE", RATE_LIMIT_NAMESPACE)
+WS_LIMIT_HMAC_SECRET = os.getenv("WS_LIMIT_HMAC_SECRET", RATE_LIMIT_HMAC_SECRET)
+WS_LIMITS_ENABLED = os.getenv("WS_LIMITS_ENABLED", "true").lower() == "true"
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
 

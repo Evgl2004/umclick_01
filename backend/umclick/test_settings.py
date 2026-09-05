@@ -2,6 +2,7 @@
 
 import os
 import re
+from urllib.parse import urlsplit
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -87,5 +88,46 @@ CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_BROKER_URL = "memory://"
 CELERY_RESULT_BACKEND = "cache+memory://"
+RATE_LIMITS_ENABLED = os.getenv("UMCLICK_TEST_RATE_LIMITS", "false").lower() == "true"
+WS_LIMITS_ENABLED = os.getenv("UMCLICK_TEST_WS_LIMITS", "false").lower() == "true"
 ALLOWED_HOSTS = ["127.0.0.1", "localhost", "testserver", "[::1]"]
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+
+_stage_v_redis_url = os.getenv("UMCLICK_STAGE_V_REDIS_URL", "").strip()
+if _stage_v_redis_url:
+    _redis_uri = urlsplit(_stage_v_redis_url)
+    if (
+        _redis_uri.scheme != "redis"
+        or _redis_uri.hostname not in _LOOPBACK_HOSTS
+        or _redis_uri.username is not None
+        or _redis_uri.password is not None
+        or _redis_uri.query
+        or _redis_uri.fragment
+    ):
+        raise ImproperlyConfigured(
+            "Двухпроцессная проверка разрешает Redis без учётных данных только на loopback."
+        )
+    _stage_v_namespace = os.getenv("UMCLICK_STAGE_V_REDIS_NAMESPACE", "").strip()
+    if not re.fullmatch(r"umclick:test:[0-9a-f-]{36}", _stage_v_namespace):
+        raise ImproperlyConfigured(
+            "Двухпроцессной проверке требуется пространство umclick:test:<UUID>."
+        )
+
+    RATE_LIMIT_REDIS_URL = _stage_v_redis_url
+    RATE_LIMIT_NAMESPACE = _stage_v_namespace
+    RATE_LIMIT_HMAC_SECRET = SECRET_KEY  # noqa: F405
+    RATE_LIMITS_ENABLED = True
+    WS_LIMIT_REDIS_URL = _stage_v_redis_url
+    WS_LIMIT_NAMESPACE = _stage_v_namespace
+    WS_LIMIT_HMAC_SECRET = SECRET_KEY  # noqa: F405
+    WS_LIMITS_ENABLED = True
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [_stage_v_redis_url],
+                "prefix": f"{_stage_v_namespace}:channel",
+            },
+        }
+    }

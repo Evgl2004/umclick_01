@@ -34,7 +34,7 @@ Teacher Browser / Participant Browser
 
 | Компонент | Путь | Ответственность |
 | --- | --- | --- |
-| Backend | `backend/` | REST API, WebSocket, машина проведения, финализация, рейтинг и CSV-выгрузка |
+| Backend | `backend/` | REST API, WebSocket, общие квоты, машина проведения, финализация, рейтинг и CSV-выгрузка |
 | Frontend | `frontend/` | Flutter Web UI преподавателя и участника |
 | Infrastructure | `docker-compose.yml`, `infra/` | PostgreSQL, Redis, backend, Celery, Flutter web-server |
 | Scripts | `scripts/` | Локальные Windows-проверки проекта |
@@ -44,7 +44,7 @@ Teacher Browser / Participant Browser
 
 Backend построен на Django + DRF + Channels.
 
-- `apps.core` - регистрация/профиль преподавателя, права доступа.
+- `apps.core` - регистрация/профиль преподавателя, права доступа, канонический адрес клиента и общие Redis-квоты.
 - `apps.quiz` - модели и CRUD викторин, вопросов и вариантов ответов.
 - `apps.session` - live-сессии, участники, неизменяемые попытки и итоги, команды, WebSocket, правовые сведения и CSV-выгрузка.
 - `umclick` - настройки Django, URL routing, ASGI/WSGI, Celery app.

@@ -4,6 +4,9 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.db import transaction
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+from apps.core.request_identity import normalize_login
 
 
 User = get_user_model()
@@ -18,6 +21,7 @@ class TeacherRegisterSerializer(serializers.Serializer):
     signup_code = serializers.CharField(required=False, allow_blank=True)
 
     def validate_username(self, value):
+        value = normalize_login(value)
         if User.objects.filter(username=value).exists():
             raise serializers.ValidationError('Имя пользователя уже занято.')
         return value
@@ -52,3 +56,10 @@ class TeacherSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "username", "email", "first_name", "last_name", "is_staff", "roles"]
+
+
+class NormalizedTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        attrs = dict(attrs)
+        attrs[self.username_field] = normalize_login(attrs.get(self.username_field))
+        return super().validate(attrs)

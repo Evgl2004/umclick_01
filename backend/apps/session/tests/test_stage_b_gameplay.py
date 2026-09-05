@@ -180,7 +180,7 @@ class StageBGameplayTests(TestCase):
     def test_leaderboard_is_not_available_before_first_finalization(self):
         response = self.client.get(url(self.game.session, 'leaderboard'))
         self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.json(), {'detail': 'Рейтинг ещё не сформирован.'})
+        self.assertEqual(response.json(), {'code': 'conflict', 'detail': 'Рейтинг ещё не сформирован.'})
         self.assertNotIn('leaderboard', response.data)
 
 
