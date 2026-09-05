@@ -4,11 +4,51 @@ import 'package:flutter/material.dart';
 
 import '../../api/api_client.dart';
 import '../../core/app_config.dart';
+import '../../core/live_socket_supervisor.dart';
+import '../../core/ranking_format.dart';
+import '../../core/role_access_token_store.dart';
+import '../../core/session_uuid.dart';
+import '../../core/session_state_reducer.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_language.dart';
 import '../../l10n/app_strings.dart';
 import '../../shared/user_error_text.dart';
-import '../teacher/teacher_auth_session.dart';
+
+enum DisplayScene { lobby, reading, answering, delivery, results, finalView }
+
+DisplayScene resolveDisplayScene(String status, String phase) {
+  if (status == 'finished' || status == 'aborted' || phase == 'final') {
+    return DisplayScene.finalView;
+  }
+  return switch (phase) {
+    'reading' => DisplayScene.reading,
+    'answering' => DisplayScene.answering,
+    'delivery' => DisplayScene.delivery,
+    'results' => DisplayScene.results,
+    _ => DisplayScene.lobby,
+  };
+}
+
+List<Map<String, dynamic>> _normalizedLeaderboardRows(List<dynamic> rows) {
+  return rows
+      .map((row) => mapOrNull(row) ?? <String, dynamic>{})
+      .where((row) => row.isNotEmpty)
+      .toList(growable: false);
+}
+
+List<Map<String, dynamic>> displayPodiumRows(List<dynamic> rows) {
+  return _normalizedLeaderboardRows(rows).where((row) {
+    final rank = asInt(row['rank'], 0);
+    return rank >= 1 && rank <= 3;
+  }).toList(growable: false);
+}
+
+List<Map<String, dynamic>> displayRemainingLeaderboardRows(List<dynamic> rows) {
+  return _normalizedLeaderboardRows(rows).where((row) {
+    final rank = asInt(row['rank'], 0);
+    return rank < 1 || rank > 3;
+  }).toList(growable: false);
+}
 
 class DisplaySessionPage extends StatefulWidget {
   const DisplaySessionPage({super.key});
@@ -18,14 +58,16 @@ class DisplaySessionPage extends StatefulWidget {
 }
 
 class _DisplaySessionPageState extends State<DisplaySessionPage> {
-  final _authStore = const TeacherAuthSessionStore();
-
+  final _roleAccessStore = const RoleAccessTokenStore();
   Timer? _refreshTimer;
   Map<String, dynamic>? _state;
   String? _error;
   String _apiBaseUrl = defaultApiBaseUrl;
-  String? _accessToken;
-  int? _sessionId;
+  String? _displayToken;
+  String? _displayGrantId;
+  String? _sessionUuid;
+  SessionStateReducer? _stateReducer;
+  LiveSocketSupervisor? _socketSupervisor;
   bool _loading = true;
   bool _fetching = false;
 
@@ -38,55 +80,169 @@ class _DisplaySessionPageState extends State<DisplaySessionPage> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _socketSupervisor?.stop();
     super.dispose();
   }
 
-  ApiClient _client() => ApiClient(_apiBaseUrl, accessToken: _accessToken);
+  ApiClient _client() => ApiClient(_apiBaseUrl);
 
   Future<void> _restoreAndStart() async {
     final uri = Uri.base;
-    final sessionId = int.tryParse(uri.queryParameters['session'] ?? '');
-    final authSession = await _authStore.restore();
+    final rawSessionUuid = uri.queryParameters['session']?.trim();
+
+    if (rawSessionUuid == null || rawSessionUuid.isEmpty) {
+      setState(() {
+        _loading = false;
+        _error = uiText(
+          ru: 'Не указан UUID сессии для экрана демонстрации.',
+          en: 'Display session UUID is missing.',
+        );
+      });
+      return;
+    }
+    late final String sessionUuid;
+    try {
+      sessionUuid = normalizeSessionUuid(rawSessionUuid);
+    } on FormatException {
+      setState(() {
+        _loading = false;
+        _error = uiText(
+          ru: 'Указан некорректный UUID сессии.',
+          en: 'The session UUID is invalid.',
+        );
+      });
+      return;
+    }
+
+    final savedAccess = await _roleAccessStore.restoreForSession(
+      role: RoleAccessKind.display,
+      sessionUuid: sessionUuid,
+    );
     if (!mounted) return;
+    if (savedAccess == null) {
+      setState(() {
+        _sessionUuid = sessionUuid;
+        _loading = false;
+        _error = uiText(
+          ru: 'Доступ к показу не найден. Откройте экран из панели преподавателя.',
+          en: 'Display access was not found. Open the display from the teacher panel.',
+        );
+      });
+      return;
+    }
 
     setState(() {
-      _sessionId = sessionId;
-      _apiBaseUrl = uri.queryParameters['api']?.trim().isNotEmpty == true
-          ? uri.queryParameters['api']!.trim()
-          : authSession.apiBaseUrl ?? defaultApiBaseUrl;
-      _accessToken = authSession.accessToken;
+      _sessionUuid = sessionUuid;
+      _apiBaseUrl = savedAccess.apiBaseUrl;
+      _displayToken = savedAccess.token;
+      _displayGrantId = savedAccess.grantId;
     });
 
-    if (sessionId == null || sessionId <= 0) {
-      setState(() {
-        _loading = false;
-        _error = uiText(
-          ru: 'Не указан идентификатор сессии для экрана демонстрации.',
-          en: 'Display session id is missing.',
-        );
-      });
-      return;
-    }
-    if (_accessToken == null || _accessToken!.isEmpty) {
-      setState(() {
-        _loading = false;
-        _error = uiText(
-          ru: 'Войдите как преподаватель в основном окне и откройте экран демонстрации снова.',
-          en: 'Login as teacher in the main window and open the display again.',
-        );
-      });
-      return;
-    }
-
     await _refreshState();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    if (_displayToken == null) return;
+    if (_state != null && _displayToken != null) {
+      await _connectSocket();
+    }
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _refreshState(showLoading: false);
     });
   }
 
+  Future<void> _connectSocket() async {
+    final sessionUuid = _sessionUuid;
+    final displayToken = _displayToken;
+    if (sessionUuid == null || displayToken == null) return;
+    await _socketSupervisor?.stop();
+    _socketSupervisor = LiveSocketSupervisor(
+      url: _client().sessionWebSocketUrl(sessionUuid),
+      authentication: {
+        'event': 'auth',
+        'access_type': 'display',
+        'token': displayToken,
+      },
+      onMessage: _handleSocketMessage,
+      onConnectionError: (error) {
+        final code = error['code']?.toString();
+        if (code == 'access_invalid' ||
+            code == 'access_revoked' ||
+            code == 'access_expired') {
+          unawaited(_invalidateDisplayAccess(code!));
+        }
+        if (mounted) {
+          setState(() {
+            _error =
+                'Соединение показа отклонено: ${code ?? 'неизвестная причина'}.';
+          });
+        }
+      },
+      onInvalidPayload: () {
+        if (mounted) {
+          setState(() {
+            _error = 'Получено некорректное сообщение показа.';
+          });
+        }
+      },
+      onTransportError: (_) {
+        if (mounted) {
+          setState(() {
+            _error = 'Соединение показа временно недоступно.';
+          });
+        }
+      },
+      onStopped: (_, reason) {
+        if (mounted && _displayToken != null) {
+          setState(() {
+            _error = 'Повтор соединения показа прекращён.';
+          });
+        }
+      },
+    );
+    await _socketSupervisor!.start();
+  }
+
+  void _handleSocketMessage(Map<String, dynamic> message) {
+    final payload = mapOrNull(message['payload']);
+    final reducer = _stateReducer;
+    if (payload == null || reducer == null) return;
+    final reduction = reducer.apply(
+      payload,
+      source: SessionStateSource.websocket,
+    );
+    if (!reduction.accepted || !mounted) return;
+    setState(() {
+      _state = reduction.state;
+      _error = null;
+    });
+  }
+
+  Future<void> _invalidateDisplayAccess(String code) async {
+    final sessionUuid = _sessionUuid;
+    final grantId = _displayGrantId;
+    if (sessionUuid == null || grantId == null) return;
+    await _roleAccessStore.clear(
+      role: RoleAccessKind.display,
+      sessionUuid: sessionUuid,
+      apiBaseUrl: _apiBaseUrl,
+      grantId: grantId,
+    );
+    _displayToken = null;
+    _displayGrantId = null;
+    _refreshTimer?.cancel();
+    await _socketSupervisor?.stop();
+    if (!mounted) return;
+    setState(() {
+      _error = switch (code) {
+        'access_revoked' => 'Доступ к показу отозван.',
+        'access_expired' => 'Срок доступа к показу истёк.',
+        _ => 'Доступ к показу недействителен.',
+      };
+    });
+  }
+
   Future<void> _refreshState({bool showLoading = true}) async {
-    final sessionId = _sessionId;
-    if (sessionId == null || _fetching) return;
+    final sessionUuid = _sessionUuid;
+    final displayToken = _displayToken;
+    if (sessionUuid == null || displayToken == null || _fetching) return;
 
     if (showLoading && mounted) {
       setState(() {
@@ -96,11 +252,37 @@ class _DisplaySessionPageState extends State<DisplaySessionPage> {
     }
     _fetching = true;
     try {
-      final state = await _client().getSessionDisplayState(sessionId);
+      final state = await _client().getSessionDisplayState(
+        sessionUuid,
+        displayToken: displayToken,
+      );
+      if (!mounted) return;
+      var reducer = _stateReducer;
+      if (reducer == null) {
+        reducer = SessionStateReducer(sessionUuid);
+        _stateReducer = reducer;
+      }
+      final reduction = reducer.apply(
+        state,
+        source: SessionStateSource.displayRead,
+      );
+      if (!reduction.accepted) {
+        throw StateError(
+          reduction.reason ?? 'Сервер вернул несовместимое состояние показа.',
+        );
+      }
+      setState(() {
+        _state = reduction.state;
+        _error = null;
+      });
+    } on ApiException catch (e) {
+      if (e.invalidatesRoleAccess) {
+        await _invalidateDisplayAccess(e.code!);
+        return;
+      }
       if (!mounted) return;
       setState(() {
-        _state = state;
-        _error = null;
+        _error = userErrorText(e);
       });
     } catch (e) {
       if (!mounted) return;
@@ -128,7 +310,7 @@ class _DisplaySessionPageState extends State<DisplaySessionPage> {
   @override
   Widget build(BuildContext context) {
     final state = _state;
-    final currentQuestion = mapOrNull(state?['current_question']);
+    final currentQuestion = mapOrNull(state?['display_question']);
     return Scaffold(
       backgroundColor: const Color(0xFF061A23),
       body: AnimatedSwitcher(
@@ -167,32 +349,29 @@ class _DisplayStage extends StatelessWidget {
     final status = state['status']?.toString() ?? 'waiting';
     final phase = state['phase']?.toString() ?? 'lobby';
     final quiz = mapOrNull(state['quiz']) ?? <String, dynamic>{};
-    final isClosed = status == 'finished' || status == 'aborted';
-
-    Widget content;
-    if (isClosed || phase == 'final') {
-      content = _FinalDisplaySlide(
-        state: state,
-        aborted: status == 'aborted',
-      );
-    } else if (phase == 'results') {
-      content = _ResultsDisplaySlide(
-        state: state,
-        countdown: countdownLabel(state['phase_ends_at']),
-      );
-    } else if (phase == 'answering') {
-      content = _AnsweringDisplaySlide(
-        state: state,
-        countdown: countdownLabel(state['question_ends_at']),
-      );
-    } else if (phase == 'reading') {
-      content = _ReadingDisplaySlide(
-        state: state,
-        countdown: countdownLabel(state['phase_ends_at']),
-      );
-    } else {
-      content = _LobbyDisplaySlide(state: state);
-    }
+    final content = switch (resolveDisplayScene(status, phase)) {
+      DisplayScene.finalView => _FinalDisplaySlide(
+          state: state,
+          aborted: status == 'aborted',
+        ),
+      DisplayScene.results => _ResultsDisplaySlide(
+          state: state,
+          countdown: countdownLabel(state['phase_ends_at']),
+        ),
+      DisplayScene.answering => _AnsweringDisplaySlide(
+          state: state,
+          countdown: countdownLabel(state['phase_ends_at']),
+        ),
+      DisplayScene.delivery => _DeliveryDisplaySlide(
+          state: state,
+          countdown: countdownLabel(state['phase_ends_at']),
+        ),
+      DisplayScene.reading => _ReadingDisplaySlide(
+          state: state,
+          countdown: countdownLabel(state['phase_ends_at']),
+        ),
+      DisplayScene.lobby => _LobbyDisplaySlide(state: state),
+    };
 
     return Container(
       key: const ValueKey('display-stage'),
@@ -398,6 +577,49 @@ class _AnsweringDisplaySlide extends StatelessWidget {
   }
 }
 
+class _DeliveryDisplaySlide extends StatelessWidget {
+  const _DeliveryDisplaySlide({
+    required this.state,
+    required this.countdown,
+  });
+
+  final Map<String, dynamic> state;
+  final String countdown;
+
+  @override
+  Widget build(BuildContext context) {
+    final question =
+        mapOrNull(state['display_question']) ?? <String, dynamic>{};
+    return _SlideShell(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _CountdownOrb(label: countdown),
+          const SizedBox(height: 28),
+          const Icon(Icons.sync_rounded, color: Colors.white, size: 72),
+          const SizedBox(height: 20),
+          Text(
+            'Завершаем приём ответов',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            question['text']?.toString() ?? '',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.82),
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ResultsDisplaySlide extends StatelessWidget {
   const _ResultsDisplaySlide({
     required this.state,
@@ -485,8 +707,8 @@ class _FinalDisplaySlide extends StatelessWidget {
         .map((row) => mapOrNull(row) ?? <String, dynamic>{})
         .where((row) => row.isNotEmpty)
         .toList();
-    final podium = leaderboard.take(3).toList();
-    final rest = leaderboard.skip(3).toList();
+    final podium = displayPodiumRows(leaderboard);
+    final rest = displayRemainingLeaderboardRows(leaderboard);
 
     return _SlideShell(
       child: Column(
@@ -752,11 +974,11 @@ class _PodiumDisplay extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         if (rows.length > 1)
-          Expanded(child: _PodiumPlace(row: rows[1], place: 2, height: 170)),
+          Expanded(child: _PodiumPlace(row: rows[1], height: 170)),
         if (rows.isNotEmpty)
-          Expanded(child: _PodiumPlace(row: rows[0], place: 1, height: 230)),
+          Expanded(child: _PodiumPlace(row: rows[0], height: 230)),
         if (rows.length > 2)
-          Expanded(child: _PodiumPlace(row: rows[2], place: 3, height: 135)),
+          Expanded(child: _PodiumPlace(row: rows[2], height: 135)),
       ],
     );
   }
@@ -765,16 +987,15 @@ class _PodiumDisplay extends StatelessWidget {
 class _PodiumPlace extends StatelessWidget {
   const _PodiumPlace({
     required this.row,
-    required this.place,
     required this.height,
   });
 
   final Map<String, dynamic> row;
-  final int place;
   final double height;
 
   @override
   Widget build(BuildContext context) {
+    final place = asInt(row['rank']);
     final color = switch (place) {
       1 => const Color(0xFFFFC857),
       2 => const Color(0xFFC0C6D4),
@@ -816,14 +1037,23 @@ class _PodiumPlace extends StatelessWidget {
                 ),
                 Text(
                   uiText(
-                    ru: "${row['points'] ?? 0} очков",
-                    en: "${row['points'] ?? 0} pts",
+                    ru: "${asInt(row['correct_answers'])} верных",
+                    en: "${asInt(row['correct_answers'])} correct",
                   ),
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Color(0xFF111827),
                     fontWeight: FontWeight.w900,
                     fontSize: 20,
+                  ),
+                ),
+                Text(
+                  formatRankingTimeMs(asInt(row['correct_time_ms'])),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
                   ),
                 ),
               ],
@@ -872,7 +1102,10 @@ class _LeaderboardDisplayRow extends StatelessWidget {
             ),
           ),
           Text(
-            '${row['points'] ?? 0}',
+            uiText(
+              ru: '${asInt(row['correct_answers'])} верных · ${formatRankingTimeMs(asInt(row['correct_time_ms']))}',
+              en: '${asInt(row['correct_answers'])} correct · ${formatRankingTimeMs(asInt(row['correct_time_ms']))}',
+            ),
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w900,

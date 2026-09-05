@@ -5,7 +5,11 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'value_utils.dart';
 
-class LiveSocketConnection {
+abstract interface class SupervisedSocket {
+  Future<void> close();
+}
+
+class LiveSocketConnection implements SupervisedSocket {
   const LiveSocketConnection._({
     required WebSocketChannel channel,
     required StreamSubscription subscription,
@@ -17,9 +21,10 @@ class LiveSocketConnection {
 
   static LiveSocketConnection connect({
     required String url,
+    required Map<String, dynamic> authentication,
     required void Function(Map<String, dynamic> message) onMessage,
     required void Function(Object error) onError,
-    required void Function() onDone,
+    required void Function(int? closeCode, String? closeReason) onDone,
     required void Function() onInvalidPayload,
     bool Function()? isActive,
   }) {
@@ -47,9 +52,10 @@ class LiveSocketConnection {
       },
       onDone: () {
         if (!canNotify()) return;
-        onDone();
+        onDone(channel.closeCode, channel.closeReason);
       },
     );
+    channel.sink.add(jsonEncode(authentication));
 
     return LiveSocketConnection._(
       channel: channel,
@@ -57,6 +63,7 @@ class LiveSocketConnection {
     );
   }
 
+  @override
   Future<void> close() async {
     await _subscription.cancel();
     await _channel.sink.close();

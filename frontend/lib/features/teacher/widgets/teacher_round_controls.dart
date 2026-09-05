@@ -6,19 +6,23 @@ class TeacherRoundControls extends StatelessWidget {
   const TeacherRoundControls({
     super.key,
     required this.onStart,
+    required this.onStartQuiz,
     required this.onNextQuestion,
     required this.onRevealAnswers,
     required this.onFinish,
     required this.onOpenDisplay,
+    required this.onRevokeDisplay,
     required this.onShowLeaderboard,
     required this.onExportCsv,
   });
 
   final VoidCallback? onStart;
+  final VoidCallback? onStartQuiz;
   final VoidCallback? onNextQuestion;
   final VoidCallback? onRevealAnswers;
   final VoidCallback? onFinish;
   final VoidCallback? onOpenDisplay;
+  final VoidCallback? onRevokeDisplay;
   final VoidCallback? onShowLeaderboard;
   final VoidCallback? onExportCsv;
 
@@ -45,6 +49,11 @@ class TeacherRoundControls extends StatelessWidget {
               label: Text(appText(AppText.startButton)),
             ),
             FilledButton.tonalIcon(
+              onPressed: onStartQuiz,
+              icon: const Icon(Icons.slideshow_rounded),
+              label: Text(appText(AppText.startQuizButton)),
+            ),
+            FilledButton.tonalIcon(
               onPressed: onNextQuestion,
               icon: const Icon(Icons.skip_next_outlined),
               label: Text(appText(AppText.nextQuestionButton)),
@@ -52,7 +61,7 @@ class TeacherRoundControls extends StatelessWidget {
             FilledButton.tonalIcon(
               onPressed: onRevealAnswers,
               icon: const Icon(Icons.visibility_outlined),
-              label: Text(appText(AppText.revealAnswersButton)),
+              label: Text(appText(AppText.endAnsweringEarlyButton)),
             ),
             FilledButton.tonalIcon(
               onPressed: onFinish,
@@ -63,6 +72,12 @@ class TeacherRoundControls extends StatelessWidget {
               onPressed: onOpenDisplay,
               icon: const Icon(Icons.connected_tv_outlined),
               label: Text(appText(AppText.openDisplayButton)),
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
+            ),
+            OutlinedButton.icon(
+              onPressed: onRevokeDisplay,
+              icon: const Icon(Icons.link_off_outlined),
+              label: Text(appText(AppText.revokeDisplayButton)),
               style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
             ),
             OutlinedButton.icon(

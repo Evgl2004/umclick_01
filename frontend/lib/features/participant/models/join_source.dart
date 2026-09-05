@@ -1,19 +1,16 @@
 class ParticipantJoinSource {
   const ParticipantJoinSource({
-    this.apiBaseUrl,
     this.joinToken,
     this.pin,
   });
 
   factory ParticipantJoinSource.fromUri(Uri uri) {
     return ParticipantJoinSource(
-      apiBaseUrl: _queryValue(uri, 'api'),
       joinToken: _queryValue(uri, 'token'),
       pin: _queryValue(uri, 'pin'),
     );
   }
 
-  final String? apiBaseUrl;
   final String? joinToken;
   final String? pin;
 

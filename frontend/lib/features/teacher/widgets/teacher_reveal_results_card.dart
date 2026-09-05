@@ -29,7 +29,6 @@ class TeacherRevealResultsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totalAnswers = asInt(revealPayload['total_answers']);
-    final totalPoints = asInt(revealPayload['total_points_awarded']);
     final choices = (revealPayload['choices'] as List<dynamic>? ?? <dynamic>[])
         .map((rawChoice) => mapOrNull(rawChoice) ?? <String, dynamic>{})
         .where((choice) => choice.isNotEmpty)
@@ -76,26 +75,12 @@ class TeacherRevealResultsCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                alignment: WrapAlignment.end,
-                children: [
-                  _SummaryPill(
-                    icon: Icons.how_to_vote_outlined,
-                    label: appText(
-                      AppText.totalAnswers,
-                      args: {'count': totalAnswers},
-                    ),
-                  ),
-                  _SummaryPill(
-                    icon: Icons.stars_outlined,
-                    label: appText(
-                      AppText.pointsAwarded,
-                      args: {'points': totalPoints},
-                    ),
-                  ),
-                ],
+              _SummaryPill(
+                icon: Icons.how_to_vote_outlined,
+                label: appText(
+                  AppText.totalAnswers,
+                  args: {'count': totalAnswers},
+                ),
               ),
             ],
           ),
@@ -185,7 +170,6 @@ class _ChoiceResultRow extends StatelessWidget {
       choice['answers_percent'],
       totalAnswers == 0 ? 0 : ((votes / totalAnswers) * 100).round(),
     );
-    final points = asInt(choice['points_awarded']);
     final isCorrect = choice['is_correct'] == true;
     final title = (choice['text']?.toString().trim().isNotEmpty ?? false)
         ? choice['text'].toString()
@@ -246,9 +230,7 @@ class _ChoiceResultRow extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    uiText(
-                        ru: '$percent% · $points очков',
-                        en: '$percent% · $points pts'),
+                    '$percent%',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.78),
                       fontWeight: FontWeight.w700,

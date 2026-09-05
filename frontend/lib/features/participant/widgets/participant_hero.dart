@@ -7,7 +7,6 @@ class ParticipantHero extends StatelessWidget {
   const ParticipantHero({
     super.key,
     required this.isLive,
-    required this.totalPoints,
     required this.sessionStatus,
     required this.socketConnected,
     required this.hasActiveQuestion,
@@ -15,7 +14,6 @@ class ParticipantHero extends StatelessWidget {
   });
 
   final bool isLive;
-  final int totalPoints;
   final String sessionStatus;
   final bool socketConnected;
   final bool hasActiveQuestion;
@@ -89,13 +87,6 @@ class ParticipantHero extends StatelessWidget {
               spacing: 10,
               runSpacing: 10,
               children: [
-                AppStatusChip(
-                  icon: Icons.emoji_events_outlined,
-                  label: appText(AppText.participantPoints,
-                      args: {'points': totalPoints}),
-                  background: Colors.white,
-                  foreground: const Color(0xFF023047),
-                ),
                 AppStatusChip(
                   icon: Icons.flag_outlined,
                   label: statusText,

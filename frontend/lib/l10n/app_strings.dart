@@ -86,19 +86,19 @@ enum AppText {
   answersReceived,
   joinUrl,
   startButton,
+  startQuizButton,
   nextQuestionButton,
   revealAnswersButton,
+  endAnsweringEarlyButton,
   finishButton,
   openDisplayButton,
+  revokeDisplayButton,
   leaderboardButton,
   exportCsvButton,
   exportUrlSnack,
   exportDownloadedSnack,
   revealResultsTitle,
   totalAnswers,
-  pointsAwarded,
-  revealedBy,
-  choiceStats,
   liveEventsTitle,
   noEventsYet,
   joinLinkDetected,
@@ -129,15 +129,12 @@ enum AppText {
   legalDocumentsButton,
   refreshLegalDocsButton,
   joinSessionButton,
-  participantPoints,
-  participantLastAnswer,
   participantTimeLeftBadge,
   sessionFinishedMessage,
   participantFinalPodiumTitle,
   participantFinalPodiumSubtitle,
   participantYourFinalResult,
   participantFinalRank,
-  participantCorrectAnswers,
   participantRoundLeaderboardTitle,
   participantNoLeaderboardYet,
   waitingForQuestionMessage,
@@ -491,13 +488,23 @@ const _strings = <AppText, LocalizedString>{
   AppText.joinUrl: LocalizedString(
       ru: 'Ссылка для участников: {url}', en: 'Join URL: {url}'),
   AppText.startButton: LocalizedString(ru: 'Старт', en: 'Start'),
+  AppText.startQuizButton:
+      LocalizedString(ru: 'Начать викторину', en: 'Start quiz'),
   AppText.nextQuestionButton:
       LocalizedString(ru: 'Следующий вопрос', en: 'Next question'),
   AppText.revealAnswersButton:
       LocalizedString(ru: 'Показать ответы', en: 'Reveal answers'),
+  AppText.endAnsweringEarlyButton: LocalizedString(
+    ru: 'Завершить приём ответов досрочно',
+    en: 'End answer collection early',
+  ),
   AppText.finishButton: LocalizedString(ru: 'Завершить', en: 'Finish'),
   AppText.openDisplayButton:
       LocalizedString(ru: 'Экран демонстрации', en: 'Display screen'),
+  AppText.revokeDisplayButton: LocalizedString(
+    ru: 'Отозвать доступ показа',
+    en: 'Revoke display access',
+  ),
   AppText.leaderboardButton: LocalizedString(ru: 'Рейтинг', en: 'Leaderboard'),
   AppText.exportCsvButton: LocalizedString(ru: 'Экспорт CSV', en: 'Export CSV'),
   AppText.exportUrlSnack:
@@ -510,14 +517,6 @@ const _strings = <AppText, LocalizedString>{
       LocalizedString(ru: 'Результаты раунда', en: 'Round results'),
   AppText.totalAnswers: LocalizedString(
       ru: 'Всего ответов: {count}', en: 'Total answers: {count}'),
-  AppText.pointsAwarded: LocalizedString(
-      ru: 'Начислено очков: {points}', en: 'Points awarded: {points}'),
-  AppText.revealedBy:
-      LocalizedString(ru: 'Раскрыто: {value}', en: 'Revealed by: {value}'),
-  AppText.choiceStats: LocalizedString(
-    ru: 'Голоса: {votes} | Очки: {points}',
-    en: 'Votes: {votes} | Pts: {points}',
-  ),
   AppText.liveEventsTitle: LocalizedString(ru: 'События', en: 'Live events'),
   AppText.noEventsYet:
       LocalizedString(ru: 'Событий пока нет.', en: 'No events yet.'),
@@ -599,10 +598,6 @@ const _strings = <AppText, LocalizedString>{
       LocalizedString(ru: 'Обновить документы', en: 'Refresh legal docs'),
   AppText.joinSessionButton:
       LocalizedString(ru: 'Войти в сессию', en: 'Join session'),
-  AppText.participantPoints:
-      LocalizedString(ru: 'Очки: {points}', en: 'Points: {points}'),
-  AppText.participantLastAnswer: LocalizedString(
-      ru: 'Последний ответ: +{points}', en: 'Last answer: +{points} pts'),
   AppText.participantTimeLeftBadge:
       LocalizedString(ru: 'Осталось: {time}', en: 'Left: {time}'),
   AppText.sessionFinishedMessage: LocalizedString(
@@ -616,15 +611,11 @@ const _strings = <AppText, LocalizedString>{
     en: 'Game finished. Here are the final places and your result.',
   ),
   AppText.participantYourFinalResult: LocalizedString(
-    ru: 'Ваш результат: {points} очков',
-    en: 'Your result: {points} pts',
+    ru: 'Ваш результат: {correct} верных · {time}',
+    en: 'Your result: {correct} correct · {time}',
   ),
   AppText.participantFinalRank:
       LocalizedString(ru: 'Место #{rank}', en: 'Rank #{rank}'),
-  AppText.participantCorrectAnswers: LocalizedString(
-    ru: 'Верных ответов: {count}',
-    en: 'Correct answers: {count}',
-  ),
   AppText.participantRoundLeaderboardTitle: LocalizedString(
       ru: 'Рейтинг после вопроса', en: 'Leaderboard after question'),
   AppText.participantNoLeaderboardYet: LocalizedString(
@@ -875,8 +866,8 @@ const _strings = <AppText, LocalizedString>{
   ),
   AppText.leaderboardCloseButton: LocalizedString(ru: 'Закрыть', en: 'Close'),
   AppText.leaderboardStats: LocalizedString(
-    ru: 'Очки: {points} | Верных: {correct}',
-    en: 'Pts: {points} | Correct: {correct}',
+    ru: 'Верных: {correct} | Время: {time}',
+    en: 'Correct: {correct} | Time: {time}',
   ),
   AppText.sessionHistoryTitle: LocalizedString(
     ru: 'История проведённых викторин',

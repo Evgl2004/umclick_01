@@ -1,12 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../../api/api_client.dart';
 import '../../core/app_config.dart';
 import '../../core/countdown_ticker.dart';
 import '../../core/live_event_log.dart';
-import '../../core/live_socket_connection.dart';
+import '../../core/live_socket_supervisor.dart';
+import '../../core/participant_answer_controller.dart';
+import '../../core/participant_join_location.dart';
+import '../../core/request_id.dart';
+import '../../core/role_access_token_store.dart';
+import '../../core/session_uuid.dart';
+import '../../core/session_state_reducer.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
 import '../../shared/user_error_text.dart';
@@ -19,8 +26,26 @@ import 'widgets/participant_hero.dart';
 import 'widgets/profile_card.dart';
 import 'widgets/question_card.dart';
 
+AppText? participantJoinFormErrorKey({
+  required bool hasJoinTarget,
+  required String name,
+}) {
+  if (!hasJoinTarget) return AppText.participantJoinTargetRequired;
+  if (name.trim().isEmpty) return AppText.participantNameRequiredError;
+  return null;
+}
+
 class ParticipantPanel extends StatefulWidget {
-  const ParticipantPanel({super.key});
+  const ParticipantPanel({
+    super.key,
+    this.httpClient,
+    this.initialJoinSource,
+    this.socketOpener,
+  });
+
+  final http.Client? httpClient;
+  final ParticipantJoinSource? initialJoinSource;
+  final SupervisedSocketOpener? socketOpener;
 
   @override
   State<ParticipantPanel> createState() => _ParticipantPanelState();
@@ -38,8 +63,6 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   List<dynamic> _finalLeaderboard = [];
   bool _consent = false;
   bool _loading = false;
-  int _totalPoints = 0;
-  int _lastAnswerPoints = 0;
   String? _error;
   String _sessionStatus = 'waiting';
   String _sessionPhase = 'lobby';
@@ -53,11 +76,19 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   Map<String, dynamic>? _joinPreview;
   bool _loadingJoinPreview = false;
   bool _syncingSessionState = false;
-  bool _answerSubmitting = false;
   String? _joinTokenFromLink;
   bool _useJoinTokenFromLink = false;
+  String? _participantToken;
+  String? _sessionUuid;
+  Map<String, dynamic>? _pendingJoinPayload;
+  bool _participantTokenPersisted = false;
+  final _roleAccessStore = const RoleAccessTokenStore();
+  SessionStateReducer? _sessionStateReducer;
+  ParticipantAnswerController? _answerController;
+  ParticipantAnswerRequest? _uncertainAnswer;
+  ParticipantAnswerRequest? _latestAnswerRequest;
 
-  LiveSocketConnection? _socketConnection;
+  LiveSocketSupervisor? _socketSupervisor;
   bool _socketConnected = false;
   Timer? _countdownTimer;
   Timer? _statePollingTimer;
@@ -65,7 +96,10 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   final _eventLog = const LiveEventLog();
   final List<String> _events = [];
 
-  ApiClient _client() => ApiClient(_apiController.text.trim());
+  ApiClient _client() => ApiClient(
+        _apiController.text.trim(),
+        httpClient: widget.httpClient,
+      );
 
   String? get _activeJoinToken =>
       _useJoinTokenFromLink ? _joinTokenFromLink : null;
@@ -91,16 +125,11 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   }
 
   String? _joinFormErrorText() {
-    if (_activeJoinToken == null && _activePin == null) {
-      return appText(AppText.participantJoinTargetRequired);
-    }
-    if (_nameController.text.trim().isEmpty) {
-      return appText(AppText.participantNameRequiredError);
-    }
-    if (!_consent) {
-      return appText(AppText.participantConsentRequiredError);
-    }
-    return null;
+    final issue = participantJoinFormErrorKey(
+      hasJoinTarget: _activeJoinToken != null || _activePin != null,
+      name: _nameController.text,
+    );
+    return issue == null ? null : appText(issue);
   }
 
   bool _shouldShowManualPinFallback(Object error) {
@@ -127,18 +156,83 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   @override
   void initState() {
     super.initState();
-    final initialJoinSource = ParticipantJoinSource.fromUri(Uri.base);
+    final initialJoinSource =
+        widget.initialJoinSource ?? ParticipantJoinSource.fromUri(Uri.base);
     _configureJoinSource(initialJoinSource);
     _loadLegalDocuments(showError: false);
     _loadJoinPreview(showError: initialJoinSource.hasJoinTarget);
+    unawaited(_restoreParticipantAccess(initialJoinSource));
+  }
+
+  Future<void> _restoreParticipantAccess(
+    ParticipantJoinSource joinSource,
+  ) async {
+    final rawUuid = joinSource.joinToken;
+    if (rawUuid == null) return;
+    late final String sessionUuid;
+    try {
+      sessionUuid = normalizeSessionUuid(rawUuid);
+    } on FormatException {
+      return;
+    }
+
+    final stored = await _roleAccessStore.restoreForSession(
+      role: RoleAccessKind.participant,
+      sessionUuid: sessionUuid,
+    );
+    if (stored == null || !mounted || _joinPayload != null) return;
+
+    _apiController.text = stored.apiBaseUrl;
+    _participantToken = stored.token;
+    _sessionUuid = sessionUuid;
+    _participantTokenPersisted = true;
+    try {
+      final payload = await _client().getParticipationState(
+        sessionUuid,
+        participantToken: stored.token,
+      );
+      if (!mounted) return;
+      await _activateParticipation(payload, sessionUuid);
+      _appendEvent('Участие восстановлено из локального хранилища.');
+    } on ApiException catch (e) {
+      await _clearParticipantAccessIfInvalid(e);
+      if (!mounted) return;
+      setState(() {
+        _error = userErrorText(e);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = userErrorText(e);
+      });
+    }
+  }
+
+  Future<void> _clearParticipantAccessIfInvalid(ApiException error) async {
+    final sessionUuid = _sessionUuid;
+    if (!error.invalidatesRoleAccess || sessionUuid == null) return;
+    await _roleAccessStore.clear(
+      role: RoleAccessKind.participant,
+      sessionUuid: sessionUuid,
+      apiBaseUrl: _apiController.text.trim(),
+    );
+    _answerController?.cancelPending();
+    _statePollingTimer?.cancel();
+    await _closeSocket();
+    _participantToken = null;
+    _participantTokenPersisted = false;
+    _sessionStateReducer = null;
+    _answerController = null;
+    _uncertainAnswer = null;
+    _latestAnswerRequest = null;
+    if (mounted) {
+      setState(() {
+        _joinPayload = null;
+      });
+    }
   }
 
   void _configureJoinSource(ParticipantJoinSource joinSource) {
-    final apiBaseUrl = joinSource.apiBaseUrl;
-    if (apiBaseUrl != null) {
-      _apiController.text = apiBaseUrl;
-    }
-
     final joinToken = joinSource.joinToken;
     if (joinToken != null) {
       _joinTokenFromLink = joinToken;
@@ -156,6 +250,7 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
   void dispose() {
     _countdownTimer?.cancel();
     _statePollingTimer?.cancel();
+    _answerController?.cancelPending();
     _closeSocket();
     _apiController.dispose();
     _pinController.dispose();
@@ -300,66 +395,78 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
       onTick: (tick) {
         setState(() {
           _timeLeftLabel = tick.label;
-          _isQuestionExpired = tick.isExpired;
+          _isQuestionExpired = _sessionPhase != 'answering' || tick.isExpired;
         });
       },
     );
   }
 
-  void _applyQuestionState(Map<String, dynamic>? question, dynamic endsAtRaw) {
-    setState(() {
-      _activeQuestion = question;
-      _revealPayload = null;
-      _questionAnswered = false;
-      _selectedChoiceId = null;
-      _isQuestionExpired = false;
-    });
-    _startCountdown(parseDateTimeLocal(endsAtRaw));
-  }
-
-  Future<void> _connectSocket(int sessionId) async {
+  Future<void> _connectSocket(String sessionUuid) async {
     await _closeSocket();
-    final url = _client().sessionWebSocketUrl(sessionId);
+    final token = _participantToken;
+    if (token == null || token.isEmpty) return;
+    final url = _client().sessionWebSocketUrl(sessionUuid);
 
     try {
-      _socketConnection = LiveSocketConnection.connect(
+      _socketSupervisor = LiveSocketSupervisor(
         url: url,
-        isActive: () => mounted,
+        authentication: {
+          'event': 'auth',
+          'access_type': 'participant',
+          'token': token,
+        },
         onMessage: _handleParticipantSocketEvent,
         onInvalidPayload: () => _appendEvent('Invalid socket payload.'),
-        onError: (error) {
-          _appendEvent('Socket error: $error');
+        onTransportError: (_) {
+          _appendEvent('Ошибка транспорта WebSocket.');
           _setSocketConnected(false);
         },
-        onDone: () {
-          _appendEvent('Socket disconnected.');
+        onConnectionError: (error) {
+          final code = error['code']?.toString();
+          if (code == 'access_invalid' ||
+              code == 'access_revoked' ||
+              code == 'access_expired') {
+            unawaited(_clearParticipantAccessIfInvalid(ApiException(
+              statusCode: 401,
+              message: 'Ролевой доступ недействителен.',
+              body: '{}',
+              code: code,
+            )));
+          }
+          _appendEvent(
+              'Соединение отклонено: ${code ?? 'неизвестная причина'}');
+        },
+        onStopped: (_, reason) {
+          _appendEvent(
+              'Повтор WebSocket прекращён: ${reason ?? 'соединение закрыто'}');
           _setSocketConnected(false);
         },
+        opener: widget.socketOpener,
       );
-
-      _setSocketConnected(true);
-      _appendEvent('Connected to live session.');
+      await _socketSupervisor!.start();
+      _appendEvent(
+          'WebSocket участника открыт, ожидается подтверждение доступа.');
     } catch (e) {
       _setSocketConnected(false);
-      _appendEvent('Failed to connect socket: $e');
+      _appendEvent('Не удалось открыть WebSocket участника.');
     }
   }
 
   Future<void> _closeSocket() async {
-    await _socketConnection?.close();
-    _socketConnection = null;
+    await _socketSupervisor?.stop();
+    _socketSupervisor = null;
     _setSocketConnected(false);
   }
 
-  void _startStatePolling(int sessionId) {
+  void _startStatePolling(String sessionUuid) {
     _statePollingTimer?.cancel();
     _statePollingTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) => _syncSessionState(sessionId),
+      const Duration(seconds: 5),
+      (_) => _syncSessionState(sessionUuid),
     );
   }
 
-  Future<void> _syncSessionState(int sessionId) async {
+  Future<void> _syncSessionState(String sessionUuid) async {
     if (!mounted ||
         _joinPayload == null ||
         _sessionFinished ||
@@ -369,11 +476,22 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
 
     _syncingSessionState = true;
     try {
-      final payload = await _client().getSessionState(sessionId);
+      final token = _participantToken;
+      if (token == null || token.isEmpty) return;
+      final participation = await _client().getParticipationState(
+        sessionUuid,
+        participantToken: token,
+      );
       if (!mounted) return;
-      _applySessionStatePayload(payload);
+      _applySessionStatePayload(
+        mapOrNull(participation['state']) ?? <String, dynamic>{},
+        source: SessionStateSource.participantRead,
+      );
+    } on ApiException catch (e) {
+      await _clearParticipantAccessIfInvalid(e);
+      // WebSocket остаётся основным каналом, опрос — только страховка.
     } catch (_) {
-      // WebSocket remains primary. Polling is only a quiet safety net.
+      // Временная ошибка опроса не уничтожает сохранённый токен.
     } finally {
       _syncingSessionState = false;
     }
@@ -386,128 +504,203 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     });
   }
 
-  void _applySessionStatePayload(Map<String, dynamic> payload) {
-    final incomingQuestion = mapOrNull(payload['current_question']);
-    final incomingQuestionId = asInt(incomingQuestion?['id'], -1);
-    final activeQuestionId = asInt(_activeQuestion?['id'], -2);
-    final isAnswerRevealed = payload['is_answer_revealed'] == true;
-    final incomingStatus = payload['status']?.toString() ?? _sessionStatus;
-    final incomingPhase = payload['phase']?.toString() ?? _sessionPhase;
-    final isFinished =
-        incomingStatus == 'finished' || incomingStatus == 'aborted';
-    final leaderboard =
-        (payload['leaderboard'] as List<dynamic>? ?? _finalLeaderboard)
-            .toList();
+  bool _applySessionStatePayload(
+    Map<String, dynamic> payload, {
+    required SessionStateSource source,
+  }) {
+    final reducer = _sessionStateReducer;
+    if (reducer == null) return false;
+    final reduction = _answerController?.applyState(payload, source: source) ??
+        reducer.apply(payload, source: source);
+    if (!reduction.accepted) return false;
+    if (reduction.contextChanged) {
+      _answerController?.cancelPending();
+      _uncertainAnswer = null;
+      _latestAnswerRequest = null;
+    }
 
+    final state = reduction.state;
+    final status = state['status']?.toString() ?? _sessionStatus;
+    final phase = state['phase']?.toString() ?? _sessionPhase;
+    final isFinished = status == 'finished' || status == 'aborted';
+    final isAnswerRevealed = state['is_answer_revealed'] == true;
+    final answer = mapOrNull(state['answer']);
+    final visibleHasAnswer =
+        _answerController?.visibleHasAnswer ?? answer?['has_answer'] == true;
+    final visibleChoiceId = _answerController?.visibleSelectedChoiceId ??
+        answer?['selected_choice_id'] as int?;
     setState(() {
-      _sessionStatus = incomingStatus;
-      _sessionPhase = incomingPhase;
+      _sessionStatus = status;
+      _sessionPhase = phase;
       _sessionFinished = isFinished;
+      _activeQuestion =
+          isFinished ? null : mapOrNull(state['current_question']);
+      _revealPayload = isAnswerRevealed ? mapOrNull(state['reveal']) : null;
+      _questionAnswered = visibleHasAnswer;
+      _selectedChoiceId = visibleChoiceId;
+      _isQuestionExpired = phase != 'answering' || isAnswerRevealed;
       if (isFinished) {
-        _finalLeaderboard = leaderboard;
+        _finalLeaderboard =
+            (state['leaderboard'] as List<dynamic>? ?? <dynamic>[]).toList();
       }
     });
 
     if (isFinished) {
       _countdownTimer?.cancel();
-      setState(() {
-        _activeQuestion = null;
-        _timeLeftLabel = '--:--';
-        _isQuestionExpired = false;
-      });
       _statePollingTimer?.cancel();
-      return;
-    }
-
-    if (incomingQuestionId != activeQuestionId || incomingQuestion == null) {
-      _applyQuestionState(
-        incomingQuestion,
-        payload['question_ends_at'] ?? payload['phase_ends_at'],
-      );
-    } else {
-      _startCountdown(parseDateTimeLocal(
-        payload['question_ends_at'] ?? payload['phase_ends_at'],
-      ));
-    }
-
-    if (isAnswerRevealed && incomingQuestion != null) {
+      setState(() {
+        _timeLeftLabel = '--:--';
+      });
+    } else if (isAnswerRevealed) {
       _countdownTimer?.cancel();
       setState(() {
-        _revealPayload = mapOrNull(payload['reveal']) ?? _revealPayload;
-        _isQuestionExpired = true;
         _timeLeftLabel = '00:00';
       });
+    } else {
+      _startCountdown(parseDateTimeLocal(state['phase_ends_at']));
     }
+    return true;
   }
 
   void _handleParticipantSocketEvent(Map<String, dynamic> message) {
+    _setSocketConnected(true);
     final event = message['event']?.toString() ?? 'unknown';
     final payload = mapOrNull(message['payload']) ?? <String, dynamic>{};
+    final accepted = _applySessionStatePayload(
+      payload,
+      source: SessionStateSource.participantWebsocket,
+    );
+    _appendEvent(accepted
+        ? 'Событие: $event'
+        : 'Отклонено несовместимое событие WebSocket.');
+  }
 
-    switch (event) {
-      case 'session_state':
-      case 'session_started':
-        _applySessionStatePayload(payload);
-        break;
-      case 'question_reading_started':
-        _countdownTimer?.cancel();
-        setState(() {
-          _sessionStatus = payload['status']?.toString() ?? 'live';
-          _sessionPhase = payload['phase']?.toString() ?? 'reading';
-          _sessionFinished = false;
-          _activeQuestion = null;
-          _revealPayload = null;
-          _questionAnswered = false;
-          _selectedChoiceId = null;
-          _lastAnswerPoints = 0;
-          _isQuestionExpired = false;
-          _timeLeftLabel = '--:--';
-        });
-        _startCountdown(parseDateTimeLocal(payload['phase_ends_at']));
-        break;
-      case 'question_started':
-        setState(() {
-          _sessionStatus = payload['status']?.toString() ?? 'live';
-          _sessionPhase = payload['phase']?.toString() ?? 'answering';
-          _sessionFinished = false;
-          _lastAnswerPoints = 0;
-        });
-        _applyQuestionState(
-            mapOrNull(payload['question']), payload['question_ends_at']);
-        break;
-      case 'answer_revealed':
-        _countdownTimer?.cancel();
-        setState(() {
-          _sessionStatus = payload['status']?.toString() ?? _sessionStatus;
-          _sessionPhase = payload['phase']?.toString() ?? 'results';
-          _revealPayload = payload;
-          _timeLeftLabel = '00:00';
-          _isQuestionExpired = true;
-        });
-        break;
-      case 'session_finished':
-        final leaderboard =
-            (payload['leaderboard'] as List<dynamic>? ?? <dynamic>[]).toList();
-        _countdownTimer?.cancel();
-        setState(() {
-          _sessionStatus = payload['status']?.toString() ?? 'finished';
-          _sessionPhase = payload['phase']?.toString() ?? 'final';
-          _sessionFinished = true;
-          _activeQuestion = null;
-          _finalLeaderboard = leaderboard;
-          _timeLeftLabel = '--:--';
-          _isQuestionExpired = false;
-        });
-        _statePollingTimer?.cancel();
-        break;
-      default:
-        break;
+  Future<void> _activateParticipation(
+    Map<String, dynamic> payload,
+    String sessionUuid,
+  ) async {
+    final incomingState = mapOrNull(payload['state']);
+    if (incomingState == null) {
+      throw StateError('Сервер не вернул состояние участия.');
+    }
+    var reducer = _sessionStateReducer;
+    if (reducer == null || reducer.sessionUuid != sessionUuid) {
+      reducer = SessionStateReducer(sessionUuid);
+      _sessionStateReducer = reducer;
+      _answerController = ParticipantAnswerController(reducer: reducer);
+    }
+    final reduction = _answerController!.applyState(
+      incomingState,
+      source: SessionStateSource.participantRead,
+    );
+    if (!reduction.accepted) {
+      throw StateError(reduction.reason ?? 'Некорректное состояние участия.');
+    }
+    final state = reduction.state;
+    final isAnswerRevealed = state['is_answer_revealed'] == true ||
+        payload['is_answer_revealed'] == true;
+    final currentQuestion = mapOrNull(state['current_question']) ??
+        mapOrNull(payload['current_question']);
+    final status = state['status']?.toString() ??
+        payload['status']?.toString() ??
+        payload['session_status']?.toString() ??
+        'waiting';
+    final phase =
+        state['phase']?.toString() ?? payload['phase']?.toString() ?? 'lobby';
+
+    final safePayload = Map<String, dynamic>.from(payload)
+      ..remove('participant_token');
+    setState(() {
+      _joinPayload = safePayload;
+      _sessionUuid = sessionUuid;
+      _activeQuestion = currentQuestion;
+      _revealPayload = isAnswerRevealed
+          ? mapOrNull(state['reveal'] ?? payload['reveal'])
+          : null;
+      _finalLeaderboard =
+          (state['leaderboard'] as List<dynamic>? ?? <dynamic>[]).toList();
+      _sessionStatus = status;
+      _sessionPhase = phase;
+      _sessionFinished = status == 'finished' || status == 'aborted';
+      _questionAnswered = _answerController!.visibleHasAnswer;
+      _selectedChoiceId = _answerController!.visibleSelectedChoiceId;
+      _isQuestionExpired = phase != 'answering' || isAnswerRevealed;
+      _timeLeftLabel = isAnswerRevealed ? '00:00' : '--:--';
+      _legalDocuments =
+          mapOrNull(payload['legal_documents']) ?? _legalDocuments;
+      _events.clear();
+    });
+
+    if (isAnswerRevealed) {
+      _countdownTimer?.cancel();
+    } else {
+      _startCountdown(parseDateTimeLocal(
+        state['phase_ends_at'] ??
+            state['question_ends_at'] ??
+            payload['question_ends_at'] ??
+            payload['phase_ends_at'],
+      ));
     }
 
-    _appendEvent('Event: $event');
+    await _connectSocket(sessionUuid);
+    _startStatePolling(sessionUuid);
+  }
+
+  Future<void> _persistPendingParticipation() async {
+    final payload = _pendingJoinPayload;
+    final token = _participantToken;
+    final sessionUuid = _sessionUuid;
+    if (payload == null || token == null || sessionUuid == null) return;
+
+    if (!_participantTokenPersisted) {
+      await _roleAccessStore.persist(
+        role: RoleAccessKind.participant,
+        sessionUuid: sessionUuid,
+        apiBaseUrl: _apiController.text.trim(),
+        token: token,
+      );
+      _participantTokenPersisted = true;
+    }
+
+    var combined = payload;
+    if (mapOrNull(payload['state']) == null) {
+      final restored = await _client().getParticipationState(
+        sessionUuid,
+        participantToken: token,
+      );
+      combined = <String, dynamic>{...payload, ...restored};
+    }
+    await _activateParticipation(combined, sessionUuid);
+    _joinTokenFromLink = sessionUuid;
+    _useJoinTokenFromLink = true;
+    replaceParticipantJoinLocation(sessionUuid);
+    _pendingJoinPayload = null;
   }
 
   Future<void> _join() async {
+    if (_pendingJoinPayload != null) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+      try {
+        await _persistPendingParticipation();
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _error = userErrorText(e);
+          });
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _loading = false;
+          });
+        }
+      }
+      return;
+    }
+
     final validationError = _joinFormErrorText();
     if (validationError != null) {
       setState(() {
@@ -539,39 +732,20 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         name: _nameController.text.trim(),
         consent: _consent,
       );
-
-      final isAnswerRevealed = payload['is_answer_revealed'] == true;
-
-      setState(() {
-        _joinPayload = payload;
-        _activeQuestion = mapOrNull(payload['current_question']);
-        _revealPayload = isAnswerRevealed ? mapOrNull(payload['reveal']) : null;
-        _finalLeaderboard = [];
-        _totalPoints = 0;
-        _lastAnswerPoints = 0;
-        _sessionStatus = payload['session_status']?.toString() ?? 'waiting';
-        _sessionPhase = payload['phase']?.toString() ?? 'lobby';
-        _sessionFinished =
-            _sessionStatus == 'finished' || _sessionStatus == 'aborted';
-        _questionAnswered = false;
-        _selectedChoiceId = null;
-        _isQuestionExpired = isAnswerRevealed;
-        _timeLeftLabel = isAnswerRevealed ? '00:00' : '--:--';
-        _legalDocuments =
-            mapOrNull(payload['legal_documents']) ?? _legalDocuments;
-        _events.clear();
-      });
-
-      if (isAnswerRevealed) {
-        _countdownTimer?.cancel();
-      } else {
-        _startCountdown(parseDateTimeLocal(
-          payload['question_ends_at'] ?? payload['phase_ends_at'],
-        ));
+      final sessionUuid = payload['session_uuid']?.toString();
+      final participantToken = payload['participant_token']?.toString();
+      if (sessionUuid == null || sessionUuid.isEmpty) {
+        throw StateError('Сервер не вернул UUID сессии.');
       }
-
-      await _connectSocket(payload['session_id'] as int);
-      _startStatePolling(payload['session_id'] as int);
+      if (participantToken == null || participantToken.isEmpty) {
+        throw StateError('Сервер не вернул токен участия.');
+      }
+      normalizeSessionUuid(sessionUuid);
+      _participantToken = participantToken;
+      _sessionUuid = sessionUuid;
+      _participantTokenPersisted = false;
+      _pendingJoinPayload = payload;
+      await _persistPendingParticipation();
     } catch (e) {
       setState(() {
         final fallbackHint = _shouldShowManualPinFallback(e)
@@ -580,16 +754,17 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
         _error = '${userErrorText(e)}$fallbackHint';
       });
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
   Future<void> _answer(int choiceId) async {
     if (_joinPayload == null ||
         _activeQuestion == null ||
-        _answerSubmitting ||
         _sessionPhase != 'answering' ||
         _isQuestionExpired) {
       return;
@@ -599,34 +774,107 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
     }
 
     final hadAnswer = _questionAnswered;
+    final reducer = _sessionStateReducer;
+    final controller = _answerController;
+    final context = reducer?.context;
+    final sessionUuid = _sessionUuid;
+    final participantToken = _participantToken;
+    if (reducer == null ||
+        controller == null ||
+        context == null ||
+        sessionUuid == null ||
+        participantToken == null) {
+      return;
+    }
+    final retained = _uncertainAnswer;
+    final request = retained != null &&
+            retained.choiceId == choiceId &&
+            retained.questionId == _activeQuestion!['id'] &&
+            reducer.matchesContext(retained.context)
+        ? retained
+        : ParticipantAnswerRequest(
+            submissionId: newRequestId(),
+            questionId: _activeQuestion!['id'] as int,
+            choiceId: choiceId,
+            context: context,
+          );
+    _uncertainAnswer = null;
+    _latestAnswerRequest = request;
     setState(() {
-      _answerSubmitting = true;
+      _error = null;
+      _questionAnswered = false;
+      _selectedChoiceId = choiceId;
     });
     try {
-      final response = await _client().submitAnswer(
-        sessionParticipantId: _joinPayload!['session_participant_id'] as int,
-        questionId: _activeQuestion!['id'] as int,
-        choiceId: choiceId,
+      final result = await controller.submit(
+        request: request,
+        send: (body, abortTrigger) => _client().submitAnswer(
+          sessionUuid: sessionUuid,
+          participantToken: participantToken,
+          questionId: body['question_id'] as int,
+          choiceId: body['choice_id'] as int,
+          submissionId: body['submission_id'] as String,
+          abortTrigger: abortTrigger,
+        ),
+        readState: () async {
+          final participation = await _client().getParticipationState(
+            sessionUuid,
+            participantToken: participantToken,
+          );
+          final state = mapOrNull(participation['state']);
+          if (state == null) {
+            throw StateError('Сервер не вернул состояние участия.');
+          }
+          return state;
+        },
       );
-
-      setState(() {
-        _totalPoints = asInt(response['total_points'], _totalPoints);
-        _lastAnswerPoints = asInt(response['score_points']);
-        _questionAnswered = true;
-        _selectedChoiceId = choiceId;
-      });
-
-      _appendEvent(hadAnswer
-          ? 'Answer changed (+$_lastAnswerPoints pts).'
-          : 'Answer submitted (+$_lastAnswerPoints pts).');
-    } catch (e) {
+      if (!mounted || !identical(_latestAnswerRequest, request)) return;
+      if (result.state?['schema_version'] == 2) {
+        _applySessionStatePayload(
+          result.state!,
+          source: SessionStateSource.participantRead,
+        );
+      }
+      switch (result.kind) {
+        case ParticipantAnswerResultKind.submitted:
+        case ParticipantAnswerResultKind.recoveredAfterNetwork:
+          setState(() {
+            _questionAnswered = controller.visibleHasAnswer;
+            _selectedChoiceId = controller.visibleSelectedChoiceId;
+          });
+          _appendEvent(hadAnswer
+              ? 'Выбор ответа изменён и зафиксирован.'
+              : 'Ответ зафиксирован без раскрытия правильности.');
+          break;
+        case ParticipantAnswerResultKind.conflict:
+          setState(() {
+            _error = result.error == null
+                ? 'Ответ конфликтует с текущим состоянием.'
+                : userErrorText(result.error!);
+          });
+          break;
+        case ParticipantAnswerResultKind.temporarilyFailed:
+        case ParticipantAnswerResultKind.uncertain:
+          _uncertainAnswer = request;
+          setState(() {
+            _error = result.kind == ParticipantAnswerResultKind.uncertain
+                ? 'Результат ответа неизвестен. Повтор того же выбора сохранит исходный идентификатор.'
+                : userErrorText(result.error!);
+          });
+          break;
+        case ParticipantAnswerResultKind.cancelled:
+          break;
+      }
+    } on ApiException catch (e) {
+      await _clearParticipantAccessIfInvalid(e);
+      if (!mounted) return;
       setState(() {
         _error = userErrorText(e);
       });
-    } finally {
+    } catch (e) {
       if (mounted) {
         setState(() {
-          _answerSubmitting = false;
+          _error = userErrorText(e);
         });
       }
     }
@@ -643,15 +891,11 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
           Text(appText(AppText.participantLiveCardTitle),
               style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 10),
-          Text(appText(AppText.participantLastAnswer,
-              args: {'points': _lastAnswerPoints})),
-          const SizedBox(height: 14),
           if (_sessionFinished)
             ParticipantPodiumCard(
               leaderboard: _finalLeaderboard,
               currentSessionParticipantId:
                   asInt(_joinPayload?['session_participant_id'], -1),
-              totalPoints: _totalPoints,
             )
           else if (_sessionPhase == 'reading')
             ParticipantRoundMessage(
@@ -669,7 +913,9 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
             ParticipantQuestionCard(
               question: _activeQuestion!,
               onAnswer: _answer,
-              questionLocked: _isQuestionExpired || _revealPayload != null,
+              questionLocked: _sessionPhase != 'answering' ||
+                  _isQuestionExpired ||
+                  _revealPayload != null,
               selectedChoiceId: _selectedChoiceId,
               timeLeftLabel: _timeLeftLabel,
               correctChoiceId: _correctChoiceId,
@@ -726,7 +972,6 @@ class _ParticipantPanelState extends State<ParticipantPanel> {
                   children: [
                     ParticipantHero(
                       isLive: _joinPayload != null,
-                      totalPoints: _totalPoints,
                       sessionStatus: _sessionStatus,
                       socketConnected: _socketConnected,
                       hasActiveQuestion: _activeQuestion != null &&

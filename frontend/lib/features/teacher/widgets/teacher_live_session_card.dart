@@ -15,12 +15,15 @@ class TeacherLiveSessionCard extends StatelessWidget {
     required this.answeredCount,
     required this.revealPayload,
     required this.onStart,
+    required this.onStartQuiz,
     required this.onNextQuestion,
     required this.onRevealAnswers,
     required this.onFinish,
     required this.onOpenDisplay,
+    required this.onRevokeDisplay,
     required this.onShowLeaderboard,
     required this.onExportCsv,
+    required this.hasNextQuestion,
   });
 
   final Map<String, dynamic> session;
@@ -30,12 +33,15 @@ class TeacherLiveSessionCard extends StatelessWidget {
   final int answeredCount;
   final Map<String, dynamic>? revealPayload;
   final VoidCallback onStart;
+  final VoidCallback onStartQuiz;
   final VoidCallback onNextQuestion;
   final VoidCallback onRevealAnswers;
   final VoidCallback onFinish;
   final VoidCallback onOpenDisplay;
+  final VoidCallback onRevokeDisplay;
   final VoidCallback onShowLeaderboard;
   final VoidCallback onExportCsv;
+  final bool hasNextQuestion;
 
   @override
   Widget build(BuildContext context) {
@@ -84,7 +90,10 @@ class TeacherLiveSessionCard extends StatelessWidget {
           const SizedBox(height: 16),
           TeacherRoundControls(
             onStart: isWaiting ? onStart : null,
-            onNextQuestion: isLive ? onNextQuestion : null,
+            onStartQuiz: isLive && phase == 'lobby' ? onStartQuiz : null,
+            onNextQuestion: isLive && phase == 'results' && hasNextQuestion
+                ? onNextQuestion
+                : null,
             onRevealAnswers: isLive &&
                     phase == 'answering' &&
                     hasActiveQuestion &&
@@ -93,6 +102,7 @@ class TeacherLiveSessionCard extends StatelessWidget {
                 : null,
             onFinish: isClosed ? null : onFinish,
             onOpenDisplay: isClosed ? null : onOpenDisplay,
+            onRevokeDisplay: isClosed ? null : onRevokeDisplay,
             onShowLeaderboard: onShowLeaderboard,
             onExportCsv: onExportCsv,
           ),

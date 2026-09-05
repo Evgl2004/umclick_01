@@ -1,8 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/ranking_format.dart';
 import '../../../core/value_utils.dart';
 import '../../../l10n/app_language.dart';
 import '../../../l10n/app_strings.dart';
+
+List<Map<String, dynamic>> participantPodiumRows(List<dynamic> leaderboard) {
+  return leaderboard
+      .map((row) => mapOrNull(row) ?? <String, dynamic>{})
+      .where((row) {
+    final rank = asInt(row['rank'], 0);
+    return row.isNotEmpty && rank >= 1 && rank <= 3;
+  }).toList(growable: false);
+}
 
 class ParticipantRoundMessage extends StatelessWidget {
   const ParticipantRoundMessage({
@@ -65,10 +75,6 @@ class ParticipantRevealResultsCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(appText(AppText.totalAnswers,
               args: {'count': revealPayload['total_answers'] ?? 0})),
-          Text(appText(AppText.pointsAwarded,
-              args: {'points': revealPayload['total_points_awarded'] ?? 0})),
-          Text(appText(AppText.revealedBy,
-              args: {'value': revealPayload['revealed_by'] ?? 'teacher'})),
           const SizedBox(height: 8),
           ...((revealPayload['choices'] as List<dynamic>? ?? <dynamic>[])
               .map((rawChoice) {
@@ -112,12 +118,10 @@ class ParticipantPodiumCard extends StatelessWidget {
     super.key,
     required this.leaderboard,
     required this.currentSessionParticipantId,
-    required this.totalPoints,
   });
 
   final List<dynamic> leaderboard;
   final int currentSessionParticipantId;
-  final int totalPoints;
 
   @override
   Widget build(BuildContext context) {
@@ -125,7 +129,7 @@ class ParticipantPodiumCard extends StatelessWidget {
         .map((row) => mapOrNull(row) ?? <String, dynamic>{})
         .where((row) => row.isNotEmpty)
         .toList();
-    final podiumRows = rows.take(3).toList();
+    final podiumRows = participantPodiumRows(rows);
     Map<String, dynamic>? myRow;
     for (final row in rows) {
       if (asInt(row['session_participant_id'], -1) ==
@@ -134,9 +138,9 @@ class ParticipantPodiumCard extends StatelessWidget {
         break;
       }
     }
-    final myPoints = asInt(myRow?['points'], totalPoints);
     final myRank = asInt(myRow?['rank'], 0);
     final myCorrect = asInt(myRow?['correct_answers'], 0);
+    final myCorrectTimeMs = asInt(myRow?['correct_time_ms'], 0);
 
     return Container(
       width: double.infinity,
@@ -204,8 +208,10 @@ class ParticipantPodiumCard extends StatelessWidget {
               runSpacing: 8,
               children: [
                 Text(
-                  appText(AppText.participantYourFinalResult,
-                      args: {'points': myPoints}),
+                  appText(AppText.participantYourFinalResult, args: {
+                    'correct': myCorrect,
+                    'time': formatRankingTimeMs(myCorrectTimeMs),
+                  }),
                   style: const TextStyle(
                       color: Colors.white, fontWeight: FontWeight.w800),
                 ),
@@ -216,12 +222,6 @@ class ParticipantPodiumCard extends StatelessWidget {
                     style: const TextStyle(
                         color: Colors.white, fontWeight: FontWeight.w800),
                   ),
-                Text(
-                  appText(AppText.participantCorrectAnswers,
-                      args: {'count': myCorrect}),
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w800),
-                ),
               ],
             ),
           ),
@@ -238,11 +238,7 @@ class _ParticipantLeaderboardPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rows = leaderboard
-        .map((row) => mapOrNull(row) ?? <String, dynamic>{})
-        .where((row) => row.isNotEmpty)
-        .take(3)
-        .toList();
+    final rows = participantPodiumRows(leaderboard);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -321,7 +317,10 @@ class _PodiumRow extends StatelessWidget {
             ),
           ),
           Text(
-            '${row['points'] ?? 0}',
+            uiText(
+              ru: '${asInt(row['correct_answers'])} верных · ${formatRankingTimeMs(asInt(row['correct_time_ms']))}',
+              en: '${asInt(row['correct_answers'])} correct · ${formatRankingTimeMs(asInt(row['correct_time_ms']))}',
+            ),
             style: TextStyle(
               color: textColor,
               fontWeight: FontWeight.w900,

@@ -15,7 +15,6 @@ void main() {
         ),
       );
 
-      expect(source.apiBaseUrl, 'http://localhost:8000/api');
       expect(source.joinToken, 'token-123');
       expect(source.pin, '123456');
       expect(source.hasJoinTarget, isTrue);
@@ -34,7 +33,6 @@ void main() {
         ),
       );
 
-      expect(source.apiBaseUrl, isNull);
       expect(source.joinToken, isNull);
       expect(source.pin, isNull);
       expect(source.hasJoinTarget, isFalse);

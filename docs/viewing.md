@@ -18,7 +18,7 @@ Open:
 - `http://localhost:3000` - teacher tab by default.
 - `http://localhost:3000/#/` - same app shell if the browser adds hash routing.
 - `http://localhost:3000/join?pin=123456` - participant entry point with PIN prefilled by URL intent.
-- `http://localhost:3000/join?token=demo-token` - participant entry point with token mode.
+- `http://localhost:3000/join?token=123e4567-e89b-42d3-a456-426614174000` - participant entry point with public session UUID.
 - `http://localhost:3000/legal/privacy` - public privacy policy screen.
 - `http://localhost:3000/legal/consent` - public personal data consent screen.
 

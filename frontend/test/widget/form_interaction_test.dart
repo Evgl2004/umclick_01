@@ -1,10 +1,19 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:umclick_frontend/core/live_socket_supervisor.dart';
+import 'package:umclick_frontend/core/role_access_token_store.dart';
+import 'package:umclick_frontend/features/participant/participant_panel.dart';
+import 'package:umclick_frontend/features/participant/models/join_source.dart';
 import 'package:umclick_frontend/features/participant/widgets/join_connection_card.dart';
 import 'package:umclick_frontend/features/participant/widgets/profile_card.dart';
 import 'package:umclick_frontend/features/participant/widgets/question_card.dart';
 import 'package:umclick_frontend/features/teacher/quiz_draft.dart';
+import 'package:umclick_frontend/features/teacher/teacher_panel.dart';
 import 'package:umclick_frontend/features/teacher/widgets/teacher_auth_card.dart';
 import 'package:umclick_frontend/features/teacher/widgets/teacher_live_session_card.dart';
 import 'package:umclick_frontend/features/teacher/widgets/teacher_quiz_builder_card.dart';
@@ -247,10 +256,13 @@ void main() {
   });
 
   group('TeacherLiveSessionCard', () {
-    testWidgets('does not allow restarting a live session', (tester) async {
+    testWidgets('lobby exposes quiz start separately from session start',
+        (tester) async {
       var startCalls = 0;
+      var startQuizCalls = 0;
       var nextQuestionCalls = 0;
       var revealCalls = 0;
+      var revokeDisplayCalls = 0;
 
       await pumpCard(
         tester,
@@ -259,6 +271,7 @@ void main() {
             'id': 1,
             'pin': '458263',
             'status': 'live',
+            'phase': 'lobby',
             'participants_count': 1,
             'join_url': 'http://localhost/join?token=abc',
           },
@@ -268,12 +281,15 @@ void main() {
           answeredCount: 0,
           revealPayload: null,
           onStart: () => startCalls += 1,
+          onStartQuiz: () => startQuizCalls += 1,
           onNextQuestion: () => nextQuestionCalls += 1,
           onRevealAnswers: () => revealCalls += 1,
           onFinish: () {},
           onOpenDisplay: () {},
+          onRevokeDisplay: () => revokeDisplayCalls += 1,
           onShowLeaderboard: () {},
           onExportCsv: () {},
+          hasNextQuestion: false,
         ),
       );
 
@@ -284,9 +300,123 @@ void main() {
         isNull,
       );
       expect(
+        find.widgetWithText(FilledButton, 'Start quiz'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(
+                FilledButton,
+                'End answer collection early',
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+
+      await tester.tap(find.text('Start quiz'));
+      await tester.pump();
+      await tester.ensureVisible(find.text('Revoke display access'));
+      await tester.tap(find.text('Revoke display access'));
+      await tester.pump();
+
+      expect(startCalls, 0);
+      expect(startQuizCalls, 1);
+      expect(nextQuestionCalls, 0);
+      expect(revealCalls, 0);
+      expect(revokeDisplayCalls, 1);
+    });
+
+    testWidgets('delivery has no enabled phase transition', (tester) async {
+      await pumpCard(
+        tester,
+        TeacherLiveSessionCard(
+          session: const {
+            'id': 1,
+            'pin': '458263',
+            'status': 'live',
+            'phase': 'delivery',
+            'participants_count': 1,
+            'join_url': 'http://localhost/join?token=abc',
+          },
+          wsConnected: true,
+          activeQuestion: const {'id': 11},
+          questionTimeLeftLabel: '00:03',
+          answeredCount: 1,
+          revealPayload: null,
+          onStart: () {},
+          onStartQuiz: () {},
+          onNextQuestion: () {},
+          onRevealAnswers: () {},
+          onFinish: () {},
+          onOpenDisplay: () {},
+          onRevokeDisplay: () {},
+          onShowLeaderboard: () {},
+          onExportCsv: () {},
+          hasNextQuestion: true,
+        ),
+      );
+
+      expect(
         tester
             .widget<FilledButton>(
               find.widgetWithText(FilledButton, 'Next question'),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(
+                FilledButton,
+                'End answer collection early',
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+    });
+
+    testWidgets('answering exposes only early answer collection finish',
+        (tester) async {
+      await pumpCard(
+        tester,
+        TeacherLiveSessionCard(
+          session: const {
+            'id': 1,
+            'pin': '458263',
+            'status': 'live',
+            'phase': 'answering',
+            'participants_count': 1,
+            'join_url': 'http://localhost/join?token=abc',
+          },
+          wsConnected: true,
+          activeQuestion: const {'id': 11},
+          questionTimeLeftLabel: '00:30',
+          answeredCount: 1,
+          revealPayload: null,
+          onStart: () {},
+          onStartQuiz: () {},
+          onNextQuestion: () {},
+          onRevealAnswers: () {},
+          onFinish: () {},
+          onOpenDisplay: () {},
+          onRevokeDisplay: () {},
+          onShowLeaderboard: () {},
+          onExportCsv: () {},
+          hasNextQuestion: true,
+        ),
+      );
+
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(
+                FilledButton,
+                'End answer collection early',
+              ),
             )
             .onPressed,
         isNotNull,
@@ -294,19 +424,129 @@ void main() {
       expect(
         tester
             .widget<FilledButton>(
-              find.widgetWithText(FilledButton, 'Reveal answers'),
+              find.widgetWithText(FilledButton, 'Next question'),
+            )
+            .onPressed,
+        isNull,
+      );
+    });
+
+    testWidgets('results exposes next question only when one remains',
+        (tester) async {
+      Future<void> pumpResults({required bool hasNext}) {
+        return pumpCard(
+          tester,
+          TeacherLiveSessionCard(
+            session: const {
+              'id': 1,
+              'pin': '458263',
+              'status': 'live',
+              'phase': 'results',
+              'participants_count': 1,
+              'join_url': 'http://localhost/join?token=abc',
+            },
+            wsConnected: true,
+            activeQuestion: const {'id': 11},
+            questionTimeLeftLabel: '00:00',
+            answeredCount: 1,
+            revealPayload: const {'choices': <dynamic>[]},
+            onStart: () {},
+            onStartQuiz: () {},
+            onNextQuestion: () {},
+            onRevealAnswers: () {},
+            onFinish: () {},
+            onOpenDisplay: () {},
+            onRevokeDisplay: () {},
+            onShowLeaderboard: () {},
+            onExportCsv: () {},
+            hasNextQuestion: hasNext,
+          ),
+        );
+      }
+
+      await pumpResults(hasNext: false);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'Next question'),
             )
             .onPressed,
         isNull,
       );
 
-      await tester.tap(find.text('Start'));
-      await tester.tap(find.text('Next question'));
-      await tester.pump();
+      await pumpResults(hasNext: true);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'Next question'),
+            )
+            .onPressed,
+        isNotNull,
+      );
+    });
 
-      expect(startCalls, 0);
-      expect(nextQuestionCalls, 1);
-      expect(revealCalls, 0);
+    test('finds a next question only in the loaded session quiz', () {
+      const quizzes = <dynamic>[
+        {
+          'id': 7,
+          'questions': [
+            {'id': 11},
+            {'id': 12},
+            {'id': 13},
+          ],
+        },
+      ];
+
+      expect(
+        hasNextQuestionInLoadedQuizzes(
+          session: const {'quiz': 7},
+          currentQuestion: const {'id': 11},
+          quizzes: quizzes,
+        ),
+        isTrue,
+      );
+      expect(
+        hasNextQuestionInLoadedQuizzes(
+          session: const {
+            'quiz': {'id': 7},
+          },
+          currentQuestion: const {'id': 12},
+          quizzes: quizzes,
+        ),
+        isTrue,
+      );
+      expect(
+        hasNextQuestionInLoadedQuizzes(
+          session: const {'quiz': 7},
+          currentQuestion: const {'id': 13},
+          quizzes: quizzes,
+        ),
+        isFalse,
+      );
+      expect(
+        hasNextQuestionInLoadedQuizzes(
+          session: const {'quiz': 999},
+          currentQuestion: const {'id': 11},
+          quizzes: quizzes,
+        ),
+        isFalse,
+      );
+      expect(
+        hasNextQuestionInLoadedQuizzes(
+          session: const {'quiz': 7},
+          currentQuestion: const {'id': 999},
+          quizzes: quizzes,
+        ),
+        isFalse,
+      );
+      expect(
+        hasNextQuestionInLoadedQuizzes(
+          session: const {'quiz': 7},
+          currentQuestion: const {'id': 11},
+          quizzes: const <dynamic>[],
+        ),
+        isFalse,
+      );
     });
   });
 
@@ -488,6 +728,30 @@ void main() {
   });
 
   group('ParticipantProfileCard', () {
+    test('anonymous join requires only a target and a display name', () {
+      expect(
+        participantJoinFormErrorKey(
+          hasJoinTarget: true,
+          name: 'Alice',
+        ),
+        isNull,
+      );
+      expect(
+        participantJoinFormErrorKey(
+          hasJoinTarget: true,
+          name: '   ',
+        ),
+        isNotNull,
+      );
+      expect(
+        participantJoinFormErrorKey(
+          hasJoinTarget: false,
+          name: 'Alice',
+        ),
+        isNotNull,
+      );
+    });
+
     testWidgets('captures profile data and triggers participant actions',
         (tester) async {
       final nameController = TextEditingController();
@@ -787,6 +1051,204 @@ void main() {
     });
   });
 
+  group('Фазовая блокировка ParticipantPanel', () {
+    const sessionUuid = '123e4567-e89b-42d3-a456-426614174000';
+    const apiBaseUrl = 'http://participant.test/api';
+    const participantToken = 'participant-test-token';
+
+    Map<String, dynamic> state({
+      required String phase,
+      int revision = 1,
+    }) =>
+        {
+          'schema_version': 2,
+          'session_id': sessionUuid,
+          'state_revision': revision,
+          'status': 'live',
+          'phase': phase,
+          'question_run_id': 7,
+          'phase_ends_at':
+              DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
+          'is_answer_revealed': false,
+          'current_question': {
+            'id': 11,
+            'text': 'Вопрос участнику',
+            'text_hidden': false,
+            'time_limit_sec': 30,
+            'choices_text_hidden': false,
+            'choices': const [
+              {'id': 21, 'text': 'Первый вариант', 'order': 1},
+              {'id': 22, 'text': 'Второй вариант', 'order': 2},
+            ],
+          },
+          'answer': {
+            'has_answer': false,
+            'selected_choice_id': null,
+            'answer_version': 0,
+          },
+        };
+
+    Future<(MockClient, List<String>)> clientFor(
+        Map<String, dynamic> initialState) async {
+      const store = RoleAccessTokenStore();
+      await store.persist(
+        role: RoleAccessKind.participant,
+        sessionUuid: sessionUuid,
+        apiBaseUrl: apiBaseUrl,
+        token: participantToken,
+      );
+      expect(
+        (await store.restoreForSession(
+          role: RoleAccessKind.participant,
+          sessionUuid: sessionUuid,
+        ))
+            ?.token,
+        participantToken,
+      );
+      final requests = <String>[];
+      final client = MockClient((request) async {
+        requests.add('${request.method} ${request.url.path}');
+        if (request.url.path.endsWith('/sessions/legal/current/')) {
+          return http.Response('{}', 200);
+        }
+        if (request.url.path.endsWith('/sessions/join/preview/')) {
+          return http.Response('{"can_join":true}', 200);
+        }
+        if (request.url.path.endsWith('/participation/')) {
+          return http.Response(
+            jsonEncode({
+              'session_participant_id': 31,
+              'state': initialState,
+            }),
+            200,
+            headers: const {
+              'content-type': 'application/json; charset=utf-8',
+            },
+          );
+        }
+        return http.Response('{"detail":"Неожиданный тестовый маршрут"}', 404);
+      });
+      return (client, requests);
+    }
+
+    Future<void> pumpRestoredPanel(
+      WidgetTester tester, {
+      required Map<String, dynamic> initialState,
+      required _SocketHarness socket,
+    }) async {
+      final (client, requests) = await clientFor(initialState);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              textScaler: TextScaler.linear(0.5),
+            ),
+            child: ParticipantPanel(
+              httpClient: client,
+              initialJoinSource:
+                  const ParticipantJoinSource(joinToken: sessionUuid),
+              socketOpener: socket.open,
+            ),
+          ),
+        ),
+      );
+      for (var attempt = 0;
+          attempt < 20 &&
+              find.byType(ParticipantQuestionCard).evaluate().isEmpty;
+          attempt += 1) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      final visibleText = find
+          .byType(Text)
+          .evaluate()
+          .map((element) => (element.widget as Text).data)
+          .whereType<String>()
+          .toList();
+      expect(
+        find.byType(ParticipantQuestionCard),
+        findsOneWidget,
+        reason: 'Запросы: $requests; видимый текст: $visibleText',
+      );
+    }
+
+    InkWell answerTile(WidgetTester tester, String label) =>
+        tester.widget<InkWell>(
+          find
+              .ancestor(
+                of: find.text(label),
+                matching: find.byType(InkWell),
+              )
+              .first,
+        );
+
+    testWidgets(
+        'восстановление в delivery сохраняет блокировку на первом и следующих тактах',
+        (tester) async {
+      final socket = _SocketHarness();
+      await pumpRestoredPanel(
+        tester,
+        initialState: state(phase: 'delivery'),
+        socket: socket,
+      );
+
+      expect(
+        tester
+            .widget<ParticipantQuestionCard>(
+                find.byType(ParticipantQuestionCard))
+            .questionLocked,
+        isTrue,
+      );
+      expect(answerTile(tester, 'Первый вариант').onTap, isNull);
+
+      await tester.pump(const Duration(seconds: 1));
+      expect(
+        tester
+            .widget<ParticipantQuestionCard>(
+                find.byType(ParticipantQuestionCard))
+            .questionLocked,
+        isTrue,
+      );
+      expect(answerTile(tester, 'Первый вариант').onTap, isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets(
+        'переход answering в delivery блокирует варианты, не меняя доступность answering',
+        (tester) async {
+      final socket = _SocketHarness();
+      await pumpRestoredPanel(
+        tester,
+        initialState: state(phase: 'answering'),
+        socket: socket,
+      );
+
+      expect(
+        tester
+            .widget<ParticipantQuestionCard>(
+                find.byType(ParticipantQuestionCard))
+            .questionLocked,
+        isFalse,
+      );
+      expect(answerTile(tester, 'Первый вариант').onTap, isNotNull);
+      await tester.pump(const Duration(seconds: 1));
+      expect(answerTile(tester, 'Первый вариант').onTap, isNotNull);
+
+      socket.emit(state(phase: 'delivery', revision: 2));
+      await tester.pump();
+      expect(
+        tester
+            .widget<ParticipantQuestionCard>(
+                find.byType(ParticipantQuestionCard))
+            .questionLocked,
+        isTrue,
+      );
+      expect(answerTile(tester, 'Первый вариант').onTap, isNull);
+      await tester.pump(const Duration(seconds: 1));
+      expect(answerTile(tester, 'Первый вариант').onTap, isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
+
   group('TeacherRevealResultsCard', () {
     testWidgets('shows votes with percentages for each answer', (tester) async {
       await pumpCard(
@@ -823,6 +1285,36 @@ void main() {
       expect(find.textContaining('75%'), findsOneWidget);
       expect(find.text('Nitrogen'), findsOneWidget);
       expect(find.textContaining('25%'), findsOneWidget);
+      expect(find.textContaining('очков'), findsNothing);
+      expect(find.textContaining('900'), findsNothing);
     });
   });
+}
+
+class _SocketHarness {
+  void Function(Map<String, dynamic> message)? _onMessage;
+
+  SupervisedSocket open({
+    required Map<String, dynamic> authentication,
+    required void Function(Map<String, dynamic> message) onMessage,
+    required void Function(Object error) onError,
+    required void Function(int? closeCode, String? closeReason) onDone,
+    required void Function() onInvalidPayload,
+  }) {
+    _onMessage = onMessage;
+    return _TestSocket();
+  }
+
+  void emit(Map<String, dynamic> state) {
+    final onMessage = _onMessage;
+    if (onMessage == null) {
+      throw StateError('Тестовое WebSocket-соединение ещё не открыто.');
+    }
+    onMessage({'event': 'session_state', 'payload': state});
+  }
+}
+
+class _TestSocket implements SupervisedSocket {
+  @override
+  Future<void> close() async {}
 }

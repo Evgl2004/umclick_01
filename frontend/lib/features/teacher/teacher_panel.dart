@@ -8,7 +8,13 @@ import '../../core/countdown_ticker.dart';
 import '../../core/csv_download.dart';
 import '../../core/display_window.dart';
 import '../../core/live_event_log.dart';
-import '../../core/live_socket_connection.dart';
+import '../../core/live_socket_supervisor.dart';
+import '../../core/ranking_format.dart';
+import '../../core/request_id.dart';
+import '../../core/role_access_token_store.dart';
+import '../../core/session_command_controller.dart';
+import '../../core/session_state_reducer.dart';
+import '../../core/session_uuid.dart';
 import '../../core/value_utils.dart';
 import '../../l10n/app_strings.dart';
 import '../../shared/user_error_text.dart';
@@ -21,6 +27,39 @@ import 'widgets/teacher_live_events_card.dart';
 import 'widgets/teacher_live_session_card.dart';
 import 'widgets/teacher_quiz_builder_card.dart';
 import 'widgets/teacher_session_setup_card.dart';
+
+bool hasNextQuestionInLoadedQuizzes({
+  required Map<String, dynamic> session,
+  required Map<String, dynamic>? currentQuestion,
+  required List<dynamic> quizzes,
+}) {
+  final quizReference = session['quiz'];
+  final quizId = quizReference is Map
+      ? asInt(quizReference['id'], -1)
+      : asInt(quizReference, -1);
+  if (quizId < 0 || currentQuestion == null) return false;
+  final currentQuestionId = asInt(currentQuestion['id'], -1);
+  if (currentQuestionId < 0) return false;
+
+  Map<String, dynamic>? quiz;
+  for (final rawQuiz in quizzes) {
+    final candidate = mapOrNull(rawQuiz);
+    if (candidate != null && asInt(candidate['id'], -1) == quizId) {
+      quiz = candidate;
+      break;
+    }
+  }
+  final rawQuestions = quiz?['questions'];
+  if (rawQuestions is! List) return false;
+  final questions = rawQuestions
+      .map(mapOrNull)
+      .whereType<Map<String, dynamic>>()
+      .toList(growable: false);
+  final currentIndex = questions.indexWhere(
+    (question) => asInt(question['id'], -1) == currentQuestionId,
+  );
+  return currentIndex >= 0 && currentIndex + 1 < questions.length;
+}
 
 class TeacherPanel extends StatefulWidget {
   const TeacherPanel({super.key});
@@ -40,7 +79,9 @@ class _TeacherPanelState extends State<TeacherPanel> {
   final _readingTimeController = TextEditingController(text: '15');
   final _resultsTimeController = TextEditingController(text: '10');
   final _authSessionStore = const TeacherAuthSessionStore();
+  final _roleAccessStore = const RoleAccessTokenStore();
   final _quizDraftMapper = const QuizDraftMapper();
+  final _tokenRefresh = SingleFlightTokenRefresh();
 
   final List<QuizDraftQuestion> _draftQuestions = [];
   int? _editingQuizId;
@@ -54,11 +95,19 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Map<String, dynamic>? _revealPayload;
   String? _accessToken;
   String? _refreshToken;
+  String? _pendingDisplayToken;
+  String? _pendingDisplayGrantId;
+  String? _pendingDisplaySessionUuid;
+  bool _displayActionInProgress = false;
+  SessionStateReducer? _sessionStateReducer;
+  SessionCommandController? _sessionCommandController;
+  SessionCommandRequest? _uncertainCommand;
+  SessionCommandRequest? _latestCommandRequest;
   bool _loading = false;
   String? _error;
   int _answeredCount = 0;
 
-  LiveSocketConnection? _sessionSocketConnection;
+  LiveSocketSupervisor? _sessionSocketSupervisor;
   bool _wsConnected = false;
   final _countdownTicker = const CountdownTicker();
   final _eventLog = const LiveEventLog();
@@ -89,6 +138,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   @override
   void dispose() {
     _questionTimer?.cancel();
+    _sessionCommandController?.cancelPending();
     _closeSessionSocket();
     _disposeQuizDraft();
     _apiController.dispose();
@@ -359,19 +409,29 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
   Future<T> _runTeacherRequest<T>(
       Future<T> Function(ApiClient client) request) async {
+    final client = _client();
+    final tokenUsed = client.accessToken;
     try {
-      return await request(_client());
+      return await request(client);
     } on ApiException catch (e) {
-      if (e.statusCode != 401) {
+      if (e.statusCode != 401 || tokenUsed == null || tokenUsed.isEmpty) {
         rethrow;
       }
 
-      final refreshed = await _refreshAccessToken();
+      final refreshed = await _recoverAccessTokenFor(tokenUsed);
       if (!refreshed) {
         rethrow;
       }
       return request(_client());
     }
+  }
+
+  Future<bool> _recoverAccessTokenFor(String tokenUsed) {
+    return _tokenRefresh.recover(
+      tokenUsed: tokenUsed,
+      currentToken: () => _accessToken,
+      refresh: _refreshAccessToken,
+    );
   }
 
   void _startTeacherTimer(DateTime? endsAt) {
@@ -387,37 +447,68 @@ class _TeacherPanelState extends State<TeacherPanel> {
     );
   }
 
-  Future<void> _connectSessionSocket(int sessionId) async {
+  Future<void> _connectSessionSocket(String sessionUuid) async {
     await _closeSessionSocket();
-    final url = _client().sessionWebSocketUrl(sessionId);
+    final token = _accessToken;
+    if (token == null || token.isEmpty) return;
+    final url = _client().sessionWebSocketUrl(sessionUuid);
 
     try {
-      _sessionSocketConnection = LiveSocketConnection.connect(
+      _sessionSocketSupervisor = LiveSocketSupervisor(
         url: url,
-        isActive: () => mounted,
+        authentication: {
+          'event': 'auth',
+          'access_type': 'account',
+          'token': token,
+        },
+        recoverAuthentication: (usedAuthentication) async {
+          final tokenUsed = usedAuthentication['token']?.toString();
+          if (tokenUsed == null || tokenUsed.isEmpty) return null;
+          final refreshed = await _recoverAccessTokenFor(tokenUsed);
+          final currentToken = _accessToken;
+          if (!refreshed ||
+              !mounted ||
+              currentToken == null ||
+              currentToken.isEmpty) {
+            return null;
+          }
+          return {
+            'event': 'auth',
+            'access_type': 'account',
+            'token': currentToken,
+          };
+        },
         onMessage: _handleTeacherSocketEvent,
-        onInvalidPayload: () => _appendEvent('Invalid socket payload.'),
-        onError: (error) {
-          _appendEvent('Socket error: $error');
+        onInvalidPayload: () =>
+            _appendEvent('Получено некорректное сообщение WebSocket.'),
+        onTransportError: (_) {
+          _appendEvent('Ошибка транспорта WebSocket.');
           _setSessionSocketConnected(false);
         },
-        onDone: () {
-          _appendEvent('Socket disconnected.');
+        onConnectionError: (error) {
+          final code = error['code']?.toString();
+          _appendEvent(
+            'Соединение отклонено: ${code ?? 'неизвестная причина'}',
+          );
+        },
+        onStopped: (_, reason) {
+          _appendEvent(
+            'Повтор WebSocket прекращён: ${reason ?? 'соединение закрыто'}',
+          );
           _setSessionSocketConnected(false);
         },
       );
-
-      _setSessionSocketConnected(true);
-      _appendEvent('Connected to session socket.');
+      await _sessionSocketSupervisor!.start();
+      _appendEvent('WebSocket преподавателя открыт, ожидается доступ.');
     } catch (e) {
       _setSessionSocketConnected(false);
-      _appendEvent('Failed to connect socket: $e');
+      _appendEvent('Не удалось открыть WebSocket преподавателя.');
     }
   }
 
   Future<void> _closeSessionSocket() async {
-    await _sessionSocketConnection?.close();
-    _sessionSocketConnection = null;
+    await _sessionSocketSupervisor?.stop();
+    _sessionSocketSupervisor = null;
     _setSessionSocketConnected(false);
   }
 
@@ -428,93 +519,78 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
   }
 
-  void _patchSession(Map<String, dynamic> patch) {
-    if (_session == null) return;
-    final updated = Map<String, dynamic>.from(_session!);
-    updated.addAll(patch);
+  void _initializeSessionRuntime(
+    String sessionUuid,
+    Map<String, dynamic> state,
+  ) {
+    final reducer = SessionStateReducer(sessionUuid);
+    final reduction = reducer.apply(
+      state,
+      source: SessionStateSource.accountRead,
+    );
+    if (!reduction.accepted) {
+      throw StateError(reduction.reason ?? 'Некорректное состояние сессии.');
+    }
+    _sessionStateReducer = reducer;
+    _sessionCommandController = SessionCommandController(reducer: reducer);
+    _uncertainCommand = null;
+    _latestCommandRequest = null;
+  }
+
+  void _applyReducedTeacherState() {
+    final reducer = _sessionStateReducer;
+    if (reducer == null || !reducer.hasState) return;
+    final state = reducer.state;
+    final updated = Map<String, dynamic>.from(_session ?? const {});
+    updated.addAll(state);
+    updated['id'] = reducer.sessionUuid;
     setState(() {
       _session = updated;
+      _activeQuestion = mapOrNull(state['current_question']);
+      _revealPayload = mapOrNull(state['reveal']);
+      _answeredCount = asInt(
+        state['answered_participants_count'],
+        _answeredCount,
+      );
     });
+    _startTeacherTimer(parseDateTimeLocal(
+      state['question_ends_at'] ?? state['phase_ends_at'],
+    ));
   }
 
   void _handleTeacherSocketEvent(Map<String, dynamic> message) {
+    _setSessionSocketConnected(true);
     final event = message['event']?.toString() ?? 'unknown';
     final payload = mapOrNull(message['payload']) ?? <String, dynamic>{};
 
-    switch (event) {
-      case 'session_state':
-      case 'session_started':
-        _patchSession({
-          'status': payload['status'],
-          'phase': payload['phase'],
-          'participants_count': payload['participants_count'] ??
-              (_session?['participants_count'] ?? 0),
-        });
-        setState(() {
-          _activeQuestion = mapOrNull(payload['current_question']);
-          if ((_session?['status']?.toString() ?? '') == 'finished') {
-            _activeQuestion = null;
-          }
-        });
-        _startTeacherTimer(parseDateTimeLocal(
-          payload['question_ends_at'] ?? payload['phase_ends_at'],
-        ));
-        if (payload['is_answer_revealed'] == true) {
-          _questionTimer?.cancel();
-          setState(() {
-            _questionTimeLeftLabel = '00:00';
-          });
-        }
-        break;
-      case 'participant_joined':
-        _patchSession({
-          'participants_count': payload['participants_count'] ??
-              (_session?['participants_count'] ?? 0)
-        });
-        break;
-      case 'question_reading_started':
-      case 'question_started':
-        setState(() {
-          _activeQuestion = mapOrNull(
-            payload['question'] ?? payload['current_question'],
-          );
-          _revealPayload = null;
-          _answeredCount = 0;
-        });
-        _patchSession({'phase': payload['phase'], 'status': payload['status']});
-        _startTeacherTimer(parseDateTimeLocal(
-          payload['question_ends_at'] ?? payload['phase_ends_at'],
-        ));
-        break;
-      case 'answer_submitted':
-        setState(() {
-          _answeredCount = asInt(payload['answered_count'], _answeredCount);
-        });
-        break;
-      case 'answer_revealed':
-        setState(() {
-          _revealPayload = payload;
-        });
-        _patchSession({'phase': payload['phase'] ?? 'results'});
-        _startTeacherTimer(parseDateTimeLocal(payload['phase_ends_at']));
-        break;
-      case 'session_finished':
-        _patchSession({
-          'status': payload['status'] ?? 'finished',
-          'phase': payload['phase'] ?? 'final',
-        });
-        _questionTimer?.cancel();
-        setState(() {
-          _activeQuestion = null;
-          _questionTimeLeftLabel = '--:--';
-        });
-        unawaited(_refreshSessionHistory());
-        break;
-      default:
-        break;
+    final reducer = _sessionStateReducer;
+    if (reducer == null) return;
+    final reduction = reducer.apply(
+      payload,
+      source: SessionStateSource.websocket,
+    );
+    if (!reduction.accepted) {
+      _appendEvent('Отклонено состояние WebSocket: ${reduction.reason}');
+      return;
     }
-
-    _appendEvent('Event: $event');
+    if (reduction.contextChanged) {
+      _sessionCommandController?.cancelPending();
+      _uncertainCommand = null;
+      _latestCommandRequest = null;
+    }
+    _applyReducedTeacherState();
+    if (payload['is_answer_revealed'] == true) {
+      _questionTimer?.cancel();
+      setState(() {
+        _questionTimeLeftLabel = '00:00';
+      });
+    }
+    final status = payload['status']?.toString();
+    if (status == 'finished' || status == 'aborted') {
+      _questionTimer?.cancel();
+      unawaited(_refreshSessionHistory());
+    }
+    _appendEvent('Событие: $event');
   }
 
   Future<void> _registerTeacher() async {
@@ -798,14 +874,18 @@ class _TeacherPanelState extends State<TeacherPanel> {
     try {
       final session = await _runTeacherRequest(
           (client) => client.createSession(_selectedQuizId!));
+      final sessionUuid = session['id']?.toString() ?? '';
+      final state = await _runTeacherRequest(
+        (client) => client.getSessionState(sessionUuid),
+      );
       setState(() {
         _session = session;
-        _activeQuestion = mapOrNull(session['current_question']);
         _revealPayload = null;
         _answeredCount = 0;
       });
-      _startTeacherTimer(parseDateTimeLocal(session['question_ends_at']));
-      await _connectSessionSocket(session['id'] as int);
+      _initializeSessionRuntime(sessionUuid, state);
+      _applyReducedTeacherState();
+      await _connectSessionSocket(sessionUuid);
       await _refreshSessionHistory();
     } catch (e) {
       setState(() {
@@ -818,13 +898,281 @@ class _TeacherPanelState extends State<TeacherPanel> {
     }
   }
 
-  void _openDisplayForSession(Map<String, dynamic> session) {
-    final sessionId = asInt(session['id'], 0);
-    if (sessionId <= 0) return;
-    openDisplayWindow(
-      sessionId: sessionId,
-      apiBaseUrl: _apiController.text.trim(),
+  Future<Map<String, dynamic>> _sendSessionCommand(
+    String kind,
+    Map<String, dynamic> body,
+    Future<void> abortTrigger,
+  ) {
+    final sessionUuid = _sessionStateReducer!.sessionUuid;
+    return _runTeacherRequest((client) {
+      return switch (kind) {
+        'start' => client.startSession(
+            sessionUuid,
+            command: body,
+            abortTrigger: abortTrigger,
+          ),
+        'start-quiz' => client.startQuiz(
+            sessionUuid,
+            command: body,
+            abortTrigger: abortTrigger,
+          ),
+        'end-question' => client.endQuestion(
+            sessionUuid,
+            command: body,
+            abortTrigger: abortTrigger,
+          ),
+        'next-question' => client.nextQuestion(
+            sessionUuid,
+            command: body,
+            abortTrigger: abortTrigger,
+          ),
+        'finish' => client.finishSession(
+            sessionUuid,
+            command: body,
+            abortTrigger: abortTrigger,
+          ),
+        _ => throw StateError('Неизвестная управляющая команда.'),
+      };
+    });
+  }
+
+  bool _isExpectedCommandState(
+    String kind,
+    SessionStateContext original,
+    Map<String, dynamic> state,
+  ) {
+    return switch (kind) {
+      'start' => state['status'] == 'live',
+      'start-quiz' => state['question_run_id'] != null &&
+          state['question_run_id'] != original.questionRunId,
+      'end-question' =>
+        state['phase'] == 'delivery' || state['phase'] == 'results',
+      'next-question' => state['question_run_id'] != original.questionRunId ||
+          state['status'] == 'finished',
+      'finish' => state['status'] == 'aborted' || state['status'] == 'finished',
+      _ => false,
+    };
+  }
+
+  Future<bool> _runSessionCommand(String kind) async {
+    final reducer = _sessionStateReducer;
+    final controller = _sessionCommandController;
+    final context = reducer?.context;
+    if (reducer == null || controller == null || context == null) {
+      setState(() {
+        _error = 'Актуальное состояние сессии ещё не получено.';
+      });
+      return false;
+    }
+
+    final retained = _uncertainCommand;
+    final request = retained != null &&
+            retained.kind == kind &&
+            reducer.matchesContext(retained.context)
+        ? retained
+        : SessionCommandRequest(
+            kind: kind,
+            commandId: newRequestId(),
+            context: context,
+          );
+    if (!identical(request, retained)) {
+      controller.cancelPending();
+      _uncertainCommand = null;
+    }
+    _latestCommandRequest = request;
+
+    final result = await controller.execute(
+      request: request,
+      send: (body, abortTrigger) =>
+          _sendSessionCommand(kind, body, abortTrigger),
+      readState: () => _runTeacherRequest(
+        (client) => client.getSessionState(reducer.sessionUuid),
+      ),
+      isExpectedSuccess: (state) =>
+          _isExpectedCommandState(kind, request.context, state),
     );
+    if (!mounted || !identical(_latestCommandRequest, request)) return false;
+    if (reducer.hasState) {
+      _applyReducedTeacherState();
+    }
+
+    switch (result.kind) {
+      case SessionCommandResultKind.succeeded:
+      case SessionCommandResultKind.recoveredAfterNetwork:
+        _uncertainCommand = null;
+        try {
+          final fresh = await _runTeacherRequest(
+            (client) => client.getSessionState(reducer.sessionUuid),
+          );
+          if (!mounted || !identical(_latestCommandRequest, request)) {
+            return false;
+          }
+          final reduction = reducer.apply(
+            fresh,
+            source: SessionStateSource.accountRead,
+          );
+          if (reduction.accepted && mounted) {
+            _applyReducedTeacherState();
+          }
+        } catch (error) {
+          _appendEvent(
+            'Команда принята, но контрольное состояние временно недоступно.',
+          );
+        }
+        return true;
+      case SessionCommandResultKind.uncertain:
+        _uncertainCommand = request;
+        setState(() {
+          _error =
+              'Результат команды неизвестен. Повтор этой команды сохранит исходный идентификатор.';
+        });
+        return false;
+      case SessionCommandResultKind.stateConflict:
+      case SessionCommandResultKind.conflict:
+      case SessionCommandResultKind.temporarilyFailed:
+        setState(() {
+          _error = result.error == null
+              ? 'Команда не выполнена.'
+              : userErrorText(result.error!);
+        });
+        return false;
+      case SessionCommandResultKind.cancelled:
+        _uncertainCommand = null;
+        setState(() {
+          _error = 'Повтор команды отменён после изменения состояния.';
+        });
+        return false;
+      case SessionCommandResultKind.protocolError:
+        _uncertainCommand = null;
+        setState(() {
+          _error = 'Сервер вернул несовместимую схему состояния.';
+        });
+        return false;
+    }
+  }
+
+  Future<void> _openDisplayForSession(Map<String, dynamic> session) async {
+    final sessionUuid = session['id']?.toString() ?? '';
+    if (sessionUuid.isEmpty || _displayActionInProgress) return;
+    setState(() {
+      _displayActionInProgress = true;
+      _error = null;
+    });
+    try {
+      final apiBaseUrl = _apiController.text.trim();
+      final currentOrigin = trustedApiOrigin(apiBaseUrl);
+      final saved = await _roleAccessStore.restoreForSession(
+        role: RoleAccessKind.display,
+        sessionUuid: sessionUuid,
+      );
+      if (saved != null &&
+          saved.grantId != null &&
+          trustedApiOrigin(saved.apiBaseUrl) == currentOrigin) {
+        openDisplayWindow(sessionUuid: sessionUuid);
+        return;
+      }
+
+      if (_pendingDisplaySessionUuid != sessionUuid ||
+          _pendingDisplayToken == null ||
+          _pendingDisplayGrantId == null) {
+        final issued = await _runTeacherRequest(
+          (client) => client.createDisplayAccess(sessionUuid),
+        );
+        final token = issued['display_token']?.toString();
+        final grantId = issued['id']?.toString();
+        if (token == null || token.isEmpty || grantId == null) {
+          throw StateError(
+            'Сервер не вернул полные данные доступа к показу.',
+          );
+        }
+        final normalizedGrantId = normalizeSessionUuid(grantId);
+        _pendingDisplaySessionUuid = sessionUuid;
+        _pendingDisplayToken = token;
+        _pendingDisplayGrantId = normalizedGrantId;
+      }
+
+      await _roleAccessStore.persist(
+        role: RoleAccessKind.display,
+        sessionUuid: sessionUuid,
+        apiBaseUrl: apiBaseUrl,
+        token: _pendingDisplayToken!,
+        grantId: _pendingDisplayGrantId,
+      );
+      _pendingDisplaySessionUuid = null;
+      _pendingDisplayToken = null;
+      _pendingDisplayGrantId = null;
+      openDisplayWindow(sessionUuid: sessionUuid);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = userErrorText(e);
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _displayActionInProgress = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _revokeDisplayForSession(Map<String, dynamic> session) async {
+    final sessionUuid = session['id']?.toString() ?? '';
+    if (sessionUuid.isEmpty || _displayActionInProgress) return;
+    setState(() {
+      _displayActionInProgress = true;
+      _error = null;
+    });
+    try {
+      final saved = await _roleAccessStore.restoreForSession(
+        role: RoleAccessKind.display,
+        sessionUuid: sessionUuid,
+      );
+      final hasPending = _pendingDisplaySessionUuid == sessionUuid &&
+          _pendingDisplayGrantId != null;
+      final grantId = hasPending ? _pendingDisplayGrantId : saved?.grantId;
+      if (grantId == null) {
+        throw StateError('Действующий доступ к показу не найден.');
+      }
+      final currentApiBaseUrl = _apiController.text.trim();
+      if (!hasPending &&
+          saved != null &&
+          trustedApiOrigin(saved.apiBaseUrl) !=
+              trustedApiOrigin(currentApiBaseUrl)) {
+        throw StateError(
+          'Доступ к показу выдан другим доверенным API.',
+        );
+      }
+
+      await _runTeacherRequest(
+        (client) => client.revokeDisplayAccess(sessionUuid, grantId),
+      );
+      if (saved?.grantId == grantId) {
+        await _roleAccessStore.clear(
+          role: RoleAccessKind.display,
+          sessionUuid: sessionUuid,
+          apiBaseUrl: saved!.apiBaseUrl,
+          grantId: grantId,
+        );
+      }
+      if (hasPending) {
+        _pendingDisplaySessionUuid = null;
+        _pendingDisplayToken = null;
+        _pendingDisplayGrantId = null;
+      }
+      _appendEvent('Доступ к экрану демонстрации отозван.');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = userErrorText(e);
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _displayActionInProgress = false;
+        });
+      }
+    }
   }
 
   Future<void> _startSession() async {
@@ -832,22 +1180,8 @@ class _TeacherPanelState extends State<TeacherPanel> {
     if (_session!['status']?.toString() != 'waiting') return;
 
     try {
-      final started = await _runTeacherRequest(
-          (client) => client.startSession(_session!['id'] as int));
-      final startedQuestion = mapOrNull(started['current_question']);
-      setState(() {
-        _session = started;
-        _activeQuestion = startedQuestion;
-        _revealPayload = null;
-      });
-      _openDisplayForSession(started);
-      _startTeacherTimer(parseDateTimeLocal(started['question_ends_at']));
-
-      if (started['status']?.toString() == 'live' && startedQuestion == null) {
-        await _moveToNextQuestion(appendEvent: false);
-      }
-
-      await _connectSessionSocket(_session!['id'] as int);
+      if (!await _runSessionCommand('start')) return;
+      await _openDisplayForSession(_session!);
     } catch (e) {
       setState(() {
         _error = userErrorText(e);
@@ -855,42 +1189,24 @@ class _TeacherPanelState extends State<TeacherPanel> {
     }
   }
 
-  Future<void> _moveToNextQuestion({bool appendEvent = true}) async {
-    if (_session == null) return;
-    final payload = await _runTeacherRequest(
-        (client) => client.nextQuestion(_session!['id'] as int));
-    if (payload.containsKey('session')) {
-      final session = mapOrNull(payload['session']);
-      if (session != null) {
-        setState(() {
-          _session = session;
-          _activeQuestion = null;
-        });
+  Future<void> _startQuiz() async {
+    if (_session?['status'] != 'live' || _session?['phase'] != 'lobby') return;
+    try {
+      if (await _runSessionCommand('start-quiz')) {
+        _appendEvent('Преподаватель начал викторину.');
       }
-      _questionTimer?.cancel();
+    } catch (e) {
       setState(() {
-        _questionTimeLeftLabel = '--:--';
+        _error = userErrorText(e);
       });
-    } else {
-      setState(() {
-        _activeQuestion = mapOrNull(payload['question']);
-        _activeQuestion ??= mapOrNull(payload['current_question']);
-        _revealPayload = null;
-        _answeredCount = 0;
-      });
-      _startTeacherTimer(parseDateTimeLocal(
-        payload['question_ends_at'] ?? payload['phase_ends_at'],
-      ));
-    }
-
-    if (appendEvent) {
-      _appendEvent('Teacher moved to next question.');
     }
   }
 
   Future<void> _nextQuestion() async {
     try {
-      await _moveToNextQuestion();
+      if (await _runSessionCommand('next-question')) {
+        _appendEvent('Преподаватель открыл следующий вопрос.');
+      }
     } catch (e) {
       setState(() {
         _error = userErrorText(e);
@@ -901,12 +1217,9 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _revealAnswers() async {
     if (_session == null) return;
     try {
-      final payload = await _runTeacherRequest(
-          (client) => client.revealAnswer(_session!['id'] as int));
-      setState(() {
-        _revealPayload = payload;
-      });
-      _appendEvent('Teacher revealed answers.');
+      if (await _runSessionCommand('end-question')) {
+        _appendEvent('Преподаватель завершил приём ответов.');
+      }
     } catch (e) {
       setState(() {
         _error = userErrorText(e);
@@ -917,16 +1230,11 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _finishSession() async {
     if (_session == null) return;
     try {
-      final finished = await _runTeacherRequest(
-          (client) => client.finishSession(_session!['id'] as int));
-      _questionTimer?.cancel();
-      setState(() {
-        _session = finished;
-        _activeQuestion = null;
-        _questionTimeLeftLabel = '--:--';
-      });
-      _appendEvent('Session finished by teacher.');
-      await _refreshSessionHistory();
+      if (await _runSessionCommand('finish')) {
+        _questionTimer?.cancel();
+        _appendEvent('Сессия остановлена преподавателем.');
+        await _refreshSessionHistory();
+      }
     } catch (e) {
       setState(() {
         _error = userErrorText(e);
@@ -938,7 +1246,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
     if (_session == null) return;
     try {
       final rows = await _runTeacherRequest(
-          (client) => client.getLeaderboard(_session!['id'] as int));
+          (client) => client.getLeaderboard(_session!['id'].toString()));
       if (!mounted) return;
 
       showDialog<void>(
@@ -958,14 +1266,16 @@ class _TeacherPanelState extends State<TeacherPanel> {
                             mapOrNull(rows[index]) ?? <String, dynamic>{};
                         return ListTile(
                           dense: true,
-                          leading: Text('#${index + 1}'),
+                          leading: Text('#${asInt(row['rank'], index + 1)}'),
                           title: Text('${row['participant_name']}'),
                           subtitle: Text('${row['phone']}'),
                           trailing: Text(appText(
                             AppText.leaderboardStats,
                             args: {
-                              'points': row['points'],
                               'correct': row['correct_answers'],
+                              'time': formatRankingTimeMs(
+                                asInt(row['correct_time_ms']),
+                              ),
                             },
                           )),
                         );
@@ -1002,11 +1312,11 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
 
     try {
-      final sessionId = asInt(session['id'], 0);
-      if (sessionId <= 0) return;
-      final pin = session['pin']?.toString() ?? sessionId.toString();
+      final sessionUuid = session['id']?.toString() ?? '';
+      if (sessionUuid.isEmpty) return;
+      final pin = session['pin']?.toString() ?? sessionUuid;
       final csv = await _runTeacherRequest(
-          (client) => client.exportSessionResultsCsv(sessionId));
+          (client) => client.exportSessionResultsCsv(sessionUuid));
 
       await downloadCsvFile(
         filename: 'umclick_session_${pin}_results.csv',
@@ -1032,12 +1342,12 @@ class _TeacherPanelState extends State<TeacherPanel> {
   }
 
   Future<void> _showSessionHistoryDetails(Map<String, dynamic> session) async {
-    final sessionId = asInt(session['id'], 0);
-    if (sessionId <= 0) return;
+    final sessionUuid = session['id']?.toString() ?? '';
+    if (sessionUuid.isEmpty) return;
 
     try {
       final rows = await _runTeacherRequest(
-          (client) => client.getLeaderboard(sessionId));
+          (client) => client.getLeaderboard(sessionUuid));
       if (!mounted) return;
 
       showDialog<void>(
@@ -1071,19 +1381,20 @@ class _TeacherPanelState extends State<TeacherPanel> {
                               return ListTile(
                                 dense: true,
                                 leading: CircleAvatar(
-                                  child: Text('${index + 1}'),
+                                  child: Text(
+                                    '${asInt(row['rank'], index + 1)}',
+                                  ),
                                 ),
                                 title: Text('${row['participant_name']}'),
                                 subtitle: Text(appText(
                                   AppText.leaderboardStats,
                                   args: {
-                                    'points': row['points'],
                                     'correct': row['correct_answers'],
+                                    'time': formatRankingTimeMs(
+                                      asInt(row['correct_time_ms']),
+                                    ),
                                   },
                                 )),
-                                trailing: Text(
-                                  '${asInt(row['answer_time_ms'])} мс',
-                                ),
                               );
                             },
                           ),
@@ -1116,6 +1427,11 @@ class _TeacherPanelState extends State<TeacherPanel> {
     setState(() {
       _accessToken = null;
       _refreshToken = null;
+      _pendingDisplaySessionUuid = null;
+      _pendingDisplayToken = null;
+      _pendingDisplayGrantId = null;
+      _displayActionInProgress = false;
+      _latestCommandRequest = null;
       _teacher = null;
       _quizzes = [];
       _sessionHistory = [];
@@ -1243,13 +1559,21 @@ class _TeacherPanelState extends State<TeacherPanel> {
                           answeredCount: _answeredCount,
                           revealPayload: _revealPayload,
                           onStart: _startSession,
+                          onStartQuiz: _startQuiz,
                           onNextQuestion: _nextQuestion,
                           onRevealAnswers: _revealAnswers,
                           onFinish: _finishSession,
                           onOpenDisplay: () =>
                               _openDisplayForSession(_session!),
+                          onRevokeDisplay: () =>
+                              _revokeDisplayForSession(_session!),
                           onShowLeaderboard: _showLeaderboard,
                           onExportCsv: _exportCsv,
+                          hasNextQuestion: hasNextQuestionInLoadedQuizzes(
+                            session: _session!,
+                            currentQuestion: _activeQuestion,
+                            quizzes: _quizzes,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         TeacherLiveEventsCard(events: _events),
