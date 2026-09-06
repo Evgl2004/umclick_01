@@ -297,7 +297,9 @@ class StageBAnswerTests(TestCase):
             after_finalization = self.answer(self.game.wrong)
         self.assertEqual(after_finalization.data, expected)
         state = build_participant_session_state(
-            LiveSession.objects.select_related('quiz', 'current_question', 'current_run').get(pk=self.game.session.pk),
+            LiveSession.objects.select_related(
+                'quiz_version', 'quiz_version__quiz', 'current_question', 'current_run'
+            ).get(pk=self.game.session.pk),
             self.game.link.pk,
         )
         self.assertEqual(state['answer']['selected_choice_id'], self.game.correct.pk)
@@ -387,7 +389,8 @@ class StageBParticipantSnapshotConcurrencyTests(TransactionTestCase):
             return rows
 
         session = LiveSession.objects.select_related(
-            'quiz',
+            'quiz_version',
+            'quiz_version__quiz',
             'current_question',
             'current_run',
         ).get(pk=self.game.session.pk)

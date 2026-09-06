@@ -28,27 +28,15 @@ import 'widgets/teacher_live_session_card.dart';
 import 'widgets/teacher_quiz_builder_card.dart';
 import 'widgets/teacher_session_setup_card.dart';
 
-bool hasNextQuestionInLoadedQuizzes({
+bool hasNextQuestionInSessionQuiz({
   required Map<String, dynamic> session,
   required Map<String, dynamic>? currentQuestion,
-  required List<dynamic> quizzes,
 }) {
-  final quizReference = session['quiz'];
-  final quizId = quizReference is Map
-      ? asInt(quizReference['id'], -1)
-      : asInt(quizReference, -1);
-  if (quizId < 0 || currentQuestion == null) return false;
+  if (currentQuestion == null) return false;
   final currentQuestionId = asInt(currentQuestion['id'], -1);
   if (currentQuestionId < 0) return false;
 
-  Map<String, dynamic>? quiz;
-  for (final rawQuiz in quizzes) {
-    final candidate = mapOrNull(rawQuiz);
-    if (candidate != null && asInt(candidate['id'], -1) == quizId) {
-      quiz = candidate;
-      break;
-    }
-  }
+  final quiz = mapOrNull(session['quiz']);
   final rawQuestions = quiz?['questions'];
   if (rawQuestions is! List) return false;
   final questions = rawQuestions
@@ -61,8 +49,20 @@ bool hasNextQuestionInLoadedQuizzes({
   return currentIndex >= 0 && currentIndex + 1 < questions.length;
 }
 
+typedef TeacherApiClientFactory = ApiClient Function(
+  String baseUrl, {
+  String? accessToken,
+});
+
 class TeacherPanel extends StatefulWidget {
-  const TeacherPanel({super.key});
+  const TeacherPanel({
+    super.key,
+    this.apiClientFactory,
+    this.sessionSocketOpener,
+  });
+
+  final TeacherApiClientFactory? apiClientFactory;
+  final SupervisedSocketOpener? sessionSocketOpener;
 
   @override
   State<TeacherPanel> createState() => _TeacherPanelState();
@@ -85,6 +85,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
   final List<QuizDraftQuestion> _draftQuestions = [];
   int? _editingQuizId;
+  int? _editingQuizRevision;
 
   List<dynamic> _quizzes = [];
   List<dynamic> _sessionHistory = [];
@@ -120,9 +121,16 @@ class _TeacherPanelState extends State<TeacherPanel> {
   bool _showChoicesOnParticipant = true;
 
   ApiClient _client({bool withToken = true}) {
+    final accessToken = withToken ? _accessToken : null;
+    if (widget.apiClientFactory != null) {
+      return widget.apiClientFactory!(
+        _apiController.text.trim(),
+        accessToken: accessToken,
+      );
+    }
     return ApiClient(
       _apiController.text.trim(),
-      accessToken: withToken ? _accessToken : null,
+      accessToken: accessToken,
     );
   }
 
@@ -171,6 +179,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
     void apply() {
       _disposeQuizDraft();
       _editingQuizId = null;
+      _editingQuizRevision = null;
       _quizTitleController.clear();
       _quizDescriptionController.clear();
       _readingTimeController.text = '15';
@@ -204,6 +213,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
       final draft = _quizDraftMapper.fromMap(quiz);
       _editingQuizId = draft.quizId;
+      _editingQuizRevision = draft.contentRevision;
       if (_editingQuizId != null) {
         _selectedQuizId = _editingQuizId;
       }
@@ -497,6 +507,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
           );
           _setSessionSocketConnected(false);
         },
+        opener: widget.sessionSocketOpener,
       );
       await _sessionSocketSupervisor!.start();
       _appendEvent('WebSocket преподавателя открыт, ожидается доступ.');
@@ -668,7 +679,10 @@ class _TeacherPanelState extends State<TeacherPanel> {
     }
   }
 
-  Future<void> _refreshQuizzes({int? selectQuizId}) async {
+  Future<void> _refreshQuizzes({
+    int? selectQuizId,
+    bool reportError = true,
+  }) async {
     if (!_isLoggedIn) {
       setState(() {
         _error = appText(AppText.teacherLoginRequiredError);
@@ -700,6 +714,9 @@ class _TeacherPanelState extends State<TeacherPanel> {
         _selectedQuizId = nextSelectedQuizId;
       });
     } catch (e) {
+      if (!reportError) {
+        rethrow;
+      }
       if (mounted) {
         setState(() {
           _error = userErrorText(e);
@@ -746,6 +763,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
     try {
       final payload = _quizDraftMapper.toPayload(
+        contentRevision: _editingQuizId == null ? null : _editingQuizRevision,
         title: _quizTitleController.text,
         description: _quizDescriptionController.text,
         displaySettings: QuizDisplaySettings(
@@ -764,10 +782,25 @@ class _TeacherPanelState extends State<TeacherPanel> {
               (client) => client.updateQuiz(editingQuizId, payload));
 
       final savedQuizId = asInt(savedQuiz['id'], 0);
-      await _refreshQuizzes(selectQuizId: savedQuizId);
-
-      final refreshedQuiz = _quizById(savedQuizId) ?? savedQuiz;
-      _loadQuizDraftFromMap(refreshedQuiz);
+      _loadQuizDraftFromMap(savedQuiz);
+      Object? refreshError;
+      try {
+        await _refreshQuizzes(
+          selectQuizId: savedQuizId,
+          reportError: false,
+        );
+      } catch (e) {
+        refreshError = e;
+      }
+      if (refreshError != null && mounted) {
+        final refreshErrorText = userErrorText(refreshError);
+        setState(() {
+          _error = appText(
+            AppText.quizSavedListRefreshError,
+            args: {'error': refreshErrorText},
+          );
+        });
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1569,10 +1602,9 @@ class _TeacherPanelState extends State<TeacherPanel> {
                               _revokeDisplayForSession(_session!),
                           onShowLeaderboard: _showLeaderboard,
                           onExportCsv: _exportCsv,
-                          hasNextQuestion: hasNextQuestionInLoadedQuizzes(
+                          hasNextQuestion: hasNextQuestionInSessionQuiz(
                             session: _session!,
                             currentQuestion: _activeQuestion,
-                            quizzes: _quizzes,
                           ),
                         ),
                         const SizedBox(height: 12),

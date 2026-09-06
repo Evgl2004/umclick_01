@@ -31,6 +31,21 @@ class StateConflict(Conflict):
         }
 
 
+class QuizRevisionConflict(Conflict):
+    """Конфликт оптимистической блокировки содержимого викторины."""
+
+    default_code = 'quiz_revision_conflict'
+
+    def __init__(self, current_revision: int):
+        message = 'Викторина уже изменена. Обновите данные и повторите сохранение.'
+        super().__init__(message)
+        self.response_data = {
+            'code': self.default_code,
+            'detail': message,
+            'current_content_revision': current_revision,
+        }
+
+
 class AccessAuthenticationFailed(AuthenticationFailed):
     """Безопасная машинно-читаемая причина отказа ролевого доступа."""
 
@@ -93,7 +108,9 @@ def exception_handler(exc, context):
         if session_uuid:
             from apps.core.permissions import can_manage_session
             from apps.session.models import LiveSession
-            session = LiveSession.objects.select_related('quiz').get(join_token=session_uuid)
+            session = LiveSession.objects.select_related(
+                'quiz_version', 'quiz_version__quiz'
+            ).get(join_token=session_uuid)
             if can_manage_session(context['request'].user, session):
                 payload['session_uuid'] = str(session_uuid)
         return Response(payload, status=409)

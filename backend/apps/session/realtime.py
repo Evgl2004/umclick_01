@@ -59,7 +59,7 @@ def _ordered_choices_for_session(question, session: LiveSession | None):
 def serialize_question_for_participants(question, session: LiveSession | None = None):
     if question is None:
         return None
-    quiz = question.quiz
+    quiz = question.quiz_version
     show_question = not quiz.question_only_on_display
     show_choices = quiz.show_choices_on_participant
     return {
@@ -131,8 +131,8 @@ def _base_state(session: LiveSession) -> dict:
         'phase_ends_at': phase_ends_at.isoformat() if phase_ends_at else None,
         'answering_started_at': run.answering_started_at.isoformat() if run else None,
         'is_answer_revealed': bool(run and run.finalized_at),
-        'reading_time_sec': session.quiz.reading_time_sec,
-        'results_time_sec': session.quiz.results_time_sec,
+        'reading_time_sec': session.quiz_version.reading_time_sec,
+        'results_time_sec': session.quiz_version.results_time_sec,
     }
 
 
@@ -237,7 +237,7 @@ def build_public_leaderboard(session: LiveSession) -> list[dict]:
 
 
 def get_next_question(session: LiveSession):
-    questions = list(session.quiz.questions.all().order_by('order', 'id'))
+    questions = list(session.quiz_version.questions.all().order_by('order', 'id'))
     if session.current_question_id is None:
         return questions[0] if questions else None
     for index, question in enumerate(questions):
@@ -264,7 +264,7 @@ def build_answer_reveal_payload(session: LiveSession, *, for_display: bool = Fal
     )
     by_choice = {item['selected_attempt__choice_id']: item['total'] for item in counts}
     total_answers = sum(by_choice.values())
-    show_choices = for_display or session.quiz.show_choices_on_participant
+    show_choices = for_display or session.quiz_version.show_choices_on_participant
     choices = []
     for index, choice in enumerate(_ordered_choices_for_session(question, session)):
         answers_count = by_choice.get(choice.pk, 0)
@@ -284,8 +284,8 @@ def build_answer_reveal_payload(session: LiveSession, *, for_display: bool = Fal
         'state_revision': session.state_revision,
         'question': {
             'id': question.pk,
-            'text': question.text if (for_display or not session.quiz.question_only_on_display) else '',
-            'text_hidden': not for_display and session.quiz.question_only_on_display,
+            'text': question.text if (for_display or not session.quiz_version.question_only_on_display) else '',
+            'text_hidden': not for_display and session.quiz_version.question_only_on_display,
             'order': question.order,
             'time_limit_sec': question.time_limit_sec,
         },
@@ -304,13 +304,13 @@ def build_display_session_state(session: LiveSession) -> dict:
         include_correct=bool(run and run.finalized_at),
     )
     state['quiz'] = {
-        'id': session.quiz_id,
-        'title': session.quiz.title,
-        'description': session.quiz.description,
-        'reading_time_sec': session.quiz.reading_time_sec,
-        'results_time_sec': session.quiz.results_time_sec,
-        'question_only_on_display': session.quiz.question_only_on_display,
-        'show_choices_on_participant': session.quiz.show_choices_on_participant,
+        'id': session.quiz_version.quiz_id,
+        'title': session.quiz_version.title,
+        'description': session.quiz_version.description,
+        'reading_time_sec': session.quiz_version.reading_time_sec,
+        'results_time_sec': session.quiz_version.results_time_sec,
+        'question_only_on_display': session.quiz_version.question_only_on_display,
+        'show_choices_on_participant': session.quiz_version.show_choices_on_participant,
     }
     if run and run.finalized_at:
         state['reveal'] = build_answer_reveal_payload(session, for_display=True)

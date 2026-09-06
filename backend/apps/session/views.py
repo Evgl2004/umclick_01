@@ -33,7 +33,9 @@ from apps.session.serializers import (
 
 
 class LiveSessionViewSet(viewsets.ModelViewSet):
-    queryset = LiveSession.objects.select_related('quiz', 'current_question')
+    queryset = LiveSession.objects.select_related(
+        'quiz_version', 'quiz_version__quiz', 'current_question'
+    ).prefetch_related('quiz_version__questions__choices')
     permission_classes = [IsTeacher]
     lookup_field = 'join_token'
     lookup_url_kwarg = 'pk'
@@ -42,13 +44,15 @@ class LiveSessionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        return queryset if is_admin(self.request.user) else queryset.filter(quiz__owner=self.request.user)
+        return queryset if is_admin(self.request.user) else queryset.filter(
+            quiz_version__quiz__owner=self.request.user
+        )
 
     def get_serializer_class(self):
         return LiveSessionCreateSerializer if self.action == 'create' else LiveSessionSerializer
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        serializer.save()
 
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):
@@ -171,7 +175,7 @@ class JoinSessionPreviewAPIView(APIView):
             )
         session = resolve_join_session(pin=form.validated_data.get('pin'), join_token=form.validated_data.get('join_token'))
         return Response({'session_uuid': str(session.join_token), 'can_join': session.status == LiveSession.STATUS_WAITING,
-                         'quiz': {'title': session.quiz.title, 'description': session.quiz.description},
+                         'quiz': {'title': session.quiz_version.title, 'description': session.quiz_version.description},
                          'legal_documents': get_current_legal_documents()})
 
 
@@ -250,5 +254,7 @@ class OwnResultsAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        participations = SessionParticipant.objects.filter(participant__user=request.user).select_related('session__quiz')
+        participations = SessionParticipant.objects.filter(
+            participant__user=request.user
+        ).select_related('session__quiz_version')
         return Response([own_result(item) for item in participations])

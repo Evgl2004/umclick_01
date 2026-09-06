@@ -42,14 +42,20 @@ class LiveSessionAdmin(HistoryAdmin):
         "created_at",
     )
     list_filter = ("status", "phase", "created_at")
-    search_fields = ("pin", "quiz__title", "host_name")
+    search_fields = ("pin", "quiz_version__title", "host_name")
+
+    @admin.display(description='Викторина', ordering='quiz_version__quiz_id')
+    def quiz(self, obj):
+        return obj.quiz_version.quiz
 
     def get_fields(self, request, obj=None):
-        return [
+        fields = [
             field_name
             for field_name in super().get_fields(request, obj)
             if field_name != 'quiz_version'
         ]
+        fields.insert(1, 'quiz')
+        return fields
 
 
 @admin.register(Participant)

@@ -49,6 +49,18 @@ void main() {
     );
   });
 
+  test('explains revision conflict without discarding the editor form', () {
+    expect(
+      userErrorText(ApiException(
+        statusCode: 409,
+        message: 'Failed to update quiz',
+        body: '{"code":"quiz_revision_conflict"}',
+        code: 'quiz_revision_conflict',
+      )),
+      'Викторина уже изменена. Обновите список осознанно; текущая форма сохранена.',
+    );
+  });
+
   test('localizes participant join validation details', () {
     expect(
       userErrorText(ApiException(

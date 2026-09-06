@@ -5,9 +5,10 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.utils import timezone
 
-from apps.quiz.models import Quiz, Question, Choice
+from apps.quiz.services import create_quiz_with_draft
 from apps.session.access import issue_secret
-from apps.session.models import LiveSession, Participant, SessionParticipant, SessionQuestionRun
+from apps.session.models import Participant, SessionParticipant, SessionQuestionRun
+from apps.session.services import create_live_session
 
 
 def teacher(name='teacher'):
@@ -17,12 +18,28 @@ def teacher(name='teacher'):
 
 
 def quiz(owner, **options):
-    obj = Quiz.objects.create(owner=owner, title='Проверочная викторина', **options)
-    for index in range(2):
-        question = Question.objects.create(quiz=obj, text=f'Вопрос {index + 1}', order=index + 1, time_limit_sec=30)
-        Choice.objects.create(question=question, text='Да', is_correct=True, order=1)
-        Choice.objects.create(question=question, text='Нет', order=2)
-    return obj
+    data = {
+        'title': 'Проверочная викторина',
+        'description': '',
+        'question_only_on_display': False,
+        'show_choices_on_participant': True,
+        'reading_time_sec': 15,
+        'results_time_sec': 10,
+        'questions': [
+            {
+                'text': f'Вопрос {index + 1}',
+                'order': index + 1,
+                'time_limit_sec': 30,
+                'choices': [
+                    {'text': 'Да', 'is_correct': True, 'order': 1},
+                    {'text': 'Нет', 'is_correct': False, 'order': 2},
+                ],
+            }
+            for index in range(2)
+        ],
+    }
+    data.update(options)
+    return create_quiz_with_draft(actor=owner, data=data)
 
 
 def participate(session, name='Участник', user=None):
@@ -60,12 +77,12 @@ def activate_gameplay(session, question):
 
 def game(owner, active=False, **options):
     content = quiz(owner, **options)
-    session = LiveSession.objects.create(quiz=content, created_by=owner)
+    session = create_live_session(quiz_id=content.pk, actor=owner)
     link, secret = participate(session)
-    question = content.questions.first()
+    question = session.quiz_version.questions.first()
     if active:
         activate_gameplay(session, question)
-    return SimpleNamespace(quiz=content, session=session, link=link, secret=secret, question=question,
+    return SimpleNamespace(quiz=content, version=session.quiz_version, session=session, link=link, secret=secret, question=question,
                            correct=question.choices.get(is_correct=True), wrong=question.choices.get(is_correct=False))
 
 

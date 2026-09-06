@@ -51,7 +51,7 @@ class SessionApiRegressionTests(APITestCase):
     def test_answer_rejects_inactive_session_wrong_question_and_revealed_question(self):
         g = game(self.teacher, active=True)
         self.client.credentials(HTTP_AUTHORIZATION='Participant ' + g.secret)
-        other = g.quiz.questions.last()
+        other = g.version.questions.last()
         self.assertEqual(self.client.post(url(g.session, 'answer'), {'question_id': other.pk, 'choice_id': other.choices.first().pk, 'submission_id': str(uuid.uuid4())}).status_code, 409)
         self.assertEqual(self.client.post(url(g.session, 'answer'), {'question_id': g.question.pk, 'choice_id': other.choices.first().pk, 'submission_id': str(uuid.uuid4())}).status_code, 400)
         g.session.revealed_question_id = g.question.pk

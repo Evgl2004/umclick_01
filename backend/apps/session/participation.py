@@ -58,7 +58,8 @@ def join_session(request, data):
 def own_result(participation):
     session = participation.session
     result = {'session_uuid': str(session.join_token), 'session_participant_id': participation.pk,
-              'name': participation.name_snapshot, 'status': session.status, 'quiz_title': session.quiz.title}
+              'name': participation.name_snapshot, 'status': session.status,
+              'quiz_title': session.quiz_version.title}
     if session.status in {LiveSession.STATUS_FINISHED, LiveSession.STATUS_ABORTED}:
         if session.gameplay_schema == LiveSession.GAMEPLAY_SCHEMA_LEGACY:
             result['answers'] = list(LegacyParticipantAnswer.objects.filter(session_participant=participation).values(

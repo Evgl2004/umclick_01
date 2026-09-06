@@ -260,7 +260,9 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
     def _state_if_allowed(self):
         from rest_framework.exceptions import APIException
         self.access_failure_reason = 'access_invalid'
-        session = LiveSession.objects.select_related('quiz', 'current_question').filter(join_token=self.session_uuid).first()
+        session = LiveSession.objects.select_related(
+            'quiz_version', 'quiz_version__quiz', 'current_question'
+        ).filter(join_token=self.session_uuid).first()
         if session is None:
             self.access_failure_reason = 'access_scope_mismatch'
             return None
@@ -310,7 +312,7 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
                     Q(is_staff=True)
                     | Q(
                         groups__name='teacher',
-                        quizzes__sessions__pk=self.session_id,
+                        quizzes__versions__sessions__pk=self.session_id,
                     )
                 ).exists()
                 self.access_failure_reason = (

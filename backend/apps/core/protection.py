@@ -18,11 +18,23 @@ class GuardedQuerySet(models.QuerySet):
 
     def delete(self):
         from apps.quiz.models import Quiz
+        from apps.quiz.services import _quiz_content_write_allowed
 
         with transaction.atomic(using=self.db):
-            paths = {'quiz.quiz': 'pk', 'quiz.question': 'quiz_id', 'quiz.choice': 'question__quiz_id'}
+            if _quiz_content_write_allowed():
+                return super().delete()
+            paths = {
+                'quiz.quiz': 'pk',
+                'quiz.quizversion': 'quiz_id',
+                'quiz.question': 'quiz_version__quiz_id',
+                'quiz.choice': 'question__quiz_version__quiz_id',
+            }
             path = paths.get(self.model._meta.label_lower)
             if path:
+                if self.model._meta.label_lower != 'quiz.quiz':
+                    raise HistoryConflict(
+                        'Прямое удаление содержимого викторины запрещено.'
+                    )
                 ids = self.values_list(path, flat=True)
                 for quiz in Quiz.objects.using(self.db).select_for_update().filter(pk__in=ids).order_by('pk'):
                     ensure_unused(quiz.pk, self.db)
@@ -42,15 +54,18 @@ class GuardedModel(models.Model):
 def ensure_unused(quiz_id, using='default'):
     from apps.session.models import LiveSession
 
-    session = LiveSession.objects.using(using).filter(quiz_id=quiz_id).only('join_token').first()
+    session = LiveSession.objects.using(using).filter(
+        quiz_version__quiz_id=quiz_id
+    ).only('join_token').first()
     if session:
         error = HistoryConflict('Викторина уже использована. Изменение и удаление её содержимого запрещены.')
         error.blocking_session_uuid = session.join_token
         raise error
 
 
-def prevent_history_delete(sender, instance, using, **kwargs):
+def prevent_history_delete(sender, instance, using, origin=None, **kwargs):
     from apps.quiz.models import Quiz
+    from apps.quiz.services import _quiz_content_write_allowed
 
     label = sender._meta.label_lower
     if label in {
@@ -64,8 +79,19 @@ def prevent_history_delete(sender, instance, using, **kwargs):
     }:
         raise HistoryConflict('Удаление игровой истории запрещено.')
     if label.startswith('quiz.'):
-        quiz_id = instance.pk if label == 'quiz.quiz' else (
-            instance.quiz_id if label == 'quiz.question' else instance.question.quiz_id
-        )
+        if _quiz_content_write_allowed():
+            return
+        root_model = getattr(origin, 'model', None)
+        cascade_from_quiz = isinstance(origin, Quiz) or root_model is Quiz
+        if label != 'quiz.quiz' and not cascade_from_quiz:
+            raise HistoryConflict('Прямое удаление содержимого викторины запрещено.')
+        if label == 'quiz.quiz':
+            quiz_id = instance.pk
+        elif label == 'quiz.quizversion':
+            quiz_id = instance.quiz_id
+        elif label == 'quiz.question':
+            quiz_id = instance.quiz_version.quiz_id
+        else:
+            quiz_id = instance.question.quiz_version.quiz_id
         Quiz.objects.using(using).select_for_update().get(pk=quiz_id)
         ensure_unused(quiz_id, using)

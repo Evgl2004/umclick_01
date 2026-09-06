@@ -11,7 +11,9 @@ def auto_reveal_due_sessions() -> int:
     advanced_count = 0
 
     sessions = (
-        LiveSession.objects.select_related("quiz", "current_question")
+        LiveSession.objects.select_related(
+            "quiz_version", "quiz_version__quiz", "current_question"
+        )
         .filter(
             status=LiveSession.STATUS_LIVE,
         )

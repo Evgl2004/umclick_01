@@ -18,6 +18,9 @@ String userErrorText(Object error) {
 }
 
 String _apiExceptionText(ApiException error) {
+  if (error.code == 'quiz_revision_conflict') {
+    return appText(AppText.quizRevisionConflict);
+  }
   if (error.message == 'Failed to join session') {
     final validationText = _joinValidationText(error);
     if (validationText != null) {

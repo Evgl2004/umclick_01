@@ -2,19 +2,20 @@
 
 
 from django.conf import settings
-from django.db import transaction
+from apps.core.protection import GuardedModel, HistoryConflict
 
-from apps.core.protection import GuardedModel, HistoryConflict, ensure_unused
+
+def _require_content_service():
+    from apps.quiz.services import _quiz_content_write_allowed
+
+    if not _quiz_content_write_allowed():
+        raise HistoryConflict(
+            'Прямая запись содержимого викторины запрещена; используйте прикладной сервис.'
+        )
 
 
 class Quiz(GuardedModel):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='quizzes', verbose_name='Владелец')
-    title = models.CharField(max_length=255)
-    description = models.TextField(blank=True)
-    question_only_on_display = models.BooleanField(default=False)
-    show_choices_on_participant = models.BooleanField(default=True)
-    reading_time_sec = models.PositiveIntegerField(default=15)
-    results_time_sec = models.PositiveIntegerField(default=10)
     archived_at = models.DateTimeField(null=True, blank=True, editable=False)
     content_revision = models.PositiveBigIntegerField(default=1, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -26,17 +27,11 @@ class Quiz(GuardedModel):
         verbose_name_plural = 'викторины'
 
     def __str__(self) -> str:
-        return self.title
+        return f'Викторина {self.pk}'
 
     def save(self, *args, **kwargs):
-        using = kwargs.get('using') or self._state.db or 'default'
-        with transaction.atomic(using=using):
-            if self.pk:
-                previous = Quiz.objects.using(using).select_for_update().get(pk=self.pk)
-                ensure_unused(self.pk, using)
-                if previous.owner_id != self.owner_id:
-                    raise HistoryConflict('Перенос владельца викторины запрещён.')
-            return super().save(*args, **kwargs)
+        _require_content_service()
+        return super().save(*args, **kwargs)
 
 
 class QuizVersion(GuardedModel):
@@ -95,15 +90,16 @@ class QuizVersion(GuardedModel):
     def __str__(self) -> str:
         return f'{self.quiz_id}:{self.number}:{self.status}'
 
+    def save(self, *args, **kwargs):
+        _require_content_service()
+        return super().save(*args, **kwargs)
+
 
 class Question(GuardedModel):
-    quiz = models.ForeignKey(Quiz, related_name="questions", on_delete=models.CASCADE)
     quiz_version = models.ForeignKey(
         QuizVersion,
         related_name='questions',
         on_delete=models.CASCADE,
-        null=True,
-        blank=True,
         editable=False,
     )
     text = models.TextField()
@@ -114,18 +110,20 @@ class Question(GuardedModel):
         ordering = ["order", "id"]
         verbose_name = 'вопрос'
         verbose_name_plural = 'вопросы'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['quiz_version', 'order'],
+                name='uniq_question_version_order',
+                deferrable=models.Deferrable.DEFERRED,
+            ),
+        ]
 
     def __str__(self) -> str:
-        return f"{self.quiz.title}: {self.text[:40]}"
+        return f"{self.quiz_version_id}: {self.text[:40]}"
 
     def save(self, *args, **kwargs):
-        using = kwargs.get('using') or self._state.db or 'default'
-        with transaction.atomic(using=using):
-            Quiz.objects.using(using).select_for_update().get(pk=self.quiz_id)
-            ensure_unused(self.quiz_id, using)
-            if self.pk and Question.objects.using(using).filter(pk=self.pk).exclude(quiz_id=self.quiz_id).exists():
-                raise HistoryConflict('Перенос вопроса в другую викторину запрещён.')
-            return super().save(*args, **kwargs)
+        _require_content_service()
+        return super().save(*args, **kwargs)
 
 
 class Choice(GuardedModel):
@@ -138,16 +136,17 @@ class Choice(GuardedModel):
         ordering = ["order", "id"]
         verbose_name = 'вариант ответа'
         verbose_name_plural = 'варианты ответов'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['question', 'order'],
+                name='uniq_choice_question_order',
+                deferrable=models.Deferrable.DEFERRED,
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.question_id}:{self.text[:40]}"
 
     def save(self, *args, **kwargs):
-        using = kwargs.get('using') or self._state.db or 'default'
-        with transaction.atomic(using=using):
-            quiz_id = Question.objects.using(using).values_list('quiz_id', flat=True).get(pk=self.question_id)
-            Quiz.objects.using(using).select_for_update().get(pk=quiz_id)
-            ensure_unused(quiz_id, using)
-            if self.pk and Choice.objects.using(using).filter(pk=self.pk).exclude(question_id=self.question_id).exists():
-                raise HistoryConflict('Перенос варианта в другой вопрос запрещён.')
-            return super().save(*args, **kwargs)
+        _require_content_service()
+        return super().save(*args, **kwargs)

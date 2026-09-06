@@ -5,7 +5,7 @@ import os
 import qrcode
 from rest_framework import serializers
 
-from apps.quiz.models import Choice, Question, Quiz
+from apps.quiz.models import Choice, Question, Quiz, QuizVersion
 from apps.session.models import LiveSession
 from apps.session.realtime import compute_phase_ends_at, compute_question_ends_at, serialize_question_for_participants
 from apps.session.results import build_leaderboard as build_result_leaderboard
@@ -39,10 +39,11 @@ class SessionQuestionSerializer(serializers.ModelSerializer):
 
 
 class SessionQuizSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(source='quiz_id', read_only=True)
     questions = SessionQuestionSerializer(many=True)
 
     class Meta:
-        model = Quiz
+        model = QuizVersion
         fields = [
             "id",
             "title",
@@ -57,6 +58,11 @@ class SessionQuizSerializer(serializers.ModelSerializer):
 
 class LiveSessionCreateSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(source='join_token', read_only=True)
+    quiz = serializers.PrimaryKeyRelatedField(
+        queryset=Quiz.objects.none(),
+        write_only=True,
+    )
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from apps.core.permissions import is_admin
@@ -68,10 +74,25 @@ class LiveSessionCreateSerializer(serializers.ModelSerializer):
         fields = ["id", "quiz", "host_name", "status", "pin", "join_token", "created_at"]
         read_only_fields = ["id", "status", "pin", "join_token", "created_at"]
 
+    def create(self, validated_data):
+        from apps.session.services import create_live_session
+
+        quiz = validated_data.pop('quiz')
+        return create_live_session(
+            quiz_id=quiz.pk,
+            actor=self.context['request'].user,
+            host_name=validated_data.get('host_name', ''),
+        )
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation['quiz'] = instance.quiz_version.quiz_id
+        return representation
+
 
 class LiveSessionSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(source='join_token', read_only=True)
-    quiz = SessionQuizSerializer()
+    quiz = SessionQuizSerializer(source='quiz_version')
     join_url = serializers.SerializerMethodField()
     qr_code_base64 = serializers.SerializerMethodField()
     participants_count = serializers.SerializerMethodField()

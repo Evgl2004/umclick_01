@@ -9,19 +9,22 @@ void main() {
     test('sorts questions and choices by order', () {
       final data = mapper.fromMap({
         'id': 7,
+        'content_revision': 4,
         'title': 'History quiz',
         'description': 'Warm-up',
         'questions': [
           {
+            'id': 12,
             'text': 'Second question',
             'order': 2,
             'time_limit_sec': 45,
             'choices': [
               {'text': 'B', 'order': 2, 'is_correct': false},
-              {'text': 'A', 'order': 1, 'is_correct': true},
+              {'id': 102, 'text': 'A', 'order': 1, 'is_correct': true},
             ],
           },
           {
+            'id': 11,
             'text': 'First question',
             'order': 1,
             'time_limit_sec': 20,
@@ -39,6 +42,7 @@ void main() {
       });
 
       expect(data.quizId, 7);
+      expect(data.contentRevision, 4);
       expect(data.title, 'History quiz');
       expect(data.description, 'Warm-up');
       expect(data.displaySettings.readingTimeSec, 15);
@@ -46,9 +50,12 @@ void main() {
       expect(data.displaySettings.questionOnlyOnDisplay, isFalse);
       expect(data.displaySettings.showChoicesOnParticipant, isTrue);
       expect(data.questions.first.textController.text, 'First question');
+      expect(data.questions.first.id, 11);
       expect(data.questions.first.choices.first.textController.text, 'Yes');
       expect(data.questions.last.textController.text, 'Second question');
       expect(data.questions.last.choices.first.textController.text, 'A');
+      expect(data.questions.last.id, 12);
+      expect(data.questions.last.choices.first.id, 102);
     });
 
     test('creates a default question when API returns an empty quiz', () {
@@ -94,10 +101,11 @@ void main() {
   group('QuizDraftMapper.toPayload', () {
     test('trims text and creates ordered API payload', () {
       final question = mapper.createQuestion(
+        id: 41,
         text: '  2 + 2? ',
         timeLimitSec: 30,
         choices: [
-          QuizDraftChoice(text: ' 4 ', isCorrect: true),
+          QuizDraftChoice(id: 51, text: ' 4 ', isCorrect: true),
           QuizDraftChoice(text: ' 3 '),
           QuizDraftChoice(text: ' '),
         ],
@@ -105,6 +113,7 @@ void main() {
       addTearDown(question.dispose);
 
       final payload = mapper.toPayload(
+        contentRevision: 6,
         title: ' Math ',
         description: ' Warm-up ',
         displaySettings: const QuizDisplaySettings(
@@ -117,6 +126,7 @@ void main() {
       );
 
       expect(payload, {
+        'content_revision': 6,
         'title': 'Math',
         'description': 'Warm-up',
         'question_only_on_display': true,
@@ -125,11 +135,12 @@ void main() {
         'results_time_sec': 8,
         'questions': [
           {
+            'id': 41,
             'text': '2 + 2?',
             'order': 1,
             'time_limit_sec': 30,
             'choices': [
-              {'text': '4', 'order': 1, 'is_correct': true},
+              {'id': 51, 'text': '4', 'order': 1, 'is_correct': true},
               {'text': '3', 'order': 2, 'is_correct': false},
             ],
           },

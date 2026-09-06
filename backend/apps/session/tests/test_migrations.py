@@ -1,3 +1,6 @@
+from importlib import import_module
+from types import SimpleNamespace
+
 from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
 from django.db import connection
@@ -14,6 +17,8 @@ class MigrationTransitionTests(TransactionTestCase):
     SESSION_STAGE_B = '0006_stage_b_deadline_constraints'
     QUIZ_PREPARE = '0005_quiz_versioning_prepare'
     SESSION_PREPARE = '0007_quiz_versioning_prepare'
+    QUIZ_SWITCH = '0006_quiz_versioning_switch'
+    SESSION_SWITCH = '0008_quiz_versioning_switch'
 
     @staticmethod
     def targets_at(executor, *, quiz, session):
@@ -46,6 +51,13 @@ class MigrationTransitionTests(TransactionTestCase):
             app=app,
             name=name,
         ).exists()
+
+    @staticmethod
+    def migration_applied_at(app, name):
+        return MigrationRecorder(connection).migration_qs.get(
+            app=app,
+            name=name,
+        ).applied
 
     def assert_base_schema(self):
         self.assertNotIn(
@@ -86,6 +98,25 @@ class MigrationTransitionTests(TransactionTestCase):
         self.assertTrue(constraints['uniq_quiz_version_number']['unique'])
         self.assertTrue(constraints['uniq_quiz_draft_version']['unique'])
         self.assertTrue(constraints['quiz_version_status_fixed_at']['check'])
+
+    def assert_switched_schema(self):
+        self.assertIn('quiz_quizversion', connection.introspection.table_names())
+        self.assertIn('archived_at', self.table_columns('quiz_quiz'))
+        self.assertIn('content_revision', self.table_columns('quiz_quiz'))
+        self.assertNotIn('title', self.table_columns('quiz_quiz'))
+        self.assertIn('quiz_version_id', self.table_columns('quiz_question'))
+        self.assertNotIn('quiz_id', self.table_columns('quiz_question'))
+        self.assertIn('quiz_version_id', self.table_columns('session_livesession'))
+        self.assertNotIn('quiz_id', self.table_columns('session_livesession'))
+        with connection.cursor() as cursor:
+            question_constraints = connection.introspection.get_constraints(
+                cursor, 'quiz_question'
+            )
+            choice_constraints = connection.introspection.get_constraints(
+                cursor, 'quiz_choice'
+            )
+        self.assertTrue(question_constraints['uniq_question_version_order']['unique'])
+        self.assertTrue(choice_constraints['uniq_choice_question_order']['unique'])
 
     @staticmethod
     def delete_test_game_data(apps):
@@ -403,23 +434,25 @@ class MigrationTransitionTests(TransactionTestCase):
             )
 
             MigrationExecutor(connection).migrate(latest)
-            self.assert_prepared_schema()
+            self.assert_switched_schema()
         finally:
             MigrationExecutor(connection).migrate(latest)
 
-    def test_prepared_schema_reverses_and_reapplies_without_game_data(self):
+    def test_switched_schema_reverses_to_prepared_and_reapplies_without_game_data(self):
         executor = MigrationExecutor(connection)
         latest = executor.loader.graph.leaf_nodes()
-        stage_b = self.targets_at(
+        prepared = self.targets_at(
             executor,
-            quiz=self.QUIZ_STAGE_A,
-            session=self.SESSION_STAGE_B,
+            quiz=self.QUIZ_PREPARE,
+            session=self.SESSION_PREPARE,
         )
         try:
-            executor.migrate(stage_b)
-            self.assert_base_schema()
-            MigrationExecutor(connection).migrate(latest)
+            executor.migrate(prepared)
             self.assert_prepared_schema()
+            self.assertFalse(self.migration_is_applied('quiz', self.QUIZ_SWITCH))
+            self.assertFalse(self.migration_is_applied('session', self.SESSION_SWITCH))
+            MigrationExecutor(connection).migrate(latest)
+            self.assert_switched_schema()
         finally:
             MigrationExecutor(connection).migrate(latest)
 
@@ -511,8 +544,9 @@ class MigrationTransitionTests(TransactionTestCase):
             )
 
             self.delete_test_game_data(old_apps)
+            old_apps = None
             MigrationExecutor(connection).migrate(latest)
-            self.assert_prepared_schema()
+            self.assert_switched_schema()
             self.assertTrue(
                 self.migration_is_applied('quiz', self.QUIZ_PREPARE)
             )
@@ -531,4 +565,210 @@ class MigrationTransitionTests(TransactionTestCase):
         finally:
             if old_apps is not None:
                 self.delete_test_game_data(old_apps)
+            MigrationExecutor(connection).migrate(latest)
+
+    def test_switch_guard_preserves_prepared_schema_and_allows_retry(self):
+        executor = MigrationExecutor(connection)
+        latest = executor.loader.graph.leaf_nodes()
+        prepared = self.targets_at(
+            executor,
+            quiz=self.QUIZ_PREPARE,
+            session=self.SESSION_PREPARE,
+        )
+        prepared_apps = None
+        try:
+            executor.migrate(prepared)
+            prepared_apps = self.apps_at(executor, prepared)
+            prepare_applied_at = {
+                ('quiz', self.QUIZ_PREPARE): self.migration_applied_at(
+                    'quiz', self.QUIZ_PREPARE
+                ),
+                ('session', self.SESSION_PREPARE): self.migration_applied_at(
+                    'session', self.SESSION_PREPARE
+                ),
+            }
+            user = prepared_apps.get_model('auth', 'User').objects.create(
+                username='switch-guard-owner'
+            )
+            quiz_model = prepared_apps.get_model('quiz', 'Quiz')
+            content = quiz_model.objects.create(
+                owner=user,
+                title='Данные после подготовительных миграций',
+            )
+            version = prepared_apps.get_model('quiz', 'QuizVersion').objects.create(
+                quiz=content,
+                number=1,
+                title='Новая таблица версий тоже непуста',
+            )
+            question = prepared_apps.get_model('quiz', 'Question').objects.create(
+                quiz=content,
+                quiz_version=version,
+                text='Подготовленный вопрос',
+            )
+            prepared_apps.get_model('quiz', 'Choice').objects.create(
+                question=question,
+                text='Да',
+                is_correct=True,
+            )
+
+            with self.assertRaisesMessage(
+                RuntimeError,
+                'Найдены игровые данные перед переключением на версии викторин',
+            ):
+                MigrationExecutor(connection).migrate(latest)
+
+            self.assert_prepared_schema()
+            self.assertTrue(quiz_model.objects.filter(pk=content.pk).exists())
+            self.assertTrue(
+                prepared_apps.get_model('quiz', 'QuizVersion').objects.filter(
+                    pk=version.pk
+                ).exists()
+            )
+            self.assertTrue(self.migration_is_applied('quiz', self.QUIZ_PREPARE))
+            self.assertTrue(self.migration_is_applied('session', self.SESSION_PREPARE))
+            self.assertEqual(
+                self.migration_applied_at('quiz', self.QUIZ_PREPARE),
+                prepare_applied_at[('quiz', self.QUIZ_PREPARE)],
+            )
+            self.assertEqual(
+                self.migration_applied_at('session', self.SESSION_PREPARE),
+                prepare_applied_at[('session', self.SESSION_PREPARE)],
+            )
+            self.assertFalse(self.migration_is_applied('quiz', self.QUIZ_SWITCH))
+            self.assertFalse(self.migration_is_applied('session', self.SESSION_SWITCH))
+
+            self.delete_test_game_data(prepared_apps)
+            prepared_apps = None
+            MigrationExecutor(connection).migrate(latest)
+            self.assert_switched_schema()
+            self.assertTrue(self.migration_is_applied('quiz', self.QUIZ_PREPARE))
+            self.assertTrue(self.migration_is_applied('session', self.SESSION_PREPARE))
+            self.assertEqual(
+                self.migration_applied_at('quiz', self.QUIZ_PREPARE),
+                prepare_applied_at[('quiz', self.QUIZ_PREPARE)],
+            )
+            self.assertEqual(
+                self.migration_applied_at('session', self.SESSION_PREPARE),
+                prepare_applied_at[('session', self.SESSION_PREPARE)],
+            )
+            self.assertTrue(self.migration_is_applied('quiz', self.QUIZ_SWITCH))
+            self.assertTrue(self.migration_is_applied('session', self.SESSION_SWITCH))
+        finally:
+            if prepared_apps is not None:
+                self.delete_test_game_data(prepared_apps)
+            MigrationExecutor(connection).migrate(latest)
+
+    def test_switch_guard_checks_quiz_version_independently(self):
+        executor = MigrationExecutor(connection)
+        latest = executor.loader.graph.leaf_nodes()
+        prepared = self.targets_at(
+            executor,
+            quiz=self.QUIZ_PREPARE,
+            session=self.SESSION_PREPARE,
+        )
+        try:
+            executor.migrate(prepared)
+            prepared_apps = self.apps_at(executor, prepared)
+            migration = import_module(
+                'apps.quiz.migrations.0006_quiz_versioning_switch'
+            )
+
+            class ExistsResult:
+                def __init__(self, exists):
+                    self.exists_value = exists
+
+                def using(self, alias):
+                    self.alias = alias
+                    return self
+
+                def exists(self):
+                    return self.exists_value
+
+            class RecordingApps:
+                def __init__(self, non_empty=None):
+                    self.non_empty = non_empty
+                    self.checked = []
+
+                def get_model(self, app_label, model_name):
+                    key = (app_label, model_name)
+                    historical_model = prepared_apps.get_model(*key)
+                    self.checked.append(key)
+                    return SimpleNamespace(
+                        _meta=historical_model._meta,
+                        objects=ExistsResult(key == self.non_empty),
+                    )
+
+            all_empty = RecordingApps()
+            migration.require_empty_versioning_game_data(
+                all_empty,
+                SimpleNamespace(connection=connection),
+            )
+            self.assertEqual(tuple(all_empty.checked), migration.GAME_MODELS)
+
+            only_version = RecordingApps(('quiz', 'QuizVersion'))
+            with self.assertRaisesMessage(RuntimeError, 'quiz_quizversion'):
+                migration.require_empty_versioning_game_data(
+                    only_version,
+                    SimpleNamespace(connection=connection),
+                )
+            self.assertIn(('quiz', 'QuizVersion'), only_version.checked)
+        finally:
+            MigrationExecutor(connection).migrate(latest)
+
+    def test_destructive_reverse_is_rejected_before_schema_changes(self):
+        executor = MigrationExecutor(connection)
+        latest = executor.loader.graph.leaf_nodes()
+        prepared = self.targets_at(
+            executor,
+            quiz=self.QUIZ_PREPARE,
+            session=self.SESSION_PREPARE,
+        )
+        final_apps = None
+        try:
+            executor.migrate(latest)
+            final_apps = self.apps_at(MigrationExecutor(connection), latest)
+            user = final_apps.get_model('auth', 'User').objects.create(
+                username='reverse-guard-owner'
+            )
+            content = final_apps.get_model('quiz', 'Quiz').objects.create(owner=user)
+            version = final_apps.get_model('quiz', 'QuizVersion').objects.create(
+                quiz=content,
+                number=1,
+                status='fixed',
+                fixed_at='2026-01-01T00:00:00Z',
+                title='Зафиксированная версия',
+            )
+            question = final_apps.get_model('quiz', 'Question').objects.create(
+                quiz_version=version,
+                text='Зафиксированный вопрос',
+            )
+            final_apps.get_model('quiz', 'Choice').objects.create(
+                question=question,
+                text='Да',
+                is_correct=True,
+            )
+            final_apps.get_model('session', 'LiveSession').objects.create(
+                quiz_version=version,
+                created_by=user,
+                pin='818181',
+            )
+
+            with self.assertRaisesMessage(
+                RuntimeError,
+                'Обратное переключение схемы версий запрещено',
+            ):
+                MigrationExecutor(connection).migrate(prepared)
+
+            self.assert_switched_schema()
+            self.assertTrue(self.migration_is_applied('quiz', self.QUIZ_SWITCH))
+            self.assertTrue(self.migration_is_applied('session', self.SESSION_SWITCH))
+
+            self.delete_test_game_data(final_apps)
+            MigrationExecutor(connection).migrate(prepared)
+            self.assert_prepared_schema()
+            MigrationExecutor(connection).migrate(latest)
+            self.assert_switched_schema()
+        finally:
+            if final_apps is not None:
+                self.delete_test_game_data(final_apps)
             MigrationExecutor(connection).migrate(latest)

@@ -185,7 +185,7 @@ def _conflict(message: str, session: LiveSession):
 
 
 def _next_question(session: LiveSession):
-    questions = list(session.quiz.questions.all().order_by('order', 'id'))
+    questions = list(session.quiz_version.questions.all().order_by('order', 'id'))
     if session.current_question_id is None:
         return questions[0] if questions else None
     for index, question in enumerate(questions):
@@ -211,7 +211,7 @@ def _save_session(session: LiveSession, *fields: str):
 
 
 def _start_question(session: LiveSession, question, now) -> str:
-    reading_ends_at = now + timedelta(seconds=session.quiz.reading_time_sec)
+    reading_ends_at = now + timedelta(seconds=session.quiz_version.reading_time_sec)
     answer_deadline_at = reading_ends_at + timedelta(seconds=question.time_limit_sec)
     delivery_deadline_at = answer_deadline_at + timedelta(seconds=DELIVERY_WINDOW_SECONDS)
     run = SessionQuestionRun.objects.create(
@@ -328,7 +328,7 @@ def _finalize_locked(session: LiveSession, run: SessionQuestionRun, now) -> str 
 
     run.finalized_at = now
     run.results_started_at = now
-    run.results_ends_at = now + timedelta(seconds=session.quiz.results_time_sec)
+    run.results_ends_at = now + timedelta(seconds=session.quiz_version.results_time_sec)
     run.save(update_fields=['finalized_at', 'results_started_at', 'results_ends_at'])
     session.phase = LiveSession.PHASE_RESULTS
     session.revealed_question_id = run.question_id
@@ -394,7 +394,7 @@ def execute_manual_command(session_id: int, kind: str, data: dict) -> tuple[dict
     """Применить ручную команду один раз и вернуть состояние и признак повтора."""
     session = (
         LiveSession.objects.select_for_update(of=('self',))
-        .select_related('quiz', 'current_question', 'current_run')
+        .select_related('quiz_version', 'quiz_version__quiz', 'current_question', 'current_run')
         .get(pk=session_id)
     )
     request_facts = {
@@ -460,7 +460,7 @@ def _transition_may_be_due(session: LiveSession, run: SessionQuestionRun | None,
 def advance_one_transition(session_id: int, *, now=None) -> tuple[LiveSession, bool]:
     """Восстановить не более одного устойчивого состояния по сохранённым срокам."""
     session = (
-        LiveSession.objects.select_related('quiz', 'current_question', 'current_run')
+        LiveSession.objects.select_related('quiz_version', 'quiz_version__quiz', 'current_question', 'current_run')
         .get(pk=session_id)
     )
     if session.status != LiveSession.STATUS_LIVE:
@@ -474,7 +474,7 @@ def advance_one_transition(session_id: int, *, now=None) -> tuple[LiveSession, b
     with transaction.atomic():
         session = (
             LiveSession.objects.select_for_update(of=('self',))
-            .select_related('quiz', 'current_question', 'current_run')
+            .select_related('quiz_version', 'quiz_version__quiz', 'current_question', 'current_run')
             .get(pk=session_id)
         )
         if session.status != LiveSession.STATUS_LIVE:

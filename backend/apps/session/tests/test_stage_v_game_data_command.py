@@ -21,11 +21,7 @@ class StageVGameDataCommandTests(TransactionTestCase):
     def setUp(self):
         self.owner = teacher("stage-v-cleanup-owner")
         self.game = game(self.owner, active=True)
-        self.version = QuizVersion.objects.create(
-            quiz=self.game.quiz,
-            number=1,
-            title='Синтетическая версия для проверки очистки',
-        )
+        self.version = self.game.version
         self.password_hash = self.owner.password
         self.group_names = set(self.owner.groups.values_list('name', flat=True))
         with connection.cursor() as cursor:

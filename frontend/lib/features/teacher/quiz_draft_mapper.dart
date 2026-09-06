@@ -4,6 +4,7 @@ import 'quiz_draft.dart';
 class QuizDraftData {
   const QuizDraftData({
     required this.quizId,
+    required this.contentRevision,
     required this.title,
     required this.description,
     required this.displaySettings,
@@ -11,6 +12,7 @@ class QuizDraftData {
   });
 
   final int? quizId;
+  final int? contentRevision;
   final String title;
   final String description;
   final QuizDisplaySettings displaySettings;
@@ -21,6 +23,7 @@ class QuizDraftMapper {
   const QuizDraftMapper();
 
   QuizDraftQuestion createQuestion({
+    int? id,
     String text = '',
     int timeLimitSec = 20,
     List<QuizDraftChoice>? choices,
@@ -39,6 +42,7 @@ class QuizDraftMapper {
     }
 
     return QuizDraftQuestion(
+      id: id,
       text: text,
       timeLimitSec: timeLimitSec,
       choices: resolvedChoices,
@@ -67,6 +71,7 @@ class QuizDraftMapper {
       final draftChoices = choiceMaps
           .map(
             (choice) => QuizDraftChoice(
+              id: asInt(choice['id'], -1) > 0 ? asInt(choice['id'], -1) : null,
               text: choice['text']?.toString() ?? '',
               isCorrect: choice['is_correct'] == true,
             ),
@@ -79,6 +84,9 @@ class QuizDraftMapper {
 
       questions.add(
         createQuestion(
+          id: asInt(questionMap['id'], -1) > 0
+              ? asInt(questionMap['id'], -1)
+              : null,
           text: questionMap['text']?.toString() ?? '',
           timeLimitSec: asInt(questionMap['time_limit_sec'], 20),
           choices: draftChoices,
@@ -92,6 +100,9 @@ class QuizDraftMapper {
 
     return QuizDraftData(
       quizId: parsedQuizId > 0 ? parsedQuizId : null,
+      contentRevision: asInt(quiz['content_revision'], -1) > 0
+          ? asInt(quiz['content_revision'], -1)
+          : null,
       title: quiz['title']?.toString() ?? '',
       description: quiz['description']?.toString() ?? '',
       displaySettings: QuizDisplaySettings(
@@ -105,6 +116,7 @@ class QuizDraftMapper {
   }
 
   Map<String, dynamic> toPayload({
+    int? contentRevision,
     required String title,
     required String description,
     required QuizDisplaySettings displaySettings,
@@ -162,6 +174,7 @@ class QuizDraftMapper {
         }
 
         choices.add({
+          if (choice.id != null) 'id': choice.id,
           'text': choiceText,
           'order': choices.length + 1,
           'is_correct': choice.isCorrect,
@@ -180,6 +193,7 @@ class QuizDraftMapper {
       }
 
       payloadQuestions.add({
+        if (question.id != null) 'id': question.id,
         'text': questionText,
         'order': questionNumber,
         'time_limit_sec': timeLimit,
@@ -188,6 +202,7 @@ class QuizDraftMapper {
     }
 
     return {
+      if (contentRevision != null) 'content_revision': contentRevision,
       'title': trimmedTitle,
       'description': description.trim(),
       'question_only_on_display': displaySettings.questionOnlyOnDisplay,

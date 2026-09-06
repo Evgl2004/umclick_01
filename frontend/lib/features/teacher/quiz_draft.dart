@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
 class QuizDraftChoice {
-  QuizDraftChoice({String text = '', this.isCorrect = false})
+  QuizDraftChoice({this.id, String text = '', this.isCorrect = false})
       : textController = TextEditingController(text: text);
 
+  final int? id;
   final TextEditingController textController;
   bool isCorrect;
 
@@ -14,6 +15,7 @@ class QuizDraftChoice {
 
 class QuizDraftQuestion {
   QuizDraftQuestion({
+    this.id,
     String text = '',
     int timeLimitSec = 20,
     List<QuizDraftChoice>? choices,
@@ -21,6 +23,7 @@ class QuizDraftQuestion {
         timeLimitController = TextEditingController(text: '$timeLimitSec'),
         choices = choices ?? [QuizDraftChoice(), QuizDraftChoice()];
 
+  final int? id;
   final TextEditingController textController;
   final TextEditingController timeLimitController;
   final List<QuizDraftChoice> choices;

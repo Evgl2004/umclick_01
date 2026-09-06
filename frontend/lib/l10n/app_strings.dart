@@ -197,6 +197,7 @@ enum AppText {
   sessionExpiredLoginAgainError,
   quizCreatedNextStepSnack,
   quizUpdatedSnack,
+  quizSavedListRefreshError,
   deleteQuizDialogTitle,
   deleteQuizDialogBody,
   cancelButton,
@@ -240,6 +241,7 @@ enum AppText {
   apiLoadDisplayStateFailed,
   apiCreateQuizFailed,
   apiUpdateQuizFailed,
+  quizRevisionConflict,
   apiDeleteQuizFailed,
   apiCreateSessionFailed,
   apiFetchSessionDetailsFailed,
@@ -851,6 +853,10 @@ const _strings = <AppText, LocalizedString>{
     ru: 'Викторина обновлена. Можно создавать или продолжать live-сессию.',
     en: 'Quiz updated. You can create or continue a live session.',
   ),
+  AppText.quizSavedListRefreshError: LocalizedString(
+    ru: 'Викторина сохранена, но список не обновлён: {error}',
+    en: 'Quiz saved, but the list was not refreshed: {error}',
+  ),
   AppText.deleteQuizDialogTitle:
       LocalizedString(ru: 'Удалить викторину?', en: 'Delete quiz?'),
   AppText.deleteQuizDialogBody: LocalizedString(
@@ -991,6 +997,10 @@ const _strings = <AppText, LocalizedString>{
   AppText.apiUpdateQuizFailed: LocalizedString(
     ru: 'Не удалось обновить викторину.',
     en: 'Failed to update quiz.',
+  ),
+  AppText.quizRevisionConflict: LocalizedString(
+    ru: 'Викторина уже изменена. Обновите список осознанно; текущая форма сохранена.',
+    en: 'The quiz has changed. Refresh deliberately; your current form was kept.',
   ),
   AppText.apiDeleteQuizFailed: LocalizedString(
     ru: 'Не удалось удалить викторину.',

@@ -6,7 +6,7 @@ from django.db import IntegrityError, models, transaction
 from datetime import timedelta
 from django.utils import timezone
 
-from apps.quiz.models import Choice, Question, Quiz, QuizVersion
+from apps.quiz.models import Choice, Question, QuizVersion
 from apps.core.protection import GuardedModel, HistoryConflict
 
 
@@ -51,13 +51,10 @@ class LiveSession(GuardedModel):
         (GAMEPLAY_SCHEMA_V2, "Схема проведения этапа Б"),
     ]
 
-    quiz = models.ForeignKey(Quiz, related_name="sessions", on_delete=models.PROTECT)
     quiz_version = models.ForeignKey(
         QuizVersion,
         related_name='sessions',
         on_delete=models.PROTECT,
-        null=True,
-        blank=True,
         editable=False,
     )
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='created_sessions', on_delete=models.PROTECT, verbose_name='Создатель')
@@ -107,7 +104,17 @@ class LiveSession(GuardedModel):
             old = None
             if self.pk is not None:
                 old = LiveSession.objects.using(using).select_for_update().filter(pk=self.pk).first()
-            if self.current_question_id and not Question.objects.using(using).filter(pk=self.current_question_id, quiz_id=self.quiz_id).exists():
+            if old is None:
+                from apps.session.services import _live_session_creation_allowed
+
+                if not _live_session_creation_allowed():
+                    raise HistoryConflict(
+                        'Прямое создание сессии запрещено; используйте прикладной сервис.'
+                    )
+            if self.current_question_id and not Question.objects.using(using).filter(
+                pk=self.current_question_id,
+                quiz_version_id=self.quiz_version_id,
+            ).exists():
                 raise HistoryConflict('Текущий вопрос не принадлежит викторине сессии.')
             if self.current_run_id:
                 run_matches = SessionQuestionRun.objects.using(using).filter(
@@ -117,12 +124,8 @@ class LiveSession(GuardedModel):
                 ).exists()
                 if not run_matches:
                     raise HistoryConflict('Текущий запуск вопроса не соответствует сессии и текущему вопросу.')
-            if old is None:
-                quiz = Quiz.objects.using(using).select_for_update().get(pk=self.quiz_id)
-                from apps.quiz.validation import validate_quiz_instance
-                validate_quiz_instance(quiz)
-            else:
-                fixed = ['quiz_id', 'created_by_id', 'join_token', 'pin', 'created_at', 'gameplay_schema']
+            if old is not None:
+                fixed = ['quiz_version_id', 'created_by_id', 'join_token', 'pin', 'created_at', 'gameplay_schema']
                 if old.status in {self.STATUS_FINISHED, self.STATUS_ABORTED}:
                     fixed = [field.attname for field in self._meta.concrete_fields]
                 if any(getattr(old, field) != getattr(self, field) for field in fixed):
@@ -162,7 +165,7 @@ class LiveSession(GuardedModel):
                         raise HistoryConflict('Не удалось подобрать свободный PIN. Повторите создание сессии.') from exc
 
     def __str__(self) -> str:
-        return f'Сессия {self.pin} ({self.quiz.title})'
+        return f'Сессия {self.pin} ({self.quiz_version.title})'
 
 
 class Participant(GuardedModel):
@@ -254,7 +257,7 @@ class LegacyParticipantAnswer(GuardedModel):
             session = LiveSession.objects.select_for_update().get(pk=self.session_participant.session_id)
             if session.status != LiveSession.STATUS_LIVE:
                 raise HistoryConflict('Сессия не принимает ответы; история защищена.')
-            if self.question.quiz_id != session.quiz_id or (self.choice_id and self.choice.question_id != self.question_id):
+            if self.question.quiz_version_id != session.quiz_version_id or (self.choice_id and self.choice.question_id != self.question_id):
                 raise HistoryConflict('Ответ не соответствует вопросу этой сессии.')
             if self.pk and LegacyParticipantAnswer.objects.filter(pk=self.pk).exclude(session_participant_id=self.session_participant_id, question_id=self.question_id).exists():
                 raise HistoryConflict('Перенос исторического ответа запрещён.')
@@ -341,8 +344,13 @@ class SessionQuestionRun(GuardedModel):
     def save(self, *args, **kwargs):
         using = kwargs.get('using') or self._state.db or 'default'
         if self.question_id and self.session_id:
-            quiz_id = LiveSession.objects.using(using).values_list('quiz_id', flat=True).get(pk=self.session_id)
-            if not Question.objects.using(using).filter(pk=self.question_id, quiz_id=quiz_id).exists():
+            quiz_version_id = LiveSession.objects.using(using).values_list(
+                'quiz_version_id', flat=True
+            ).get(pk=self.session_id)
+            if not Question.objects.using(using).filter(
+                pk=self.question_id,
+                quiz_version_id=quiz_version_id,
+            ).exists():
                 raise HistoryConflict('Запуск вопроса не соответствует викторине сессии.')
         if self.pk:
             previous = type(self).objects.using(using).get(pk=self.pk)

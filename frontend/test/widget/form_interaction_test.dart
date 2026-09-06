@@ -485,65 +485,50 @@ void main() {
       );
     });
 
-    test('finds a next question only in the loaded session quiz', () {
-      const quizzes = <dynamic>[
-        {
+    test('следующий вопрос определяется только снимком викторины сессии', () {
+      const session = {
+        'quiz': {
           'id': 7,
           'questions': [
             {'id': 11},
             {'id': 12},
             {'id': 13},
           ],
-        },
-      ];
+        }
+      };
 
       expect(
-        hasNextQuestionInLoadedQuizzes(
-          session: const {'quiz': 7},
+        hasNextQuestionInSessionQuiz(
+          session: session,
           currentQuestion: const {'id': 11},
-          quizzes: quizzes,
         ),
         isTrue,
       );
       expect(
-        hasNextQuestionInLoadedQuizzes(
-          session: const {
-            'quiz': {'id': 7},
-          },
+        hasNextQuestionInSessionQuiz(
+          session: session,
           currentQuestion: const {'id': 12},
-          quizzes: quizzes,
         ),
         isTrue,
       );
       expect(
-        hasNextQuestionInLoadedQuizzes(
-          session: const {'quiz': 7},
+        hasNextQuestionInSessionQuiz(
+          session: session,
           currentQuestion: const {'id': 13},
-          quizzes: quizzes,
         ),
         isFalse,
       );
       expect(
-        hasNextQuestionInLoadedQuizzes(
-          session: const {'quiz': 999},
-          currentQuestion: const {'id': 11},
-          quizzes: quizzes,
-        ),
-        isFalse,
-      );
-      expect(
-        hasNextQuestionInLoadedQuizzes(
+        hasNextQuestionInSessionQuiz(
           session: const {'quiz': 7},
+          currentQuestion: const {'id': 11},
+        ),
+        isFalse,
+      );
+      expect(
+        hasNextQuestionInSessionQuiz(
+          session: session,
           currentQuestion: const {'id': 999},
-          quizzes: quizzes,
-        ),
-        isFalse,
-      );
-      expect(
-        hasNextQuestionInLoadedQuizzes(
-          session: const {'quiz': 7},
-          currentQuestion: const {'id': 11},
-          quizzes: const <dynamic>[],
         ),
         isFalse,
       );

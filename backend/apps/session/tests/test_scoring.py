@@ -4,13 +4,14 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase
 
-from apps.quiz.models import Choice, Question, Quiz
+from apps.quiz.services import create_quiz_with_draft
 from apps.session.advance import advance_session_if_due
 from apps.session.gameplay import record_answer_attempt
 from apps.session.models import LiveSession
 from apps.session.results import _with_places
 from apps.session.results import build_stage_b_leaderboard
 from apps.session.tests.helpers import activate_gameplay, participate, teacher
+from apps.session.services import create_live_session
 
 
 class RankingTests(SimpleTestCase):
@@ -35,20 +36,27 @@ class RankingTests(SimpleTestCase):
 class RankingDatabaseTests(TestCase):
     def test_database_rating_uses_exact_correct_milliseconds_and_zero_for_wrong(self):
         owner = teacher()
-        content = Quiz.objects.create(
-            owner=owner,
-            title='Викторина точного рейтинга',
-            reading_time_sec=3,
-            results_time_sec=3,
-        )
-        question = Question.objects.create(
-            quiz=content,
-            text='Вопрос на точность',
-            time_limit_sec=60,
-        )
-        correct = Choice.objects.create(question=question, text='Верно', is_correct=True)
-        wrong = Choice.objects.create(question=question, text='Неверно', is_correct=False, order=2)
-        session = LiveSession.objects.create(quiz=content, created_by=owner)
+        content = create_quiz_with_draft(actor=owner, data={
+            'title': 'Викторина точного рейтинга',
+            'description': '',
+            'question_only_on_display': False,
+            'show_choices_on_participant': True,
+            'reading_time_sec': 3,
+            'results_time_sec': 3,
+            'questions': [{
+                'text': 'Вопрос на точность',
+                'order': 1,
+                'time_limit_sec': 60,
+                'choices': [
+                    {'text': 'Верно', 'is_correct': True, 'order': 1},
+                    {'text': 'Неверно', 'is_correct': False, 'order': 2},
+                ],
+            }],
+        })
+        session = create_live_session(quiz_id=content.pk, actor=owner)
+        question = session.quiz_version.questions.get()
+        correct = question.choices.get(is_correct=True)
+        wrong = question.choices.get(is_correct=False)
         first, _ = participate(session, name='40,234')
         second, _ = participate(session, name='40,432')
         third, _ = participate(session, name='Неверный')

@@ -1,6 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
-from threading import Barrier, Event
+from threading import Barrier, Event, Lock, get_ident
 from time import monotonic
 from unittest.mock import patch
 import uuid
@@ -10,8 +10,9 @@ from django.test import TransactionTestCase
 from rest_framework.test import APIClient
 
 from apps.core.protection import HistoryConflict
-from apps.core.errors import Conflict
+from apps.core.errors import Conflict, QuizRevisionConflict
 from apps.quiz.models import Quiz
+from apps.quiz.services import save_quiz_content
 from apps.session.advance import advance_session_if_due
 from apps.session.gameplay import database_now, execute_manual_command, record_answer_attempt
 from apps.session.models import (
@@ -24,6 +25,7 @@ from apps.session.models import (
     SessionQuestionRun,
 )
 from apps.session.tests.helpers import activate_gameplay, command_payload, participate, teacher, quiz, game, url
+from apps.session.services import create_live_session
 
 
 class PostgreSQLConcurrencyTests(TransactionTestCase):
@@ -40,7 +42,7 @@ class PostgreSQLConcurrencyTests(TransactionTestCase):
             ready.set()
             try:
                 return operation()
-            except (HistoryConflict, Quiz.DoesNotExist) as exc:
+            except (HistoryConflict, Quiz.DoesNotExist, QuizRevisionConflict) as exc:
                 return type(exc)
         finally:
             connections.close_all()
@@ -93,59 +95,197 @@ class PostgreSQLConcurrencyTests(TransactionTestCase):
             submission_id=submission_id or uuid.uuid4(),
         )
 
-    def test_creation_committed_first_blocks_edit_and_delete(self):
-        for operation in ('edit', 'delete'):
-            content = quiz(self.owner)
-            ready, process = Event(), []
-            def change():
-                obj = Quiz.objects.get(pk=content.pk)
-                if operation == 'delete':
-                    obj.delete()
-                else:
-                    obj.title = 'Подмена'; obj.save()
-            with ThreadPoolExecutor(max_workers=1) as pool:
-                with transaction.atomic():
-                    Quiz.objects.select_for_update().get(pk=content.pk)
-                    LiveSession.objects.create(quiz=content, created_by=self.owner)
-                    future = pool.submit(self.worker, ready, process, change)
-                    self.wait_for_lock(ready, process)
-                self.assertIs(future.result(5), HistoryConflict)
-            content.refresh_from_db()
-            self.assertEqual(content.title, 'Проверочная викторина')
+    def test_concurrent_saves_allow_exactly_one_revision(self):
+        content = quiz(self.owner)
+        barrier = Barrier(2)
+
+        def save(title):
+            connections.close_all()
+            try:
+                barrier.wait(5)
+                return save_quiz_content(
+                    quiz_id=content.pk,
+                    actor=self.owner,
+                    expected_revision=1,
+                    data={'title': title},
+                ).pk
+            except QuizRevisionConflict as exc:
+                return type(exc)
+            finally:
+                connections.close_all()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = [
+                future.result(10)
+                for future in (
+                    pool.submit(save, 'Первая запись'),
+                    pool.submit(save, 'Вторая запись'),
+                )
+            ]
+
+        self.assertEqual(results.count(content.pk), 1)
+        self.assertEqual(results.count(QuizRevisionConflict), 1)
+        content.refresh_from_db()
+        self.assertEqual(content.content_revision, 2)
+        self.assertIn(content.versions.get().title, {'Первая запись', 'Вторая запись'})
 
     def test_edit_or_delete_committed_first_controls_creation(self):
-        for operation in ('edit', 'delete'):
-            content = quiz(self.owner)
-            content_id = content.pk
-            ready, process = Event(), []
-            def create():
-                return LiveSession.objects.create(quiz_id=content_id, created_by=self.owner).pk
-            with ThreadPoolExecutor(max_workers=1) as pool:
-                with transaction.atomic():
-                    locked = Quiz.objects.select_for_update().get(pk=content_id)
-                    future = pool.submit(self.worker, ready, process, create)
-                    self.wait_for_lock(ready, process)
-                    if operation == 'delete':
-                        locked.delete()
-                    else:
-                        locked.title = 'Полностью сохранено'; locked.save()
-                result = future.result(5)
-            if operation == 'delete':
-                self.assertIs(result, Quiz.DoesNotExist)
-                self.assertFalse(LiveSession.objects.filter(quiz_id=content_id).exists())
-            else:
-                self.assertEqual(LiveSession.objects.get(pk=result).quiz.title, 'Полностью сохранено')
-
-    def test_pin_collision_retries_after_concurrent_commit(self):
-        first, second = quiz(self.owner), quiz(self.owner)
+        content = quiz(self.owner)
         ready, process = Event(), []
+
+        def create():
+            return create_live_session(quiz_id=content.pk, actor=self.owner).pk
+
         with ThreadPoolExecutor(max_workers=1) as pool:
-            with patch('apps.session.models.generate_pin', side_effect=['123456', '654321']):
-                with transaction.atomic():
-                    LiveSession.objects.create(quiz=first, created_by=self.owner, pin='123456')
-                    future = pool.submit(self.worker, ready, process, lambda: LiveSession.objects.create(quiz=second, created_by=self.owner).pin)
-                    self.wait_for_lock(ready, process)
-                self.assertEqual(future.result(5), '654321')
+            with transaction.atomic():
+                Quiz.objects.select_for_update().get(pk=content.pk)
+                save_quiz_content(
+                    quiz_id=content.pk,
+                    actor=self.owner,
+                    expected_revision=1,
+                    data={'title': 'Сохранено до запуска'},
+                )
+                future = pool.submit(self.worker, ready, process, create)
+                self.wait_for_lock(ready, process)
+            session = LiveSession.objects.get(pk=future.result(5))
+
+        self.assertEqual(session.quiz_version.title, 'Сохранено до запуска')
+        self.assertEqual(session.quiz_version.status, 'fixed')
+
+    def test_session_committed_first_keeps_its_version_and_save_creates_draft(self):
+        content = quiz(self.owner)
+        ready, process = Event(), []
+
+        def save():
+            return save_quiz_content(
+                quiz_id=content.pk,
+                actor=self.owner,
+                expected_revision=1,
+                data={'title': 'Черновик после запуска'},
+            ).pk
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with transaction.atomic():
+                session = create_live_session(quiz_id=content.pk, actor=self.owner)
+                fixed_version_id = session.quiz_version_id
+                future = pool.submit(self.worker, ready, process, save)
+                self.wait_for_lock(ready, process)
+            self.assertEqual(future.result(5), content.pk)
+
+        session.refresh_from_db()
+        self.assertEqual(session.quiz_version_id, fixed_version_id)
+        self.assertEqual(session.quiz_version.title, 'Проверочная викторина')
+        draft = content.versions.get(status='draft')
+        self.assertEqual(draft.title, 'Черновик после запуска')
+        self.assertNotEqual(draft.pk, fixed_version_id)
+
+    def test_delete_committed_first_prevents_session_creation(self):
+        content = quiz(self.owner)
+        ready, process = Event(), []
+
+        def create():
+            return create_live_session(quiz_id=content.pk, actor=self.owner).pk
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with transaction.atomic():
+                locked = Quiz.objects.select_for_update().get(pk=content.pk)
+                locked.delete()
+                future = pool.submit(self.worker, ready, process, create)
+                self.wait_for_lock(ready, process)
+            self.assertIs(future.result(5), Quiz.DoesNotExist)
+
+        self.assertFalse(Quiz.objects.filter(pk=content.pk).exists())
+        self.assertFalse(LiveSession.objects.filter(quiz_version__quiz_id=content.pk).exists())
+
+    def test_session_committed_first_prevents_quiz_deletion(self):
+        content = quiz(self.owner)
+        ready, process = Event(), []
+
+        def delete():
+            Quiz.objects.get(pk=content.pk).delete()
+            return 'deleted'
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with transaction.atomic():
+                session = create_live_session(quiz_id=content.pk, actor=self.owner)
+                future = pool.submit(self.worker, ready, process, delete)
+                self.wait_for_lock(ready, process)
+            self.assertIs(future.result(5), HistoryConflict)
+
+        self.assertTrue(Quiz.objects.filter(pk=content.pk).exists())
+        self.assertTrue(LiveSession.objects.filter(pk=session.pk).exists())
+
+    def test_concurrent_pin_collision_retries_after_transaction_overlap(self):
+        first, second = quiz(self.owner), quiz(self.owner)
+        first_generation = Barrier(2)
+        counter_lock = Lock()
+        attempts = {}
+
+        def colliding_pin():
+            thread_id = get_ident()
+            with counter_lock:
+                attempts[thread_id] = attempts.get(thread_id, 0) + 1
+                attempt = attempts[thread_id]
+            if attempt == 1:
+                first_generation.wait(5)
+                return '123456'
+            return '654321'
+
+        def create(content):
+            session = create_live_session(quiz_id=content.pk, actor=self.owner)
+            return session.pk, session.pin
+
+        ready = [Event(), Event()]
+        process = [[], []]
+        with patch('apps.session.models.generate_pin', side_effect=colliding_pin):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                futures = [
+                    pool.submit(
+                        self.worker,
+                        ready[index],
+                        process[index],
+                        lambda content=content: create(content),
+                    )
+                    for index, content in enumerate((first, second))
+                ]
+                results = [future.result(10) for future in futures]
+
+        self.assertEqual({pin for _, pin in results}, {'123456', '654321'})
+        self.assertEqual(len({pk for pk, _ in results}), 2)
+        self.assertEqual(LiveSession.objects.filter(pk__in=[pk for pk, _ in results]).count(), 2)
+
+    def test_two_concurrent_sessions_share_one_fixed_version(self):
+        content = quiz(self.owner)
+        start = Barrier(2)
+        counter_lock = Lock()
+        pins = iter(('111111', '222222'))
+
+        def next_pin():
+            with counter_lock:
+                return next(pins)
+
+        def create():
+            start.wait(5)
+            session = create_live_session(quiz_id=content.pk, actor=self.owner)
+            return session.pk, session.join_token, session.pin, session.quiz_version_id
+
+        ready = [Event(), Event()]
+        process = [[], []]
+        with patch('apps.session.models.generate_pin', side_effect=next_pin):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                results = [future.result(10) for future in (
+                    pool.submit(self.worker, ready[0], process[0], create),
+                    pool.submit(self.worker, ready[1], process[1], create),
+                )]
+
+        self.assertEqual(len({item[0] for item in results}), 2)
+        self.assertEqual(len({item[1] for item in results}), 2)
+        self.assertEqual({item[2] for item in results}, {'111111', '222222'})
+        self.assertEqual(len({item[3] for item in results}), 1)
+        self.assertEqual(content.versions.count(), 1)
+        version = content.versions.get()
+        self.assertEqual(version.status, 'fixed')
+        self.assertEqual({item[3] for item in results}, {version.pk})
 
     def test_registration_close_wins_against_join(self):
         g = game(self.owner)
@@ -165,19 +305,13 @@ class PostgreSQLConcurrencyTests(TransactionTestCase):
         from django.contrib.auth import get_user_model
         admin = get_user_model().objects.create_superuser(username='race_admin', password='test-password-123')
         content = quiz(self.owner)
-        ready, process = Event(), []
-        def edit():
-            client = APIClient(); client.force_login(admin)
-            return client.post(f'/admin/quiz/quiz/{content.pk}/change/', {'title': 'Подмена', 'reading_time_sec': 15, 'results_time_sec': 10}).status_code
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            with transaction.atomic():
-                Quiz.objects.select_for_update().get(pk=content.pk)
-                LiveSession.objects.create(quiz=content, created_by=self.owner)
-                future = pool.submit(self.worker, ready, process, edit)
-                self.wait_for_lock(ready, process)
-            self.assertEqual(future.result(5), 409)
-        content.refresh_from_db()
-        self.assertEqual(content.title, 'Проверочная викторина')
+        client = APIClient(); client.force_login(admin)
+        response = client.post(
+            f'/admin/quiz/quiz/{content.pk}/change/',
+            {'title': 'Подмена'},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(content.versions.get().title, 'Проверочная викторина')
 
     def test_join_committed_first_survives_registration_close(self):
         g = game(self.owner)
@@ -209,9 +343,9 @@ class PostgreSQLConcurrencyTests(TransactionTestCase):
             )
             self.assertEqual(response.status_code, 409)
             self.assertFalse(AnswerAttempt.objects.filter(run=g.session.current_run).exists())
-            g.quiz.title = 'Подмена'
+            g.version.title = 'Подмена'
             with self.assertRaises(HistoryConflict):
-                g.quiz.save()
+                g.version.save()
 
     def test_different_participants_do_not_block_each_other(self):
         g = game(self.owner)

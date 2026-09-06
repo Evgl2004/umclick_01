@@ -11,8 +11,10 @@ from rest_framework.test import APITestCase
 
 from apps.core.protection import HistoryConflict
 from apps.quiz.models import Choice, Question, Quiz, QuizVersion
+from apps.quiz.services import _quiz_content_write, save_quiz_content
 from apps.session.access import issue_secret
 from apps.session.models import LegacyParticipantAnswer, LiveSession, Participant, SessionParticipant, SessionDisplayAccess
+from apps.session.services import create_live_session
 
 ParticipantAnswer = LegacyParticipantAnswer
 from apps.session.tests.helpers import teacher, quiz, game, participate, url, quiz_payload
@@ -48,8 +50,8 @@ class StageAAccessTests(APITestCase):
         created = self.client.post('/api/quizzes/', payload, format='json')
         self.assertEqual(created.status_code, 201, created.data)
         self.assertNotIn('archived_at', created.data)
-        self.assertNotIn('content_revision', created.data)
-        self.assertFalse(QuizVersion.objects.exists())
+        self.assertEqual(created.data['content_revision'], 1)
+        self.assertEqual(QuizVersion.objects.count(), 1)
         qid = created.data['id']
         original = deepcopy(created.data)
         broken = deepcopy(original)
@@ -57,46 +59,47 @@ class StageAAccessTests(APITestCase):
         broken['questions'][-1]['choices'][-1]['text'] = '  '
         self.assertEqual(self.client.patch(f'/api/quizzes/{qid}/', broken, format='json').status_code, 400)
         self.assertEqual(self.client.get(f'/api/quizzes/{qid}/').data, original)
-        response = self.client.patch(f'/api/quizzes/{qid}/', {'questions': [{'id': original['questions'][0]['id'], 'text': 'Другой вопрос'}]}, format='json')
+        response = self.client.patch(f'/api/quizzes/{qid}/', {
+            'content_revision': original['content_revision'],
+            'questions': [{'id': original['questions'][0]['id'], 'text': 'Другой вопрос'}],
+        }, format='json')
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['questions'][0]['time_limit_sec'], 20)
         self.assertEqual(len(response.data['questions'][0]['choices']), 2)
-        self.assertFalse(QuizVersion.objects.exists())
+        self.assertEqual(response.data['content_revision'], 2)
+        self.assertEqual(QuizVersion.objects.count(), 1)
 
     def test_prepared_version_constraints_do_not_change_the_api_contract(self):
         content = quiz(self.owner)
-        first = QuizVersion.objects.create(
-            quiz=content,
-            number=1,
-            title='Подготовленный черновик',
-        )
+        first = content.versions.get()
 
-        with self.assertRaises(IntegrityError), transaction.atomic():
-            QuizVersion.objects.create(
-                quiz=content,
-                number=2,
-                title='Второй черновик',
-            )
-        with self.assertRaises(IntegrityError), transaction.atomic():
-            QuizVersion.objects.create(
-                quiz=content,
-                number=1,
-                status=QuizVersion.STATUS_FIXED,
-                fixed_at=timezone.now(),
-                title='Повтор номера',
-            )
-        with self.assertRaises(IntegrityError), transaction.atomic():
-            QuizVersion.objects.create(
-                quiz=content,
-                number=3,
-                status=QuizVersion.STATUS_FIXED,
-                title='Фиксация без времени',
-            )
+        with _quiz_content_write():
+            with self.assertRaises(IntegrityError), transaction.atomic():
+                QuizVersion.objects.create(
+                    quiz=content,
+                    number=2,
+                    title='Второй черновик',
+                )
+            with self.assertRaises(IntegrityError), transaction.atomic():
+                QuizVersion.objects.create(
+                    quiz=content,
+                    number=1,
+                    status=QuizVersion.STATUS_FIXED,
+                    fixed_at=timezone.now(),
+                    title='Повтор номера',
+                )
+            with self.assertRaises(IntegrityError), transaction.atomic():
+                QuizVersion.objects.create(
+                    quiz=content,
+                    number=3,
+                    status=QuizVersion.STATUS_FIXED,
+                    title='Фиксация без времени',
+                )
 
         response = self.client.get(f'/api/quizzes/{content.pk}/')
         self.assertEqual(response.status_code, 200, response.data)
         self.assertNotIn('archived_at', response.data)
-        self.assertNotIn('content_revision', response.data)
+        self.assertEqual(response.data['content_revision'], 1)
         self.assertNotIn('versions', response.data)
         self.assertEqual(QuizVersion.objects.get(pk=first.pk).status, 'draft')
 
@@ -208,7 +211,8 @@ class StageAAccessTests(APITestCase):
     def test_reused_pin_does_not_transfer_old_access(self):
         g = game(self.owner)
         g.session.status = 'finished'; g.session.save()
-        new = LiveSession.objects.create(quiz=g.quiz, created_by=self.owner, pin=g.session.pin)
+        with patch('apps.session.models.generate_pin', return_value=g.session.pin):
+            new = create_live_session(quiz_id=g.quiz.pk, actor=self.owner)
         self.client.force_authenticate(None)
         preview = self.client.get('/api/sessions/join/preview/', {'pin': new.pin})
         self.assertEqual(preview.data['session_uuid'], str(new.join_token))
@@ -222,7 +226,7 @@ class StageAAccessTests(APITestCase):
         g = game(self.owner)
         with patch('apps.session.models.generate_pin', return_value=g.session.pin) as generate:
             with self.assertRaises(HistoryConflict):
-                LiveSession.objects.create(quiz=g.quiz, created_by=self.owner)
+                create_live_session(quiz_id=g.quiz.pk, actor=self.owner)
         self.assertEqual(generate.call_count, 20)
         self.assertEqual(LiveSession.objects.count(), 1)
 
@@ -288,9 +292,13 @@ class HistoryProtectionTests(APITestCase):
     def test_used_content_is_immutable_for_every_status_without_answers(self):
         for state in ('waiting', 'live', 'finished', 'aborted'):
             content = quiz(self.owner)
-            session = LiveSession.objects.create(quiz=content, created_by=self.owner, status=state)
-            question = content.questions.first(); choice = question.choices.first()
-            for obj, attr in ((content, 'title'), (question, 'text'), (choice, 'text')):
+            session = create_live_session(quiz_id=content.pk, actor=self.owner)
+            if state != 'waiting':
+                session.status = state
+                session.save()
+            version = session.quiz_version
+            question = version.questions.first(); choice = question.choices.first()
+            for obj, attr in ((version, 'title'), (question, 'text'), (choice, 'text')):
                 with self.assertRaises(HistoryConflict), transaction.atomic():
                     obj.delete()
                 setattr(obj, attr, 'Изменено')
@@ -298,9 +306,13 @@ class HistoryProtectionTests(APITestCase):
                     obj.save()
                 with self.assertRaises((HistoryConflict, ProtectedError)), transaction.atomic():
                     type(obj).objects.filter(pk=obj.pk).delete()
-            response = self.client.patch(f'/api/quizzes/{content.pk}/', {'title': 'Изменено'})
-            self.assertEqual(response.status_code, 409)
-            self.assertEqual(response.data['session_uuid'], str(session.join_token))
+            response = self.client.patch(f'/api/quizzes/{content.pk}/', {
+                'content_revision': content.content_revision,
+                'title': 'Изменено',
+            })
+            self.assertEqual(response.status_code, 200, response.data)
+            version.refresh_from_db()
+            self.assertEqual(version.title, 'Проверочная викторина')
             self.assertEqual(self.client.delete(url(session, '').replace('//', '/')).status_code, 409)
             self.assertTrue(LiveSession.objects.filter(pk=session.pk).exists())
 
@@ -322,7 +334,7 @@ class HistoryProtectionTests(APITestCase):
     def test_bulk_edit_and_relation_transfer_cannot_bypass(self):
         g = game(self.owner)
         other = quiz(self.owner)
-        g.question.quiz = other
+        g.question.quiz_version = other.versions.get()
         with self.assertRaises(HistoryConflict):
             g.question.save()
         for model in (Quiz, Question, Choice, LiveSession, SessionParticipant, ParticipantAnswer):
@@ -330,19 +342,19 @@ class HistoryProtectionTests(APITestCase):
                 model.objects.all().update(id=1)
             with self.assertRaises(HistoryConflict):
                 model.objects.bulk_update([], ['id'])
-        g.session.quiz = other
+        g.session.quiz_version = other.versions.get()
         with self.assertRaises(HistoryConflict):
             g.session.save()
 
     def test_draft_delete_and_repeated_session_are_allowed(self):
         content = quiz(self.owner)
-        content.title = 'Черновик'; content.save()
         content.delete()
         self.assertEqual(Question.objects.count(), 0)
         self.assertEqual(Choice.objects.count(), 0)
         g = game(self.owner)
         g.session.status = 'finished'; g.session.save()
-        new = LiveSession.objects.create(quiz=g.quiz, created_by=self.owner, pin=g.session.pin)
+        with patch('apps.session.models.generate_pin', return_value=g.session.pin):
+            new = create_live_session(quiz_id=g.quiz.pk, actor=self.owner)
         self.assertNotEqual(new.join_token, g.session.join_token)
 
     def test_partial_terminal_save_persists_time_and_cannot_reopen(self):
@@ -382,7 +394,7 @@ class HistoryProtectionTests(APITestCase):
         g = game(self.owner)
         session_snapshot = self.record_snapshot(g.session)
         replacement = self.copy_record(g.session)
-        replacement.quiz = quiz(self.owner)
+        replacement.quiz_version = quiz(self.owner).versions.get()
 
         with self.assertRaises(HistoryConflict):
             replacement.save()
@@ -400,7 +412,7 @@ class HistoryProtectionTests(APITestCase):
         )
         g.session.status = LiveSession.STATUS_FINISHED
         g.session.save()
-        target = LiveSession.objects.create(quiz=g.quiz, created_by=self.owner)
+        target = create_live_session(quiz_id=g.quiz.pk, actor=self.owner)
         link_snapshot = self.record_snapshot(g.link)
         answer_snapshot = self.record_snapshot(answer)
         replacement = self.copy_record(g.link)
@@ -459,8 +471,9 @@ class HistoryProtectionTests(APITestCase):
 
     def test_normal_session_and_participation_creation_still_work(self):
         content = quiz(self.owner)
-        session = LiveSession(quiz=content, created_by=self.owner)
-        session.save()
+        with self.assertRaises(HistoryConflict):
+            LiveSession(quiz_version=content.versions.get(), created_by=self.owner).save()
+        session = create_live_session(quiz_id=content.pk, actor=self.owner)
         participant = Participant.objects.create(name='Новый участник')
         link = SessionParticipant(
             session=session,
@@ -471,17 +484,17 @@ class HistoryProtectionTests(APITestCase):
         link.save()
 
         self.assertTrue(LiveSession.objects.filter(pk=session.pk).exists())
-        self.assertIsNone(session.quiz_version_id)
+        self.assertIsNotNone(session.quiz_version_id)
         self.assertTrue(SessionParticipant.objects.filter(pk=link.pk).exists())
 
     def test_allowed_unfinished_session_transitions_still_work(self):
         content = quiz(self.owner)
-        session = LiveSession.objects.create(quiz=content, created_by=self.owner)
+        session = create_live_session(quiz_id=content.pk, actor=self.owner)
         session.status = LiveSession.STATUS_LIVE
         session.phase = LiveSession.PHASE_READING
         session.save()
         session.phase = LiveSession.PHASE_ANSWERING
-        session.current_question = content.questions.first()
+        session.current_question = session.quiz_version.questions.first()
         session.save()
 
         session.refresh_from_db()
@@ -523,6 +536,7 @@ class HistoryProtectionTests(APITestCase):
             for field in LiveSession._meta.fields
             if field.name != 'quiz_version'
         ]
+        expected_fields.insert(1, 'quiz')
 
         self.assertEqual(model_admin.get_fields(request, g.session), expected_fields)
         self.assertEqual(model_admin.get_readonly_fields(request, g.session), expected_fields)

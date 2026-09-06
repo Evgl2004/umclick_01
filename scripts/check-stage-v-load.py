@@ -204,11 +204,17 @@ def _cleanup_synthetic_database(
             if quiz_id is not None:
                 cursor.execute(
                     "DELETE FROM quiz_choice WHERE question_id IN "
-                    "(SELECT id FROM quiz_question WHERE quiz_id = %s)",
+                    "(SELECT id FROM quiz_question WHERE quiz_version_id IN "
+                    "(SELECT id FROM quiz_quizversion WHERE quiz_id = %s))",
                     [quiz_id],
                 )
                 cursor.execute(
-                    "DELETE FROM quiz_question WHERE quiz_id = %s",
+                    "DELETE FROM quiz_question WHERE quiz_version_id IN "
+                    "(SELECT id FROM quiz_quizversion WHERE quiz_id = %s)",
+                    [quiz_id],
+                )
+                cursor.execute(
+                    "DELETE FROM quiz_quizversion WHERE quiz_id = %s",
                     [quiz_id],
                 )
                 cursor.execute("DELETE FROM quiz_quiz WHERE id = %s", [quiz_id])
@@ -264,8 +270,9 @@ def run_check(fail_after: str | None = None) -> dict:
 
     from apps.core.rate_limit import RedisRateLimiter, TOKEN_UNITS, limit_per_second
     from apps.core.websocket_limits import RedisWebSocketGuard
-    from apps.quiz.models import Choice, Question, Quiz
+    from apps.quiz.services import create_quiz_with_draft
     from apps.session.models import AnswerAttempt, LiveSession, SessionParticipant
+    from apps.session.services import create_live_session
 
     database_name = helpers["verify_database"](os.environ["UMCLICK_TEST_DB_NAME"])
     if not database_name.startswith("test_umclick_"):
@@ -307,33 +314,32 @@ def run_check(fail_after: str | None = None) -> dict:
         owner.groups.add(teacher_group)
         if fail_after == "user":
             raise RuntimeError("Управляемый отказ после создания пользователя.")
-        quiz = Quiz.objects.create(
-            owner=owner,
-            title="Ограниченная нагрузочная проверка этапа В",
-            reading_time_sec=3,
-            results_time_sec=3,
+        quiz = create_quiz_with_draft(
+            actor=owner,
+            data={
+                "title": "Ограниченная нагрузочная проверка этапа В",
+                "description": "",
+                "question_only_on_display": False,
+                "show_choices_on_participant": True,
+                "reading_time_sec": 3,
+                "results_time_sec": 3,
+                "questions": [{
+                    "text": "Выберите правильный вариант",
+                    "order": 1,
+                    "time_limit_sec": 120,
+                    "choices": [
+                        {"text": "Правильный", "is_correct": True, "order": 1},
+                        {"text": "Неверный", "is_correct": False, "order": 2},
+                    ],
+                }],
+            },
         )
-        question = Question.objects.create(
-            quiz=quiz,
-            text="Выберите правильный вариант",
-            order=1,
-            time_limit_sec=120,
-        )
-        correct = Choice.objects.create(
-            question=question,
-            text="Правильный",
-            is_correct=True,
-            order=1,
-        )
-        Choice.objects.create(
-            question=question,
-            text="Неверный",
-            is_correct=False,
-            order=2,
-        )
+        version = quiz.versions.get()
+        question = version.questions.get()
+        correct = question.choices.get(is_correct=True)
         if fail_after == "quiz":
             raise RuntimeError("Управляемый отказ после создания части графа викторины.")
-        session = LiveSession.objects.create(quiz=quiz, created_by=owner)
+        session = create_live_session(quiz_id=quiz.pk, actor=owner)
         session_uuid = str(session.join_token)
         port = helpers["reserve_ports"](1)[0]
         process = subprocess.Popen(

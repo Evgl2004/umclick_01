@@ -31,10 +31,32 @@ def validate_quiz_data(data):
 
 
 def quiz_data(quiz):
-    return dict(title=quiz.title, reading_time_sec=quiz.reading_time_sec, results_time_sec=quiz.results_time_sec,
-                questions=[dict(id=q.pk, text=q.text, time_limit_sec=q.time_limit_sec,
-                                choices=list(q.choices.values('id', 'text', 'is_correct')))
-                           for q in quiz.questions.all()])
+    return dict(
+        title=quiz.title,
+        description=quiz.description,
+        question_only_on_display=quiz.question_only_on_display,
+        show_choices_on_participant=quiz.show_choices_on_participant,
+        reading_time_sec=quiz.reading_time_sec,
+        results_time_sec=quiz.results_time_sec,
+        questions=[
+            dict(
+                id=question.pk,
+                text=question.text,
+                order=question.order,
+                time_limit_sec=question.time_limit_sec,
+                choices=[
+                    dict(
+                        id=choice.pk,
+                        text=choice.text,
+                        is_correct=choice.is_correct,
+                        order=choice.order,
+                    )
+                    for choice in question.choices.all()
+                ],
+            )
+            for question in quiz.questions.all()
+        ],
+    )
 
 
 def validate_quiz_instance(quiz):

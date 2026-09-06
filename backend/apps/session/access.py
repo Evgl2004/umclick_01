@@ -84,14 +84,16 @@ def scoped_session(request, session_uuid, kind):
             'Токен не предназначен для этой операции.',
             'access_scope_mismatch',
         )
-    session = LiveSession.objects.select_related('quiz', 'current_question').filter(join_token=session_uuid, pk=access.session_id).first()
+    session = LiveSession.objects.select_related(
+        'quiz_version', 'quiz_version__quiz', 'current_question'
+    ).filter(join_token=session_uuid, pk=access.session_id).first()
     if session is None:
         raise NotFound('Сессия недоступна.')
     return session
 
 
 def resolve_join_session(*, pin=None, join_token=None):
-    queryset = LiveSession.objects.select_related('quiz')
+    queryset = LiveSession.objects.select_related('quiz_version', 'quiz_version__quiz')
     if join_token:
         queryset = queryset.filter(join_token=join_token)
     else:
