@@ -19,6 +19,7 @@ TARGET_TABLES = (
     "session_participant",
     "quiz_choice",
     "quiz_question",
+    "quiz_quizversion",
     "quiz_quiz",
 )
 PRESERVED_TABLES = (

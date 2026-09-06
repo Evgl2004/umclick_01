@@ -44,6 +44,13 @@ class LiveSessionAdmin(HistoryAdmin):
     list_filter = ("status", "phase", "created_at")
     search_fields = ("pin", "quiz__title", "host_name")
 
+    def get_fields(self, request, obj=None):
+        return [
+            field_name
+            for field_name in super().get_fields(request, obj)
+            if field_name != 'quiz_version'
+        ]
+
 
 @admin.register(Participant)
 class ParticipantAdmin(admin.ModelAdmin):

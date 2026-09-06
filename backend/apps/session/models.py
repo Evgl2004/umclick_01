@@ -6,7 +6,7 @@ from django.db import IntegrityError, models, transaction
 from datetime import timedelta
 from django.utils import timezone
 
-from apps.quiz.models import Choice, Question, Quiz
+from apps.quiz.models import Choice, Question, Quiz, QuizVersion
 from apps.core.protection import GuardedModel, HistoryConflict
 
 
@@ -52,6 +52,14 @@ class LiveSession(GuardedModel):
     ]
 
     quiz = models.ForeignKey(Quiz, related_name="sessions", on_delete=models.PROTECT)
+    quiz_version = models.ForeignKey(
+        QuizVersion,
+        related_name='sessions',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        editable=False,
+    )
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='created_sessions', on_delete=models.PROTECT, verbose_name='Создатель')
     host_name = models.CharField(max_length=255, blank=True)
     pin = models.CharField(max_length=6, db_index=True)

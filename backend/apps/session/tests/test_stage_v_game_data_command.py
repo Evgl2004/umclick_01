@@ -8,8 +8,9 @@ from django.core.management.base import CommandError
 from django.db import connection
 from django.test import TransactionTestCase
 
-from django.contrib.auth import get_user_model
+from django.contrib.auth import authenticate, get_user_model
 
+from apps.quiz.models import QuizVersion
 from apps.session.models import LiveSession
 from apps.session.tests.helpers import game, teacher
 
@@ -20,6 +21,13 @@ class StageVGameDataCommandTests(TransactionTestCase):
     def setUp(self):
         self.owner = teacher("stage-v-cleanup-owner")
         self.game = game(self.owner, active=True)
+        self.version = QuizVersion.objects.create(
+            quiz=self.game.quiz,
+            number=1,
+            title='Синтетическая версия для проверки очистки',
+        )
+        self.password_hash = self.owner.password
+        self.group_names = set(self.owner.groups.values_list('name', flat=True))
         with connection.cursor() as cursor:
             cursor.execute("SELECT current_database(), current_user, inet_server_port()")
             self.database_name, self.role_name, port = cursor.fetchone()
@@ -63,6 +71,8 @@ class StageVGameDataCommandTests(TransactionTestCase):
             hashlib.sha256(fingerprint_source.encode("utf-8")).hexdigest()[:16],
         )
         self.assertTrue(LiveSession.objects.filter(pk=self.game.session.pk).exists())
+        self.assertEqual(payload['before']['game_data']['quiz_quizversion'], 1)
+        self.assertTrue(QuizVersion.objects.filter(pk=self.version.pk).exists())
 
     def test_rollback_test_executes_same_delete_set_without_changes(self):
         output = io.StringIO()
@@ -80,7 +90,9 @@ class StageVGameDataCommandTests(TransactionTestCase):
         self.assertEqual(payload["transaction"], "rolled_back")
         self.assertEqual(payload["before"], payload["after"])
         self.assertGreater(payload["deleted"]["session_livesession"], 0)
+        self.assertEqual(payload['deleted']['quiz_quizversion'], 1)
         self.assertTrue(LiveSession.objects.filter(pk=self.game.session.pk).exists())
+        self.assertTrue(QuizVersion.objects.filter(pk=self.version.pk).exists())
 
     @patch.dict("os.environ", {"UMCLICK_ALLOW_GAME_DATA_CLEANUP": ""}, clear=False)
     def test_apply_requires_environment_guard_before_delete(self):
@@ -213,4 +225,17 @@ class StageVGameDataCommandTests(TransactionTestCase):
         payload = json.loads(output.getvalue())
         self.assertEqual(payload["transaction"], "committed")
         self.assertFalse(LiveSession.objects.filter(pk=self.game.session.pk).exists())
-        self.assertTrue(get_user_model().objects.filter(pk=self.owner.pk).exists())
+        self.assertFalse(QuizVersion.objects.filter(pk=self.version.pk).exists())
+        self.assertEqual(payload['deleted']['quiz_quizversion'], 1)
+        owner = get_user_model().objects.get(pk=self.owner.pk)
+        self.assertEqual(owner.password, self.password_hash)
+        self.assertEqual(
+            set(owner.groups.values_list('name', flat=True)),
+            self.group_names,
+        )
+        self.assertIsNotNone(
+            authenticate(
+                username='stage-v-cleanup-owner',
+                password='test-password-123',
+            )
+        )

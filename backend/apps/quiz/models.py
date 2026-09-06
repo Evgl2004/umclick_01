@@ -15,6 +15,8 @@ class Quiz(GuardedModel):
     show_choices_on_participant = models.BooleanField(default=True)
     reading_time_sec = models.PositiveIntegerField(default=15)
     results_time_sec = models.PositiveIntegerField(default=10)
+    archived_at = models.DateTimeField(null=True, blank=True, editable=False)
+    content_revision = models.PositiveBigIntegerField(default=1, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -37,8 +39,73 @@ class Quiz(GuardedModel):
             return super().save(*args, **kwargs)
 
 
+class QuizVersion(GuardedModel):
+    STATUS_DRAFT = 'draft'
+    STATUS_FIXED = 'fixed'
+
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, 'Черновик'),
+        (STATUS_FIXED, 'Зафиксированная версия'),
+    ]
+
+    quiz = models.ForeignKey(
+        Quiz,
+        related_name='versions',
+        on_delete=models.CASCADE,
+    )
+    number = models.PositiveIntegerField()
+    status = models.CharField(
+        max_length=16,
+        choices=STATUS_CHOICES,
+        default=STATUS_DRAFT,
+    )
+    fixed_at = models.DateTimeField(null=True, blank=True)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    question_only_on_display = models.BooleanField(default=False)
+    show_choices_on_participant = models.BooleanField(default=True)
+    reading_time_sec = models.PositiveIntegerField(default=15)
+    results_time_sec = models.PositiveIntegerField(default=10)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['number', 'id']
+        verbose_name = 'версия викторины'
+        verbose_name_plural = 'версии викторин'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['quiz', 'number'],
+                name='uniq_quiz_version_number',
+            ),
+            models.UniqueConstraint(
+                fields=['quiz'],
+                condition=models.Q(status='draft'),
+                name='uniq_quiz_draft_version',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(status='draft', fixed_at__isnull=True)
+                    | models.Q(status='fixed', fixed_at__isnull=False)
+                ),
+                name='quiz_version_status_fixed_at',
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.quiz_id}:{self.number}:{self.status}'
+
+
 class Question(GuardedModel):
     quiz = models.ForeignKey(Quiz, related_name="questions", on_delete=models.CASCADE)
+    quiz_version = models.ForeignKey(
+        QuizVersion,
+        related_name='questions',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        editable=False,
+    )
     text = models.TextField()
     order = models.PositiveIntegerField(default=1)
     time_limit_sec = models.PositiveIntegerField(default=20)

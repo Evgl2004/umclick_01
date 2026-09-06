@@ -3,14 +3,14 @@ from datetime import timedelta
 from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.contrib.admin.sites import site
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models.deletion import ProtectedError
 from django.test import RequestFactory
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from apps.core.protection import HistoryConflict
-from apps.quiz.models import Quiz, Question, Choice
+from apps.quiz.models import Choice, Question, Quiz, QuizVersion
 from apps.session.access import issue_secret
 from apps.session.models import LegacyParticipantAnswer, LiveSession, Participant, SessionParticipant, SessionDisplayAccess
 
@@ -47,6 +47,9 @@ class StageAAccessTests(APITestCase):
         payload = quiz_payload()
         created = self.client.post('/api/quizzes/', payload, format='json')
         self.assertEqual(created.status_code, 201, created.data)
+        self.assertNotIn('archived_at', created.data)
+        self.assertNotIn('content_revision', created.data)
+        self.assertFalse(QuizVersion.objects.exists())
         qid = created.data['id']
         original = deepcopy(created.data)
         broken = deepcopy(original)
@@ -58,6 +61,44 @@ class StageAAccessTests(APITestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['questions'][0]['time_limit_sec'], 20)
         self.assertEqual(len(response.data['questions'][0]['choices']), 2)
+        self.assertFalse(QuizVersion.objects.exists())
+
+    def test_prepared_version_constraints_do_not_change_the_api_contract(self):
+        content = quiz(self.owner)
+        first = QuizVersion.objects.create(
+            quiz=content,
+            number=1,
+            title='Подготовленный черновик',
+        )
+
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            QuizVersion.objects.create(
+                quiz=content,
+                number=2,
+                title='Второй черновик',
+            )
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            QuizVersion.objects.create(
+                quiz=content,
+                number=1,
+                status=QuizVersion.STATUS_FIXED,
+                fixed_at=timezone.now(),
+                title='Повтор номера',
+            )
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            QuizVersion.objects.create(
+                quiz=content,
+                number=3,
+                status=QuizVersion.STATUS_FIXED,
+                title='Фиксация без времени',
+            )
+
+        response = self.client.get(f'/api/quizzes/{content.pk}/')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertNotIn('archived_at', response.data)
+        self.assertNotIn('content_revision', response.data)
+        self.assertNotIn('versions', response.data)
+        self.assertEqual(QuizVersion.objects.get(pk=first.pk).status, 'draft')
 
     def test_validation_boundaries_and_array_order(self):
         for field, invalid in [('reading_time_sec', [2, 121]), ('results_time_sec', [2, 61])]:
@@ -430,6 +471,7 @@ class HistoryProtectionTests(APITestCase):
         link.save()
 
         self.assertTrue(LiveSession.objects.filter(pk=session.pk).exists())
+        self.assertIsNone(session.quiz_version_id)
         self.assertTrue(SessionParticipant.objects.filter(pk=link.pk).exists())
 
     def test_allowed_unfinished_session_transitions_still_work(self):
@@ -466,6 +508,28 @@ class HistoryProtectionTests(APITestCase):
         allowed_update.save()
         access.refresh_from_db()
         self.assertEqual(access.revoked_at, allowed_update.revoked_at)
+
+    def test_live_session_admin_hides_prepared_version_and_preserves_history_rules(self):
+        g = game(self.owner)
+        administrator = get_user_model().objects.create_superuser(
+            username='admin',
+            password='test-password-123',
+        )
+        request = RequestFactory().get('/admin/')
+        request.user = administrator
+        model_admin = site._registry[LiveSession]
+        expected_fields = [
+            field.name
+            for field in LiveSession._meta.fields
+            if field.name != 'quiz_version'
+        ]
+
+        self.assertEqual(model_admin.get_fields(request, g.session), expected_fields)
+        self.assertEqual(model_admin.get_readonly_fields(request, g.session), expected_fields)
+        self.assertNotIn('quiz_version', model_admin.list_display)
+        self.assertFalse(model_admin.has_add_permission(request))
+        self.assertFalse(model_admin.has_change_permission(request, g.session))
+        self.assertFalse(model_admin.has_delete_permission(request, g.session))
 
     def test_administrator_forms_and_bulk_operations_do_not_bypass(self):
         g = game(self.owner)
