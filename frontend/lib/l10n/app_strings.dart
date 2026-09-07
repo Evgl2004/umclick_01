@@ -48,6 +48,11 @@ enum AppText {
   newDraftButton,
   refreshQuizzesButton,
   deleteSelectedButton,
+  workingQuizzesTab,
+  archivedQuizzesTab,
+  archiveSelectedButton,
+  restoreSelectedButton,
+  archivedQuizReadOnlyNotice,
   quizTitleLabel,
   quizDescriptionOptionalLabel,
   questionNumber,
@@ -242,6 +247,11 @@ enum AppText {
   apiCreateQuizFailed,
   apiUpdateQuizFailed,
   quizRevisionConflict,
+  quizOpenSessionConflict,
+  quizHistoryProtected,
+  quizArchivedConflict,
+  apiArchiveQuizFailed,
+  apiRestoreQuizFailed,
   apiDeleteQuizFailed,
   apiCreateSessionFailed,
   apiFetchSessionDetailsFailed,
@@ -381,7 +391,17 @@ const _strings = <AppText, LocalizedString>{
   AppText.refreshQuizzesButton:
       LocalizedString(ru: 'Обновить список', en: 'Refresh quizzes'),
   AppText.deleteSelectedButton:
-      LocalizedString(ru: 'Удалить выбранную', en: 'Delete selected'),
+      LocalizedString(ru: 'Удалить навсегда', en: 'Delete permanently'),
+  AppText.workingQuizzesTab: LocalizedString(ru: 'Рабочие', en: 'Working'),
+  AppText.archivedQuizzesTab: LocalizedString(ru: 'Архив', en: 'Archive'),
+  AppText.archiveSelectedButton:
+      LocalizedString(ru: 'Архивировать', en: 'Archive quiz'),
+  AppText.restoreSelectedButton:
+      LocalizedString(ru: 'Восстановить', en: 'Restore'),
+  AppText.archivedQuizReadOnlyNotice: LocalizedString(
+    ru: 'Архивная викторина доступна только для просмотра.',
+    en: 'Archived quizzes are read-only.',
+  ),
   AppText.quizTitleLabel:
       LocalizedString(ru: 'Название викторины', en: 'Quiz title'),
   AppText.quizDescriptionOptionalLabel: LocalizedString(
@@ -1001,6 +1021,26 @@ const _strings = <AppText, LocalizedString>{
   AppText.quizRevisionConflict: LocalizedString(
     ru: 'Викторина уже изменена. Обновите список осознанно; текущая форма сохранена.',
     en: 'The quiz has changed. Refresh deliberately; your current form was kept.',
+  ),
+  AppText.quizOpenSessionConflict: LocalizedString(
+    ru: 'Сначала завершите или остановите открытую сессию',
+    en: 'Finish or stop the open session first.',
+  ),
+  AppText.quizHistoryProtected: LocalizedString(
+    ru: 'Использованную викторину нельзя удалить; переместите её в архив.',
+    en: 'A used quiz cannot be deleted; move it to the archive.',
+  ),
+  AppText.quizArchivedConflict: LocalizedString(
+    ru: 'Архивную викторину нельзя изменить или запустить.',
+    en: 'An archived quiz cannot be edited or started.',
+  ),
+  AppText.apiArchiveQuizFailed: LocalizedString(
+    ru: 'Не удалось архивировать викторину.',
+    en: 'Failed to archive quiz.',
+  ),
+  AppText.apiRestoreQuizFailed: LocalizedString(
+    ru: 'Не удалось восстановить викторину.',
+    en: 'Failed to restore quiz.',
   ),
   AppText.apiDeleteQuizFailed: LocalizedString(
     ru: 'Не удалось удалить викторину.',

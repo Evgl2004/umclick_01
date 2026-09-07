@@ -160,6 +160,58 @@ void main() {
       expect(requests.last.headers['Authorization'], 'Bearer account-token');
     });
 
+    test('использует фильтр архива и действия карточки без раскрытия версий',
+        () async {
+      final requests = <http.Request>[];
+      final transport = MockClient((request) async {
+        requests.add(request);
+        if (request.method == 'GET') {
+          return http.Response('[]', 200);
+        }
+        if (request.method == 'DELETE') {
+          return http.Response('', 204);
+        }
+        return http.Response(
+          '{"id":7,"archived_at":null,"can_delete":true}',
+          200,
+        );
+      });
+      final client = ApiClient(
+        'https://umclick.example/api',
+        accessToken: 'account-token',
+        httpClient: transport,
+      );
+
+      await client.getQuizzes();
+      await client.getQuizzes(archived: true);
+      await client.archiveQuiz(7);
+      await client.restoreQuiz(7);
+      await client.deleteQuiz(7);
+
+      expect(requests.map((request) => request.method), [
+        'GET',
+        'GET',
+        'POST',
+        'POST',
+        'DELETE',
+      ]);
+      expect(requests.map((request) => request.url.path), [
+        '/api/quizzes/',
+        '/api/quizzes/',
+        '/api/quizzes/7/archive/',
+        '/api/quizzes/7/restore/',
+        '/api/quizzes/7/',
+      ]);
+      expect(requests[0].url.queryParameters, isEmpty);
+      expect(requests[1].url.queryParameters, {'archived': 'true'});
+      expect(requests[2].body, isEmpty);
+      expect(requests[3].body, isEmpty);
+      expect(
+        requests.map((request) => request.headers['Authorization']).toSet(),
+        {'Bearer account-token'},
+      );
+    });
+
     test('creates Display access on UUID route with Bearer token', () async {
       late http.Request captured;
       final transport = MockClient((request) async {

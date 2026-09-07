@@ -49,7 +49,8 @@ class StageAAccessTests(APITestCase):
         payload = quiz_payload()
         created = self.client.post('/api/quizzes/', payload, format='json')
         self.assertEqual(created.status_code, 201, created.data)
-        self.assertNotIn('archived_at', created.data)
+        self.assertIsNone(created.data['archived_at'])
+        self.assertTrue(created.data['can_delete'])
         self.assertEqual(created.data['content_revision'], 1)
         self.assertEqual(QuizVersion.objects.count(), 1)
         qid = created.data['id']
@@ -98,7 +99,8 @@ class StageAAccessTests(APITestCase):
 
         response = self.client.get(f'/api/quizzes/{content.pk}/')
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertNotIn('archived_at', response.data)
+        self.assertIsNone(response.data['archived_at'])
+        self.assertTrue(response.data['can_delete'])
         self.assertEqual(response.data['content_revision'], 1)
         self.assertNotIn('versions', response.data)
         self.assertEqual(QuizVersion.objects.get(pk=first.pk).status, 'draft')
@@ -556,6 +558,13 @@ class HistoryProtectionTests(APITestCase):
             self.assertFalse(model_admin.has_change_permission(request, obj))
             path = f'/admin/{obj._meta.app_label}/{obj._meta.model_name}/{obj.pk}/change/'
             self.assertIn(self.client.post(path, {'text': 'Подмена', 'title': 'Подмена'}).status_code, (403, 409))
-        bulk = self.client.post('/admin/quiz/quiz/', {'action': 'delete_selected', '_selected_action': [g.quiz.pk], 'post': 'yes'})
-        self.assertIn(bulk.status_code, (200, 403, 409))
+        quiz_admin = site._registry[Quiz]
+        request = RequestFactory().get('/admin/')
+        request.user = admin
+        self.assertNotIn('delete_selected', quiz_admin.get_actions(request))
+        bulk = self.client.post('/admin/quiz/quiz/', {
+            'action': 'delete_unused_selected',
+            '_selected_action': [g.quiz.pk],
+        })
+        self.assertEqual(bulk.status_code, 302)
         self.assertTrue(Quiz.objects.filter(pk=g.quiz.pk).exists())

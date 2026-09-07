@@ -10,9 +10,16 @@ from django.test import TransactionTestCase
 from rest_framework.test import APIClient
 
 from apps.core.protection import HistoryConflict
-from apps.core.errors import Conflict, QuizRevisionConflict
+from apps.core.errors import (
+    Conflict,
+    QuizArchivedConflict,
+    QuizHistoryProtected,
+    QuizNotFound,
+    QuizOpenSessionConflict,
+    QuizRevisionConflict,
+)
 from apps.quiz.models import Quiz
-from apps.quiz.services import save_quiz_content
+from apps.quiz.services import archive_quiz, delete_quiz, restore_quiz, save_quiz_content
 from apps.session.advance import advance_session_if_due
 from apps.session.gameplay import database_now, execute_manual_command, record_answer_attempt
 from apps.session.models import (
@@ -42,8 +49,20 @@ class PostgreSQLConcurrencyTests(TransactionTestCase):
             ready.set()
             try:
                 return operation()
-            except (HistoryConflict, Quiz.DoesNotExist, QuizRevisionConflict) as exc:
+            except (HistoryConflict, QuizNotFound, Conflict) as exc:
                 return type(exc)
+        finally:
+            connections.close_all()
+
+    def http_result(self, operation):
+        connections.close_all()
+        try:
+            client = APIClient()
+            client.force_authenticate(self.owner)
+            try:
+                return operation(client)
+            except Exception as exc:  # Результат до исправления нужен утверждению теста.
+                return exc
         finally:
             connections.close_all()
 
@@ -184,25 +203,205 @@ class PostgreSQLConcurrencyTests(TransactionTestCase):
         ready, process = Event(), []
 
         def create():
-            return create_live_session(quiz_id=content.pk, actor=self.owner).pk
+            client = APIClient()
+            client.force_authenticate(self.owner)
+            return client.post(
+                '/api/sessions/',
+                {'quiz': content.pk},
+                format='json',
+            ).status_code
 
         with ThreadPoolExecutor(max_workers=1) as pool:
             with transaction.atomic():
-                locked = Quiz.objects.select_for_update().get(pk=content.pk)
-                locked.delete()
+                delete_quiz(quiz_id=content.pk, actor=self.owner)
                 future = pool.submit(self.worker, ready, process, create)
                 self.wait_for_lock(ready, process)
-            self.assertIs(future.result(5), Quiz.DoesNotExist)
+            self.assertEqual(future.result(5), 404)
 
         self.assertFalse(Quiz.objects.filter(pk=content.pk).exists())
         self.assertFalse(LiveSession.objects.filter(quiz_version__quiz_id=content.pk).exists())
+
+    def test_http_operations_return_404_when_quiz_disappears_after_preflight(self):
+        cases = (
+            (
+                'archive',
+                'apps.quiz.views.archive_quiz',
+                archive_quiz,
+                lambda client, quiz_id: client.post(f'/api/quizzes/{quiz_id}/archive/'),
+                None,
+            ),
+            (
+                'restore',
+                'apps.quiz.views.restore_quiz',
+                restore_quiz,
+                lambda client, quiz_id: client.post(f'/api/quizzes/{quiz_id}/restore/'),
+                archive_quiz,
+            ),
+            (
+                'destroy',
+                'apps.quiz.views.delete_quiz',
+                delete_quiz,
+                lambda client, quiz_id: client.delete(f'/api/quizzes/{quiz_id}/'),
+                None,
+            ),
+            (
+                'save',
+                'apps.quiz.serializers.save_quiz_content',
+                save_quiz_content,
+                lambda client, quiz_id: client.patch(
+                    f'/api/quizzes/{quiz_id}/',
+                    {'content_revision': 1, 'title': 'Не записывать'},
+                    format='json',
+                ),
+                None,
+            ),
+            (
+                'create_session',
+                'apps.session.services.create_live_session',
+                create_live_session,
+                lambda client, quiz_id: client.post(
+                    '/api/sessions/',
+                    {'quiz': quiz_id},
+                    format='json',
+                ),
+                None,
+            ),
+        )
+
+        for name, patch_target, operation, request, prepare in cases:
+            with self.subTest(operation=name):
+                content = quiz(self.owner, title=f'Исчезающая {name}')
+                if prepare is not None:
+                    prepare(quiz_id=content.pk, actor=self.owner)
+                preflight_done = Event()
+                allow_operation = Event()
+
+                def paused_operation(**kwargs):
+                    preflight_done.set()
+                    self.assertTrue(
+                        allow_operation.wait(5),
+                        'Не освобождён барьер после предварительного чтения.',
+                    )
+                    return operation(**kwargs)
+
+                with patch(patch_target, side_effect=paused_operation):
+                    with ThreadPoolExecutor(max_workers=1) as pool:
+                        future = pool.submit(
+                            self.http_result,
+                            lambda client: request(client, content.pk),
+                        )
+                        self.assertTrue(
+                            preflight_done.wait(5),
+                            'HTTP-обработчик не завершил предварительное чтение.',
+                        )
+                        delete_quiz(quiz_id=content.pk, actor=self.owner)
+                        allow_operation.set()
+                        result = future.result(5)
+
+                self.assertFalse(isinstance(result, Exception), repr(result))
+                self.assertEqual(result.status_code, 404, result.data)
+                self.assertEqual(
+                    result.data,
+                    {'detail': 'Викторина не найдена.'},
+                )
+
+    def test_archive_waiting_for_committed_delete_returns_http_404(self):
+        content = quiz(self.owner)
+        ready, process = Event(), []
+
+        def request_archive():
+            client = APIClient()
+            client.force_authenticate(self.owner)
+            return client.post(f'/api/quizzes/{content.pk}/archive/').status_code
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with transaction.atomic():
+                delete_quiz(quiz_id=content.pk, actor=self.owner)
+                future = pool.submit(self.worker, ready, process, request_archive)
+                self.wait_for_lock(ready, process)
+            self.assertEqual(future.result(5), 404)
+
+        self.assertFalse(Quiz.objects.filter(pk=content.pk).exists())
+
+    def test_archive_and_restore_serialize_while_concurrent_delete_waits(self):
+        for action_name, operation in (
+            ('archive', archive_quiz),
+            ('restore', restore_quiz),
+        ):
+            with self.subTest(action=action_name):
+                content = quiz(self.owner, title=f'Ответ {action_name}')
+                if action_name == 'restore':
+                    archive_quiz(quiz_id=content.pk, actor=self.owner)
+                operation_done = Event()
+                allow_response = Event()
+                delete_ready, delete_process = Event(), []
+
+                def paused_operation(**kwargs):
+                    result = operation(**kwargs)
+                    operation_done.set()
+                    self.assertTrue(
+                        allow_response.wait(5),
+                        'Не освобождён барьер формирования HTTP-ответа.',
+                    )
+                    return result
+
+                def request_action():
+                    client = APIClient()
+                    client.force_authenticate(self.owner)
+                    return client.post(
+                        f'/api/quizzes/{content.pk}/{action_name}/'
+                    )
+
+                def request_delete():
+                    client = APIClient()
+                    client.force_authenticate(self.owner)
+                    return client.delete(f'/api/quizzes/{content.pk}/')
+
+                with patch(
+                    f'apps.quiz.views.{action_name}_quiz',
+                    side_effect=paused_operation,
+                ):
+                    with ThreadPoolExecutor(max_workers=2) as pool:
+                        action_future = pool.submit(
+                            self.http_result,
+                            lambda _client: request_action(),
+                        )
+                        self.assertTrue(
+                            operation_done.wait(5),
+                            'Операция не дошла до формирования ответа.',
+                        )
+                        delete_future = pool.submit(
+                            self.worker,
+                            delete_ready,
+                            delete_process,
+                            request_delete,
+                        )
+                        try:
+                            self.wait_for_lock(delete_ready, delete_process)
+                        finally:
+                            allow_response.set()
+                        action_response = action_future.result(5)
+                        delete_response = delete_future.result(5)
+
+                self.assertFalse(
+                    isinstance(action_response, Exception),
+                    repr(action_response),
+                )
+                self.assertEqual(action_response.status_code, 200)
+                self.assertEqual(action_response.data['id'], content.pk)
+                if action_name == 'archive':
+                    self.assertIsNotNone(action_response.data['archived_at'])
+                else:
+                    self.assertIsNone(action_response.data['archived_at'])
+                self.assertEqual(delete_response.status_code, 204)
+                self.assertFalse(Quiz.objects.filter(pk=content.pk).exists())
 
     def test_session_committed_first_prevents_quiz_deletion(self):
         content = quiz(self.owner)
         ready, process = Event(), []
 
         def delete():
-            Quiz.objects.get(pk=content.pk).delete()
+            delete_quiz(quiz_id=content.pk, actor=self.owner)
             return 'deleted'
 
         with ThreadPoolExecutor(max_workers=1) as pool:
@@ -210,10 +409,150 @@ class PostgreSQLConcurrencyTests(TransactionTestCase):
                 session = create_live_session(quiz_id=content.pk, actor=self.owner)
                 future = pool.submit(self.worker, ready, process, delete)
                 self.wait_for_lock(ready, process)
-            self.assertIs(future.result(5), HistoryConflict)
+            self.assertIs(future.result(5), QuizHistoryProtected)
 
         self.assertTrue(Quiz.objects.filter(pk=content.pk).exists())
         self.assertTrue(LiveSession.objects.filter(pk=session.pk).exists())
+
+    def test_archive_committed_first_blocks_session_creation(self):
+        content = quiz(self.owner)
+        ready, process = Event(), []
+
+        def create():
+            return create_live_session(quiz_id=content.pk, actor=self.owner).pk
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with transaction.atomic():
+                archive_quiz(quiz_id=content.pk, actor=self.owner)
+                future = pool.submit(self.worker, ready, process, create)
+                self.wait_for_lock(ready, process)
+            self.assertIs(future.result(5), QuizArchivedConflict)
+
+        content.refresh_from_db()
+        self.assertIsNotNone(content.archived_at)
+        self.assertFalse(LiveSession.objects.filter(quiz_version__quiz=content).exists())
+
+    def test_session_committed_first_blocks_archive(self):
+        content = quiz(self.owner)
+        ready, process = Event(), []
+
+        def archive():
+            archive_quiz(quiz_id=content.pk, actor=self.owner)
+            return 'archived'
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with transaction.atomic():
+                session = create_live_session(quiz_id=content.pk, actor=self.owner)
+                future = pool.submit(self.worker, ready, process, archive)
+                self.wait_for_lock(ready, process)
+            self.assertIs(future.result(5), QuizOpenSessionConflict)
+
+        content.refresh_from_db()
+        self.assertIsNone(content.archived_at)
+        self.assertTrue(LiveSession.objects.filter(pk=session.pk).exists())
+
+    def test_archive_committed_first_blocks_save(self):
+        content = quiz(self.owner)
+        ready, process = Event(), []
+
+        def save():
+            return save_quiz_content(
+                quiz_id=content.pk,
+                actor=self.owner,
+                expected_revision=1,
+                data={'title': 'Не записывать'},
+            ).pk
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with transaction.atomic():
+                archive_quiz(quiz_id=content.pk, actor=self.owner)
+                future = pool.submit(self.worker, ready, process, save)
+                self.wait_for_lock(ready, process)
+            self.assertIs(future.result(5), QuizArchivedConflict)
+
+        content.refresh_from_db()
+        self.assertEqual(content.content_revision, 1)
+        self.assertEqual(content.versions.get().title, 'Проверочная викторина')
+
+    def test_save_committed_first_is_visible_to_archive(self):
+        content = quiz(self.owner)
+        ready, process = Event(), []
+
+        def archive():
+            return archive_quiz(quiz_id=content.pk, actor=self.owner).pk
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with transaction.atomic():
+                save_quiz_content(
+                    quiz_id=content.pk,
+                    actor=self.owner,
+                    expected_revision=1,
+                    data={'title': 'Сохранено до архива'},
+                )
+                future = pool.submit(self.worker, ready, process, archive)
+                self.wait_for_lock(ready, process)
+            self.assertEqual(future.result(5), content.pk)
+
+        content.refresh_from_db()
+        self.assertIsNotNone(content.archived_at)
+        self.assertEqual(content.content_revision, 2)
+        self.assertEqual(content.versions.get().title, 'Сохранено до архива')
+
+    def test_finish_lock_committed_first_allows_archive_after_wait(self):
+        content = quiz(self.owner)
+        session = create_live_session(quiz_id=content.pk, actor=self.owner)
+        ready, process = Event(), []
+
+        def archive():
+            return archive_quiz(quiz_id=content.pk, actor=self.owner).pk
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with transaction.atomic():
+                locked = LiveSession.objects.select_for_update().get(pk=session.pk)
+                locked.status = LiveSession.STATUS_ABORTED
+                locked.save(update_fields=['status'])
+                future = pool.submit(self.worker, ready, process, archive)
+                self.wait_for_lock(ready, process)
+            self.assertEqual(future.result(5), content.pk)
+
+        content.refresh_from_db()
+        session.refresh_from_db()
+        self.assertIsNotNone(content.archived_at)
+        self.assertEqual(session.status, LiveSession.STATUS_ABORTED)
+
+    def test_archive_quiz_lock_first_reads_finish_committed_before_session_check(self):
+        content = quiz(self.owner)
+        session = create_live_session(quiz_id=content.pk, actor=self.owner)
+        quiz_locked = Event()
+        allow_session_check = Event()
+        ready, process = Event(), []
+
+        def hold_after_quiz_lock():
+            quiz_locked.set()
+            self.assertTrue(
+                allow_session_check.wait(5),
+                'Не освобождён барьер проверки сессий после блокировки карточки.',
+            )
+
+        def archive():
+            with patch(
+                'apps.quiz.services._archive_quiz_lock_barrier',
+                side_effect=hold_after_quiz_lock,
+            ):
+                return archive_quiz(quiz_id=content.pk, actor=self.owner).pk
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(self.worker, ready, process, archive)
+            self.assertTrue(quiz_locked.wait(5), 'Архив не заблокировал карточку.')
+            session.status = LiveSession.STATUS_FINISHED
+            session.save(update_fields=['status'])
+            allow_session_check.set()
+            self.assertEqual(future.result(5), content.pk)
+
+        content.refresh_from_db()
+        session.refresh_from_db()
+        self.assertIsNotNone(content.archived_at)
+        self.assertEqual(session.status, LiveSession.STATUS_FINISHED)
 
     def test_concurrent_pin_collision_retries_after_transaction_overlap(self):
         first, second = quiz(self.owner), quiz(self.owner)

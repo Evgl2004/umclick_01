@@ -86,10 +86,12 @@ class _TeacherPanelState extends State<TeacherPanel> {
   final List<QuizDraftQuestion> _draftQuestions = [];
   int? _editingQuizId;
   int? _editingQuizRevision;
+  bool _editingQuizArchived = false;
 
   List<dynamic> _quizzes = [];
   List<dynamic> _sessionHistory = [];
   int? _selectedQuizId;
+  bool _archiveMode = false;
   Map<String, dynamic>? _session;
   Map<String, dynamic>? _teacher;
   Map<String, dynamic>? _activeQuestion;
@@ -180,6 +182,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       _disposeQuizDraft();
       _editingQuizId = null;
       _editingQuizRevision = null;
+      _editingQuizArchived = false;
       _quizTitleController.clear();
       _quizDescriptionController.clear();
       _readingTimeController.text = '15';
@@ -214,6 +217,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       final draft = _quizDraftMapper.fromMap(quiz);
       _editingQuizId = draft.quizId;
       _editingQuizRevision = draft.contentRevision;
+      _editingQuizArchived = quiz['archived_at'] != null;
       if (_editingQuizId != null) {
         _selectedQuizId = _editingQuizId;
       }
@@ -372,6 +376,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
           _quizzes = [];
           _sessionHistory = [];
           _selectedQuizId = null;
+          _archiveMode = false;
           _restoringSession = false;
         });
       }
@@ -682,6 +687,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   Future<void> _refreshQuizzes({
     int? selectQuizId,
     bool reportError = true,
+    bool? archiveMode,
   }) async {
     if (!_isLoggedIn) {
       setState(() {
@@ -696,7 +702,10 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
 
     try {
-      final quizzes = await _runTeacherRequest((client) => client.getQuizzes());
+      final targetArchiveMode = archiveMode ?? _archiveMode;
+      final quizzes = await _runTeacherRequest(
+        (client) => client.getQuizzes(archived: targetArchiveMode),
+      );
       final preferredQuizId = selectQuizId ?? _selectedQuizId;
 
       int? nextSelectedQuizId;
@@ -712,6 +721,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       setState(() {
         _quizzes = quizzes;
         _selectedQuizId = nextSelectedQuizId;
+        _archiveMode = targetArchiveMode;
       });
     } catch (e) {
       if (!reportError) {
@@ -729,6 +739,11 @@ class _TeacherPanelState extends State<TeacherPanel> {
         });
       }
     }
+  }
+
+  Future<void> _setQuizArchiveMode(bool archiveMode) async {
+    if (archiveMode == _archiveMode) return;
+    await _refreshQuizzes(archiveMode: archiveMode);
   }
 
   Future<void> _refreshSessionHistory() async {
@@ -749,6 +764,9 @@ class _TeacherPanelState extends State<TeacherPanel> {
   }
 
   Future<void> _saveQuizDraft() async {
+    if (_archiveMode || _editingQuizArchived) {
+      return;
+    }
     if (!_isLoggedIn) {
       setState(() {
         _error = appText(AppText.teacherLoginRequiredError);
@@ -835,6 +853,74 @@ class _TeacherPanelState extends State<TeacherPanel> {
     }
   }
 
+  void _removeQuizFromCurrentList(int quizId) {
+    final wasEditingRemovedQuiz = _editingQuizId == quizId;
+    setState(() {
+      _quizzes = _quizzes.where((rawQuiz) {
+        return asInt(mapOrNull(rawQuiz)?['id'], -1) != quizId;
+      }).toList(growable: false);
+      _selectedQuizId =
+          _quizzes.isEmpty ? null : asInt(mapOrNull(_quizzes.first)?['id'], 0);
+    });
+    if (wasEditingRemovedQuiz) {
+      _resetQuizDraft();
+    }
+  }
+
+  Future<void> _archiveSelectedQuiz() async {
+    final quizId = _selectedQuizId;
+    if (quizId == null || !_isLoggedIn || _archiveMode) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await _runTeacherRequest((client) => client.archiveQuiz(quizId));
+      _removeQuizFromCurrentList(quizId);
+      _appendEvent('Викторина №$quizId перемещена в архив.');
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = userErrorText(e);
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _restoreSelectedQuiz() async {
+    final quizId = _selectedQuizId;
+    if (quizId == null || !_isLoggedIn || !_archiveMode) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await _runTeacherRequest((client) => client.restoreQuiz(quizId));
+      _removeQuizFromCurrentList(quizId);
+      _appendEvent('Викторина №$quizId восстановлена из архива.');
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = userErrorText(e);
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
   Future<void> _deleteSelectedQuiz() async {
     final quizId = _selectedQuizId;
     if (quizId == null || !_isLoggedIn) {
@@ -877,11 +963,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
     try {
       await _runTeacherRequest((client) => client.deleteQuiz(quizId));
-      final wasEditingDeletedQuiz = _editingQuizId == quizId;
-      await _refreshQuizzes();
-      if (wasEditingDeletedQuiz) {
-        _resetQuizDraft();
-      }
+      _removeQuizFromCurrentList(quizId);
       _appendEvent('Quiz #$quizId deleted.');
     } catch (e) {
       setState(() {
@@ -897,7 +979,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   }
 
   Future<void> _createSession() async {
-    if (!_isLoggedIn || _selectedQuizId == null) return;
+    if (!_isLoggedIn || _selectedQuizId == null || _archiveMode) return;
 
     setState(() {
       _loading = true;
@@ -1469,6 +1551,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
       _quizzes = [];
       _sessionHistory = [];
       _selectedQuizId = null;
+      _archiveMode = false;
       _session = null;
       _activeQuestion = null;
       _revealPayload = null;
@@ -1546,6 +1629,10 @@ class _TeacherPanelState extends State<TeacherPanel> {
                         quizzes: _quizzes,
                         selectedQuizId: _selectedQuizId,
                         editingQuizId: _editingQuizId,
+                        archiveMode: _archiveMode,
+                        quizFormReadOnly: _archiveMode || _editingQuizArchived,
+                        canDeleteSelectedQuiz: _selectedQuizId != null &&
+                            _quizById(_selectedQuizId!)?['can_delete'] == true,
                         loading: _loading,
                         isLoggedIn: _isLoggedIn,
                         titleController: _quizTitleController,
@@ -1564,10 +1651,13 @@ class _TeacherPanelState extends State<TeacherPanel> {
                             _selectedQuizId = value;
                           });
                         },
+                        onArchiveModeChanged: _setQuizArchiveMode,
                         onLoadSelectedQuiz: _loadSelectedQuizIntoDraft,
                         onSaveQuiz: _saveQuizDraft,
                         onResetDraft: () => _resetQuizDraft(),
                         onRefreshQuizzes: () => _refreshQuizzes(),
+                        onArchiveSelectedQuiz: _archiveSelectedQuiz,
+                        onRestoreSelectedQuiz: _restoreSelectedQuiz,
                         onDeleteSelectedQuiz: _deleteSelectedQuiz,
                         onRemoveQuestion: _removeDraftQuestion,
                         onSetCorrectChoice: _setDraftCorrectChoice,
@@ -1579,7 +1669,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
                       TeacherSessionSetupCard(
                         loading: _loading,
                         isLoggedIn: _isLoggedIn,
-                        selectedQuizId: _selectedQuizId,
+                        selectedQuizId: _archiveMode ? null : _selectedQuizId,
                         onCreateSession: _createSession,
                       ),
                       if (_session != null) ...[

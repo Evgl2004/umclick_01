@@ -18,6 +18,7 @@ class TeacherQuizQuestionCard extends StatelessWidget {
     required this.question,
     required this.questionIndex,
     required this.loading,
+    this.readOnly = false,
     required this.onRemoveQuestion,
     required this.onSetCorrectChoice,
     required this.onRemoveChoice,
@@ -27,6 +28,7 @@ class TeacherQuizQuestionCard extends StatelessWidget {
   final QuizDraftQuestion question;
   final int questionIndex;
   final bool loading;
+  final bool readOnly;
   final VoidCallback onRemoveQuestion;
   final ValueChanged<int> onSetCorrectChoice;
   final ValueChanged<int> onRemoveChoice;
@@ -34,6 +36,7 @@ class TeacherQuizQuestionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final controlsDisabled = loading || readOnly;
     final correctChoiceIndex = question.choices.indexWhere(
       (choice) => choice.isCorrect,
     );
@@ -52,7 +55,7 @@ class TeacherQuizQuestionCard extends StatelessWidget {
           children: [
             _QuestionHeader(
               questionIndex: questionIndex,
-              loading: loading,
+              loading: controlsDisabled,
               onRemoveQuestion: onRemoveQuestion,
             ),
             const SizedBox(height: 14),
@@ -61,6 +64,7 @@ class TeacherQuizQuestionCard extends StatelessWidget {
                 final compact = constraints.maxWidth < 720;
                 final questionField = TextField(
                   controller: question.textController,
+                  readOnly: readOnly,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.help_outline_rounded),
                     labelText: appText(AppText.questionTextLabel),
@@ -68,6 +72,7 @@ class TeacherQuizQuestionCard extends StatelessWidget {
                 );
                 final timeField = TextField(
                   controller: question.timeLimitController,
+                  readOnly: readOnly,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.timer_outlined),
@@ -101,7 +106,7 @@ class TeacherQuizQuestionCard extends StatelessWidget {
             RadioGroup<int>(
               groupValue: correctChoiceIndex >= 0 ? correctChoiceIndex : null,
               onChanged: (choiceIndex) {
-                if (loading || choiceIndex == null) return;
+                if (controlsDisabled || choiceIndex == null) return;
                 onSetCorrectChoice(choiceIndex);
               },
               child: Column(
@@ -117,7 +122,8 @@ class TeacherQuizQuestionCard extends StatelessWidget {
                     choice: choice,
                     color: color,
                     selected: selected,
-                    loading: loading,
+                    loading: controlsDisabled,
+                    readOnly: readOnly,
                     onRemoveChoice: () => onRemoveChoice(choiceIndex),
                   );
                 }).toList(),
@@ -127,7 +133,7 @@ class TeacherQuizQuestionCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: FilledButton.tonalIcon(
-                onPressed: loading ? null : onAddChoice,
+                onPressed: controlsDisabled ? null : onAddChoice,
                 icon: const Icon(Icons.add),
                 label: Text(appText(AppText.addChoiceButton)),
               ),
@@ -201,6 +207,7 @@ class _AnswerChoiceTile extends StatelessWidget {
     required this.color,
     required this.selected,
     required this.loading,
+    required this.readOnly,
     required this.onRemoveChoice,
   });
 
@@ -209,6 +216,7 @@ class _AnswerChoiceTile extends StatelessWidget {
   final Color color;
   final bool selected;
   final bool loading;
+  final bool readOnly;
   final VoidCallback onRemoveChoice;
 
   @override
@@ -250,6 +258,7 @@ class _AnswerChoiceTile extends StatelessWidget {
           Expanded(
             child: TextField(
               controller: choice.textController,
+              readOnly: readOnly,
               decoration: InputDecoration(
                 labelText: appText(
                   AppText.choiceNumber,

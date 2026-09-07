@@ -1,6 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db.models.deletion import ProtectedError
-from rest_framework.exceptions import APIException, AuthenticationFailed
+from rest_framework.exceptions import APIException, AuthenticationFailed, NotFound
 from rest_framework.response import Response
 
 from apps.core.protection import HistoryConflict
@@ -44,6 +44,32 @@ class QuizRevisionConflict(Conflict):
             'detail': message,
             'current_content_revision': current_revision,
         }
+
+
+class QuizArchivedConflict(Conflict):
+    """Операция записи недоступна для архивной карточки."""
+
+    default_code = 'quiz_archived'
+
+
+class QuizOpenSessionConflict(Conflict):
+    """Открытая сессия не позволяет архивировать карточку."""
+
+    default_code = 'quiz_open_session_conflict'
+    default_detail = 'Сначала завершите или остановите открытую сессию'
+
+
+class QuizHistoryProtected(Conflict):
+    """История хотя бы одной версии запрещает физическое удаление карточки."""
+
+    default_code = 'quiz_history_protected'
+    default_detail = 'Использованную викторину нельзя удалить; переместите её в архив.'
+
+
+class QuizNotFound(NotFound):
+    """Карточка исчезла до получения защищающей её блокировки."""
+
+    default_detail = 'Викторина не найдена.'
 
 
 class AccessAuthenticationFailed(AuthenticationFailed):

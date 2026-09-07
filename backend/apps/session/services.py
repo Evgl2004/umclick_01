@@ -5,11 +5,12 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
-from apps.core.errors import Conflict
+from apps.core.errors import Conflict, QuizArchivedConflict
 from apps.core.permissions import can_manage_quiz
-from apps.quiz.models import Quiz, QuizVersion
+from apps.quiz.models import QuizVersion
 from apps.quiz.services import (
     _quiz_content_write,
+    _lock_quiz_or_not_found,
     lock_relevant_versions,
     version_data,
     versions_have_equal_content,
@@ -37,11 +38,11 @@ def _live_session_creation():
 @transaction.atomic
 def create_live_session(*, quiz_id: int, actor, host_name: str = '') -> LiveSession:
     """Зафиксировать нужную версию и создать сессию одной транзакцией."""
-    quiz = Quiz.objects.select_for_update().get(pk=quiz_id)
+    quiz = _lock_quiz_or_not_found(quiz_id)
     if not can_manage_quiz(actor, quiz):
         raise PermissionDenied('Нет прав на запуск этой викторины.')
     if quiz.archived_at is not None:
-        raise Conflict('Архивную викторину нельзя запустить.')
+        raise QuizArchivedConflict('Архивную викторину нельзя запустить.')
 
     draft, latest_fixed = lock_relevant_versions(quiz)
     if draft is None and latest_fixed is None:

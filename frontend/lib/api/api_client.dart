@@ -322,9 +322,9 @@ class ApiClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  Future<List<dynamic>> getQuizzes() async {
+  Future<List<dynamic>> getQuizzes({bool archived = false}) async {
     final response = await _get(
-      _uri('/quizzes/'),
+      _uri(archived ? '/quizzes/?archived=true' : '/quizzes/'),
       headers: _headers(auth: true),
     );
     if (response.statusCode >= 400) {
@@ -366,6 +366,28 @@ class ApiClient {
     if (response.statusCode >= 400) {
       _throwError(response, 'Failed to delete quiz');
     }
+  }
+
+  Future<Map<String, dynamic>> archiveQuiz(int quizId) async {
+    final response = await _post(
+      _uri('/quizzes/$quizId/archive/'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode >= 400) {
+      _throwError(response, 'Failed to archive quiz');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> restoreQuiz(int quizId) async {
+    final response = await _post(
+      _uri('/quizzes/$quizId/restore/'),
+      headers: _headers(auth: true),
+    );
+    if (response.statusCode >= 400) {
+      _throwError(response, 'Failed to restore quiz');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> createSession(int quizId) async {

@@ -12,6 +12,9 @@ class TeacherQuizBuilderCard extends StatefulWidget {
     required this.quizzes,
     required this.selectedQuizId,
     required this.editingQuizId,
+    required this.archiveMode,
+    required this.quizFormReadOnly,
+    required this.canDeleteSelectedQuiz,
     required this.loading,
     required this.isLoggedIn,
     required this.titleController,
@@ -24,10 +27,13 @@ class TeacherQuizBuilderCard extends StatefulWidget {
     required this.onQuestionOnlyOnDisplayChanged,
     required this.onShowChoicesOnParticipantChanged,
     required this.onSelectedQuizChanged,
+    required this.onArchiveModeChanged,
     required this.onLoadSelectedQuiz,
     required this.onSaveQuiz,
     required this.onResetDraft,
     required this.onRefreshQuizzes,
+    required this.onArchiveSelectedQuiz,
+    required this.onRestoreSelectedQuiz,
     required this.onDeleteSelectedQuiz,
     required this.onRemoveQuestion,
     required this.onSetCorrectChoice,
@@ -39,6 +45,9 @@ class TeacherQuizBuilderCard extends StatefulWidget {
   final List<dynamic> quizzes;
   final int? selectedQuizId;
   final int? editingQuizId;
+  final bool archiveMode;
+  final bool quizFormReadOnly;
+  final bool canDeleteSelectedQuiz;
   final bool loading;
   final bool isLoggedIn;
   final TextEditingController titleController;
@@ -51,10 +60,13 @@ class TeacherQuizBuilderCard extends StatefulWidget {
   final ValueChanged<bool> onQuestionOnlyOnDisplayChanged;
   final ValueChanged<bool> onShowChoicesOnParticipantChanged;
   final ValueChanged<int?> onSelectedQuizChanged;
+  final ValueChanged<bool> onArchiveModeChanged;
   final VoidCallback onLoadSelectedQuiz;
   final VoidCallback onSaveQuiz;
   final VoidCallback onResetDraft;
   final VoidCallback onRefreshQuizzes;
+  final VoidCallback onArchiveSelectedQuiz;
+  final VoidCallback onRestoreSelectedQuiz;
   final VoidCallback onDeleteSelectedQuiz;
   final ValueChanged<int> onRemoveQuestion;
   final void Function(QuizDraftQuestion question, int choiceIndex)
@@ -144,6 +156,7 @@ class _TeacherQuizBuilderCardState extends State<TeacherQuizBuilderCard> {
   @override
   Widget build(BuildContext context) {
     final canUseTeacherApi = !widget.loading && widget.isLoggedIn;
+    final canEdit = canUseTeacherApi && !widget.quizFormReadOnly;
     final activeQuestionIndex = _activeQuestionIndex;
     final activeQuestion =
         widget.questions.isEmpty ? null : widget.questions[activeQuestionIndex];
@@ -160,6 +173,16 @@ class _TeacherQuizBuilderCardState extends State<TeacherQuizBuilderCard> {
             questionsCount: widget.questions.length,
           ),
           const SizedBox(height: 16),
+          _QuizListModeToggle(
+            archiveMode: widget.archiveMode,
+            loading: widget.loading,
+            onChanged: widget.onArchiveModeChanged,
+          ),
+          if (widget.quizFormReadOnly) ...[
+            const SizedBox(height: 10),
+            Text(appText(AppText.archivedQuizReadOnlyNotice)),
+          ],
+          const SizedBox(height: 12),
           _QuizSelectorRow(
             quizzes: widget.quizzes,
             selectedQuizId: widget.selectedQuizId,
@@ -171,11 +194,17 @@ class _TeacherQuizBuilderCardState extends State<TeacherQuizBuilderCard> {
           const SizedBox(height: 12),
           _BuilderActions(
             canUseTeacherApi: canUseTeacherApi,
+            canSaveQuiz: canEdit,
+            canCreateDraft: canUseTeacherApi && !widget.archiveMode,
+            archiveMode: widget.archiveMode,
             hasSelectedQuiz: widget.selectedQuizId != null,
+            canDeleteSelectedQuiz: widget.canDeleteSelectedQuiz,
             editingQuizId: widget.editingQuizId,
             onSaveQuiz: widget.onSaveQuiz,
             onResetDraft: widget.onResetDraft,
             onRefreshQuizzes: widget.onRefreshQuizzes,
+            onArchiveSelectedQuiz: widget.onArchiveSelectedQuiz,
+            onRestoreSelectedQuiz: widget.onRestoreSelectedQuiz,
             onDeleteSelectedQuiz: widget.onDeleteSelectedQuiz,
           ),
           const SizedBox(height: 16),
@@ -186,7 +215,7 @@ class _TeacherQuizBuilderCardState extends State<TeacherQuizBuilderCard> {
                 questions: widget.questions,
                 selectedQuestionIndex: activeQuestionIndex,
                 onSelectQuestion: _selectQuestion,
-                onAddQuestion: canUseTeacherApi ? _addQuestionAndSelect : null,
+                onAddQuestion: canEdit ? _addQuestionAndSelect : null,
               );
               final editor = _QuizEditor(
                 titleController: widget.titleController,
@@ -198,6 +227,7 @@ class _TeacherQuizBuilderCardState extends State<TeacherQuizBuilderCard> {
                 question: activeQuestion,
                 questionIndex: activeQuestionIndex,
                 loading: widget.loading,
+                readOnly: widget.quizFormReadOnly,
                 onQuestionOnlyOnDisplayChanged:
                     widget.onQuestionOnlyOnDisplayChanged,
                 onShowChoicesOnParticipantChanged:
@@ -231,6 +261,42 @@ class _TeacherQuizBuilderCardState extends State<TeacherQuizBuilderCard> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _QuizListModeToggle extends StatelessWidget {
+  const _QuizListModeToggle({
+    required this.archiveMode,
+    required this.loading,
+    required this.onChanged,
+  });
+
+  final bool archiveMode;
+  final bool loading;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton<bool>(
+      segments: [
+        ButtonSegment(
+          value: false,
+          icon: const Icon(Icons.edit_note_rounded),
+          label: Text(appText(AppText.workingQuizzesTab)),
+        ),
+        ButtonSegment(
+          value: true,
+          icon: const Icon(Icons.archive_outlined),
+          label: Text(appText(AppText.archivedQuizzesTab)),
+        ),
+      ],
+      selected: {archiveMode},
+      onSelectionChanged: loading
+          ? null
+          : (selection) {
+              if (selection.isNotEmpty) onChanged(selection.first);
+            },
     );
   }
 }
@@ -292,20 +358,32 @@ class _BuilderHeader extends StatelessWidget {
 class _BuilderActions extends StatelessWidget {
   const _BuilderActions({
     required this.canUseTeacherApi,
+    required this.canSaveQuiz,
+    required this.canCreateDraft,
+    required this.archiveMode,
     required this.hasSelectedQuiz,
+    required this.canDeleteSelectedQuiz,
     required this.editingQuizId,
     required this.onSaveQuiz,
     required this.onResetDraft,
     required this.onRefreshQuizzes,
+    required this.onArchiveSelectedQuiz,
+    required this.onRestoreSelectedQuiz,
     required this.onDeleteSelectedQuiz,
   });
 
   final bool canUseTeacherApi;
+  final bool canSaveQuiz;
+  final bool canCreateDraft;
+  final bool archiveMode;
   final bool hasSelectedQuiz;
+  final bool canDeleteSelectedQuiz;
   final int? editingQuizId;
   final VoidCallback onSaveQuiz;
   final VoidCallback onResetDraft;
   final VoidCallback onRefreshQuizzes;
+  final VoidCallback onArchiveSelectedQuiz;
+  final VoidCallback onRestoreSelectedQuiz;
   final VoidCallback onDeleteSelectedQuiz;
 
   @override
@@ -315,7 +393,7 @@ class _BuilderActions extends StatelessWidget {
       runSpacing: 10,
       children: [
         FilledButton.icon(
-          onPressed: canUseTeacherApi ? onSaveQuiz : null,
+          onPressed: canSaveQuiz ? onSaveQuiz : null,
           icon: const Icon(Icons.save_outlined),
           label: Text(
             editingQuizId == null
@@ -324,7 +402,7 @@ class _BuilderActions extends StatelessWidget {
           ),
         ),
         FilledButton.tonalIcon(
-          onPressed: canUseTeacherApi ? onResetDraft : null,
+          onPressed: canCreateDraft ? onResetDraft : null,
           icon: const Icon(Icons.add_box_outlined),
           label: Text(appText(AppText.newDraftButton)),
         ),
@@ -333,12 +411,28 @@ class _BuilderActions extends StatelessWidget {
           icon: const Icon(Icons.refresh_rounded),
           label: Text(appText(AppText.refreshQuizzesButton)),
         ),
-        OutlinedButton.icon(
-          onPressed:
-              canUseTeacherApi && hasSelectedQuiz ? onDeleteSelectedQuiz : null,
-          icon: const Icon(Icons.delete_outline_rounded),
-          label: Text(appText(AppText.deleteSelectedButton)),
-        ),
+        if (archiveMode)
+          OutlinedButton.icon(
+            onPressed: canUseTeacherApi && hasSelectedQuiz
+                ? onRestoreSelectedQuiz
+                : null,
+            icon: const Icon(Icons.unarchive_outlined),
+            label: Text(appText(AppText.restoreSelectedButton)),
+          )
+        else
+          OutlinedButton.icon(
+            onPressed: canUseTeacherApi && hasSelectedQuiz
+                ? onArchiveSelectedQuiz
+                : null,
+            icon: const Icon(Icons.archive_outlined),
+            label: Text(appText(AppText.archiveSelectedButton)),
+          ),
+        if (hasSelectedQuiz && canDeleteSelectedQuiz)
+          OutlinedButton.icon(
+            onPressed: canUseTeacherApi ? onDeleteSelectedQuiz : null,
+            icon: const Icon(Icons.delete_forever_outlined),
+            label: Text(appText(AppText.deleteSelectedButton)),
+          ),
       ],
     );
   }
@@ -491,6 +585,7 @@ class _QuizEditor extends StatelessWidget {
     required this.question,
     required this.questionIndex,
     required this.loading,
+    required this.readOnly,
     required this.onQuestionOnlyOnDisplayChanged,
     required this.onShowChoicesOnParticipantChanged,
     required this.onRemoveQuestion,
@@ -508,6 +603,7 @@ class _QuizEditor extends StatelessWidget {
   final QuizDraftQuestion? question;
   final int questionIndex;
   final bool loading;
+  final bool readOnly;
   final ValueChanged<bool> onQuestionOnlyOnDisplayChanged;
   final ValueChanged<bool> onShowChoicesOnParticipantChanged;
   final ValueChanged<int> onRemoveQuestion;
@@ -534,6 +630,7 @@ class _QuizEditor extends StatelessWidget {
         children: [
           TextField(
             controller: titleController,
+            readOnly: readOnly,
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.title_rounded),
               labelText: appText(AppText.quizTitleLabel),
@@ -542,6 +639,7 @@ class _QuizEditor extends StatelessWidget {
           const SizedBox(height: 10),
           TextField(
             controller: descriptionController,
+            readOnly: readOnly,
             maxLines: 2,
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.subject_rounded),
@@ -554,6 +652,7 @@ class _QuizEditor extends StatelessWidget {
             resultsTimeController: resultsTimeController,
             questionOnlyOnDisplay: questionOnlyOnDisplay,
             showChoicesOnParticipant: showChoicesOnParticipant,
+            readOnly: readOnly,
             onQuestionOnlyOnDisplayChanged: onQuestionOnlyOnDisplayChanged,
             onShowChoicesOnParticipantChanged:
                 onShowChoicesOnParticipantChanged,
@@ -569,6 +668,7 @@ class _QuizEditor extends StatelessWidget {
               question: activeQuestion,
               questionIndex: questionIndex,
               loading: loading,
+              readOnly: readOnly,
               onRemoveQuestion: () => onRemoveQuestion(questionIndex),
               onSetCorrectChoice: (choiceIndex) =>
                   onSetCorrectChoice(activeQuestion, choiceIndex),
@@ -588,6 +688,7 @@ class _QuizPresentationSettings extends StatelessWidget {
     required this.resultsTimeController,
     required this.questionOnlyOnDisplay,
     required this.showChoicesOnParticipant,
+    required this.readOnly,
     required this.onQuestionOnlyOnDisplayChanged,
     required this.onShowChoicesOnParticipantChanged,
   });
@@ -596,6 +697,7 @@ class _QuizPresentationSettings extends StatelessWidget {
   final TextEditingController resultsTimeController;
   final bool questionOnlyOnDisplay;
   final bool showChoicesOnParticipant;
+  final bool readOnly;
   final ValueChanged<bool> onQuestionOnlyOnDisplayChanged;
   final ValueChanged<bool> onShowChoicesOnParticipantChanged;
 
@@ -629,14 +731,14 @@ class _QuizPresentationSettings extends StatelessWidget {
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
             value: questionOnlyOnDisplay,
-            onChanged: onQuestionOnlyOnDisplayChanged,
+            onChanged: readOnly ? null : onQuestionOnlyOnDisplayChanged,
             title: Text(appText(AppText.quizQuestionOnlyOnDisplayLabel)),
             subtitle: Text(appText(AppText.quizQuestionOnlyOnDisplayHelper)),
           ),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
             value: showChoicesOnParticipant,
-            onChanged: onShowChoicesOnParticipantChanged,
+            onChanged: readOnly ? null : onShowChoicesOnParticipantChanged,
             title: Text(appText(AppText.quizShowChoicesOnParticipantLabel)),
             subtitle: Text(appText(AppText.quizShowChoicesOnParticipantHelper)),
           ),
@@ -647,6 +749,7 @@ class _QuizPresentationSettings extends StatelessWidget {
               final fields = [
                 TextField(
                   controller: readingTimeController,
+                  readOnly: readOnly,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.record_voice_over_outlined),
@@ -656,6 +759,7 @@ class _QuizPresentationSettings extends StatelessWidget {
                 ),
                 TextField(
                   controller: resultsTimeController,
+                  readOnly: readOnly,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.bar_chart_rounded),

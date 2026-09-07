@@ -21,6 +21,15 @@ String _apiExceptionText(ApiException error) {
   if (error.code == 'quiz_revision_conflict') {
     return appText(AppText.quizRevisionConflict);
   }
+  if (error.code == 'quiz_open_session_conflict') {
+    return appText(AppText.quizOpenSessionConflict);
+  }
+  if (error.code == 'quiz_history_protected') {
+    return appText(AppText.quizHistoryProtected);
+  }
+  if (error.code == 'quiz_archived') {
+    return appText(AppText.quizArchivedConflict);
+  }
   if (error.message == 'Failed to join session') {
     final validationText = _joinValidationText(error);
     if (validationText != null) {
@@ -39,6 +48,8 @@ String _apiExceptionText(ApiException error) {
       appText(AppText.apiLoadDisplayStateFailed),
     'Failed to create quiz' => appText(AppText.apiCreateQuizFailed),
     'Failed to update quiz' => appText(AppText.apiUpdateQuizFailed),
+    'Failed to archive quiz' => appText(AppText.apiArchiveQuizFailed),
+    'Failed to restore quiz' => appText(AppText.apiRestoreQuizFailed),
     'Failed to delete quiz' => appText(AppText.apiDeleteQuizFailed),
     'Failed to create session' => appText(AppText.apiCreateSessionFailed),
     'Failed to fetch session details' =>

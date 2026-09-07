@@ -33,6 +33,8 @@ class QuizSerializer(serializers.Serializer):
     results_time_sec = serializers.IntegerField(required=False)
     questions = QuestionSerializer(many=True, required=False)
     content_revision = serializers.IntegerField(min_value=1, required=False)
+    archived_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    can_delete = serializers.BooleanField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
 
@@ -74,10 +76,23 @@ class QuizSerializer(serializers.Serializer):
             'results_time_sec': 10,
             'questions': [],
         }
+        can_delete = getattr(instance, 'can_delete', None)
+        if can_delete is None:
+            from apps.session.models import LiveSession
+
+            can_delete = not LiveSession.objects.filter(
+                quiz_version__quiz=instance,
+            ).exists()
         return {
             'id': instance.pk,
             **content,
             'content_revision': instance.content_revision,
+            'archived_at': (
+                self.fields['archived_at'].to_representation(instance.archived_at)
+                if instance.archived_at is not None
+                else None
+            ),
+            'can_delete': can_delete,
             'created_at': self.fields['created_at'].to_representation(instance.created_at),
             'updated_at': self.fields['updated_at'].to_representation(instance.updated_at),
         }

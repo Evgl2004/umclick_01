@@ -6,9 +6,17 @@ from contextvars import ContextVar
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Prefetch, Q, Subquery
+from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
-from apps.core.errors import Conflict, QuizRevisionConflict
+from apps.core.errors import (
+    Conflict,
+    QuizArchivedConflict,
+    QuizHistoryProtected,
+    QuizNotFound,
+    QuizOpenSessionConflict,
+    QuizRevisionConflict,
+)
 from apps.core.permissions import can_manage_quiz, is_admin, is_teacher
 from apps.quiz.models import Choice, Question, Quiz, QuizVersion
 from apps.quiz.validation import quiz_data, validate_quiz_data
@@ -295,6 +303,14 @@ def create_quiz_with_draft(*, actor, data: dict) -> Quiz:
     return quiz
 
 
+def _lock_quiz_or_not_found(quiz_id: int) -> Quiz:
+    """Заблокировать существующую карточку или вернуть прикладной ответ 404."""
+    try:
+        return Quiz.objects.select_for_update().get(pk=quiz_id)
+    except Quiz.DoesNotExist:
+        raise QuizNotFound() from None
+
+
 @transaction.atomic
 def save_quiz_content(
     *,
@@ -304,11 +320,11 @@ def save_quiz_content(
     data: dict,
 ) -> Quiz:
     """Сохранить содержимое с блокировкой карточки и проверкой редакции."""
-    quiz = Quiz.objects.select_for_update().get(pk=quiz_id)
+    quiz = _lock_quiz_or_not_found(quiz_id)
     if not can_manage_quiz(actor, quiz):
         raise PermissionDenied('Нет прав на изменение этой викторины.')
     if quiz.archived_at is not None:
-        raise Conflict('Архивную викторину нельзя изменять.')
+        raise QuizArchivedConflict('Архивную викторину нельзя изменять.')
     if quiz.content_revision != expected_revision:
         raise QuizRevisionConflict(quiz.content_revision)
 
@@ -332,3 +348,70 @@ def save_quiz_content(
         quiz.content_revision += 1
         quiz.save(update_fields=['content_revision', 'updated_at'])
     return quiz
+
+
+def _lock_quiz_sessions(quiz: Quiz, *, statuses=None) -> list[int]:
+    """Заблокировать связанные сессии в устойчивом порядке и вернуть их id."""
+    from apps.session.models import LiveSession
+
+    sessions = LiveSession.objects.select_for_update(of=('self',)).filter(
+        quiz_version__quiz=quiz,
+    )
+    if statuses is not None:
+        sessions = sessions.filter(status__in=statuses)
+    return list(sessions.order_by('pk').values_list('pk', flat=True))
+
+
+def _archive_quiz_lock_barrier() -> None:
+    """Точка синхронизации конкурентных проверок после блокировки карточки."""
+
+
+@transaction.atomic
+def archive_quiz(*, quiz_id: int, actor) -> Quiz:
+    """Архивировать карточку, если у всех её версий нет открытых сессий."""
+    from apps.session.models import LiveSession
+
+    quiz = _lock_quiz_or_not_found(quiz_id)
+    if not can_manage_quiz(actor, quiz):
+        raise PermissionDenied('Нет прав на архивирование этой викторины.')
+    if quiz.archived_at is not None:
+        return quiz
+    _archive_quiz_lock_barrier()
+    if _lock_quiz_sessions(
+        quiz,
+        statuses=(LiveSession.STATUS_WAITING, LiveSession.STATUS_LIVE),
+    ):
+        raise QuizOpenSessionConflict()
+
+    with _quiz_content_write():
+        quiz.archived_at = timezone.now()
+        quiz.save(update_fields=['archived_at', 'updated_at'])
+    return quiz
+
+
+@transaction.atomic
+def restore_quiz(*, quiz_id: int, actor) -> Quiz:
+    """Вернуть архивную карточку в рабочий список без изменения её версий."""
+    quiz = _lock_quiz_or_not_found(quiz_id)
+    if not can_manage_quiz(actor, quiz):
+        raise PermissionDenied('Нет прав на восстановление этой викторины.')
+    if quiz.archived_at is None:
+        return quiz
+
+    with _quiz_content_write():
+        quiz.archived_at = None
+        quiz.save(update_fields=['archived_at', 'updated_at'])
+    return quiz
+
+
+@transaction.atomic
+def delete_quiz(*, quiz_id: int, actor) -> None:
+    """Физически удалить только карточку, не связанную ни с одной сессией."""
+    quiz = _lock_quiz_or_not_found(quiz_id)
+    if not can_manage_quiz(actor, quiz):
+        raise PermissionDenied('Нет прав на удаление этой викторины.')
+    if _lock_quiz_sessions(quiz):
+        raise QuizHistoryProtected()
+
+    with _quiz_content_write():
+        quiz.delete()

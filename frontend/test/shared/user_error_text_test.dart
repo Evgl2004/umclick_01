@@ -61,6 +61,36 @@ void main() {
     );
   });
 
+  test('локализует конфликты архива и защищённой истории по кодам', () {
+    expect(
+      userErrorText(ApiException(
+        statusCode: 409,
+        message: 'Failed to archive quiz',
+        body: '{"code":"quiz_open_session_conflict"}',
+        code: 'quiz_open_session_conflict',
+      )),
+      'Сначала завершите или остановите открытую сессию',
+    );
+    expect(
+      userErrorText(ApiException(
+        statusCode: 409,
+        message: 'Failed to delete quiz',
+        body: '{"code":"quiz_history_protected"}',
+        code: 'quiz_history_protected',
+      )),
+      'Использованную викторину нельзя удалить; переместите её в архив.',
+    );
+    expect(
+      userErrorText(ApiException(
+        statusCode: 409,
+        message: 'Failed to create session',
+        body: '{"code":"quiz_archived"}',
+        code: 'quiz_archived',
+      )),
+      'Архивную викторину нельзя изменить или запустить.',
+    );
+  });
+
   test('localizes participant join validation details', () {
     expect(
       userErrorText(ApiException(
