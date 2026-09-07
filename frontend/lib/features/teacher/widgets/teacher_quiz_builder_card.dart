@@ -30,6 +30,7 @@ class TeacherQuizBuilderCard extends StatefulWidget {
     required this.onArchiveModeChanged,
     required this.onLoadSelectedQuiz,
     required this.onSaveQuiz,
+    required this.onPreviewQuiz,
     required this.onResetDraft,
     required this.onRefreshQuizzes,
     required this.onArchiveSelectedQuiz,
@@ -63,6 +64,7 @@ class TeacherQuizBuilderCard extends StatefulWidget {
   final ValueChanged<bool> onArchiveModeChanged;
   final VoidCallback onLoadSelectedQuiz;
   final VoidCallback onSaveQuiz;
+  final VoidCallback onPreviewQuiz;
   final VoidCallback onResetDraft;
   final VoidCallback onRefreshQuizzes;
   final VoidCallback onArchiveSelectedQuiz;
@@ -201,6 +203,7 @@ class _TeacherQuizBuilderCardState extends State<TeacherQuizBuilderCard> {
             canDeleteSelectedQuiz: widget.canDeleteSelectedQuiz,
             editingQuizId: widget.editingQuizId,
             onSaveQuiz: widget.onSaveQuiz,
+            onPreviewQuiz: widget.onPreviewQuiz,
             onResetDraft: widget.onResetDraft,
             onRefreshQuizzes: widget.onRefreshQuizzes,
             onArchiveSelectedQuiz: widget.onArchiveSelectedQuiz,
@@ -365,6 +368,7 @@ class _BuilderActions extends StatelessWidget {
     required this.canDeleteSelectedQuiz,
     required this.editingQuizId,
     required this.onSaveQuiz,
+    required this.onPreviewQuiz,
     required this.onResetDraft,
     required this.onRefreshQuizzes,
     required this.onArchiveSelectedQuiz,
@@ -380,6 +384,7 @@ class _BuilderActions extends StatelessWidget {
   final bool canDeleteSelectedQuiz;
   final int? editingQuizId;
   final VoidCallback onSaveQuiz;
+  final VoidCallback onPreviewQuiz;
   final VoidCallback onResetDraft;
   final VoidCallback onRefreshQuizzes;
   final VoidCallback onArchiveSelectedQuiz;
@@ -400,6 +405,11 @@ class _BuilderActions extends StatelessWidget {
                 ? appText(AppText.saveNewQuizButton)
                 : appText(AppText.saveQuizChangesButton),
           ),
+        ),
+        OutlinedButton.icon(
+          onPressed: canSaveQuiz ? onPreviewQuiz : null,
+          icon: const Icon(Icons.visibility_outlined),
+          label: Text(appText(AppText.quizPreviewButton)),
         ),
         FilledButton.tonalIcon(
           onPressed: canCreateDraft ? onResetDraft : null,

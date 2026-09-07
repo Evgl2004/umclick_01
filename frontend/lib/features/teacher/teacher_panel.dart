@@ -22,6 +22,7 @@ import '../../shared/widgets/app_surfaces.dart';
 import 'quiz_draft.dart';
 import 'quiz_draft_mapper.dart';
 import 'teacher_auth_session.dart';
+import 'widgets/quiz_preview_dialog.dart';
 import 'widgets/teacher_auth_card.dart';
 import 'widgets/teacher_live_events_card.dart';
 import 'widgets/teacher_live_session_card.dart';
@@ -780,18 +781,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
     });
 
     try {
-      final payload = _quizDraftMapper.toPayload(
-        contentRevision: _editingQuizId == null ? null : _editingQuizRevision,
-        title: _quizTitleController.text,
-        description: _quizDescriptionController.text,
-        displaySettings: QuizDisplaySettings(
-          questionOnlyOnDisplay: _questionOnlyOnDisplay,
-          showChoicesOnParticipant: _showChoicesOnParticipant,
-          readingTimeSec: asInt(_readingTimeController.text, 15),
-          resultsTimeSec: asInt(_resultsTimeController.text, 10),
-        ),
-        questions: _draftQuestions,
-      );
+      final payload = _quizDraftPayload();
       final editingQuizId = _editingQuizId;
 
       final savedQuiz = editingQuizId == null
@@ -850,6 +840,37 @@ class _TeacherPanelState extends State<TeacherPanel> {
           _loading = false;
         });
       }
+    }
+  }
+
+  Map<String, dynamic> _quizDraftPayload() {
+    return _quizDraftMapper.toPayload(
+      contentRevision: _editingQuizId == null ? null : _editingQuizRevision,
+      title: _quizTitleController.text,
+      description: _quizDescriptionController.text,
+      displaySettings: QuizDisplaySettings(
+        questionOnlyOnDisplay: _questionOnlyOnDisplay,
+        showChoicesOnParticipant: _showChoicesOnParticipant,
+        readingTimeSec: asInt(_readingTimeController.text, 15),
+        resultsTimeSec: asInt(_resultsTimeController.text, 10),
+      ),
+      questions: _draftQuestions,
+    );
+  }
+
+  Future<void> _openQuizPreview() async {
+    if (_archiveMode || _editingQuizArchived) return;
+    try {
+      final previewQuiz = _quizDraftPayload();
+      if (!mounted) return;
+      setState(() => _error = null);
+      await showDialog<void>(
+        context: context,
+        builder: (context) => QuizPreviewDialog(quiz: previewQuiz),
+      );
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      setState(() => _error = userErrorText(error));
     }
   }
 
@@ -1654,6 +1675,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
                         onArchiveModeChanged: _setQuizArchiveMode,
                         onLoadSelectedQuiz: _loadSelectedQuizIntoDraft,
                         onSaveQuiz: _saveQuizDraft,
+                        onPreviewQuiz: _openQuizPreview,
                         onResetDraft: () => _resetQuizDraft(),
                         onRefreshQuizzes: () => _refreshQuizzes(),
                         onArchiveSelectedQuiz: _archiveSelectedQuiz,

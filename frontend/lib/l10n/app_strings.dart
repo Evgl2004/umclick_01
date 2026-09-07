@@ -45,6 +45,21 @@ enum AppText {
   loadButton,
   saveNewQuizButton,
   saveQuizChangesButton,
+  quizPreviewButton,
+  quizPreviewTitle,
+  quizPreviewModeBadge,
+  quizPreviewModeNotice,
+  quizPreviewQuestionPicker,
+  quizPreviewAudienceScreen,
+  quizPreviewParticipantScreen,
+  quizPreviewReadingState,
+  quizPreviewAnsweringState,
+  quizPreviewResultsState,
+  quizPreviewCloseButton,
+  quizPreviewParticipantReadingMessage,
+  quizPreviewQuestionHiddenMessage,
+  quizPreviewNoAnswersNotice,
+  quizPreviewCorrectChoice,
   newDraftButton,
   refreshQuizzesButton,
   deleteSelectedButton,
@@ -386,6 +401,44 @@ const _strings = <AppText, LocalizedString>{
       LocalizedString(ru: 'Сохранить новую', en: 'Save new quiz'),
   AppText.saveQuizChangesButton:
       LocalizedString(ru: 'Сохранить изменения', en: 'Save changes'),
+  AppText.quizPreviewButton: LocalizedString(ru: 'Предпросмотр', en: 'Preview'),
+  AppText.quizPreviewTitle: LocalizedString(
+    ru: 'Предпросмотр викторины',
+    en: 'Quiz preview',
+  ),
+  AppText.quizPreviewModeBadge:
+      LocalizedString(ru: 'Режим предпросмотра', en: 'Preview mode'),
+  AppText.quizPreviewModeNotice: LocalizedString(
+    ru: 'Локальный просмотр: сессия, ответы и сохранение не создаются.',
+    en: 'Local view only: no session, answers, or saved changes are created.',
+  ),
+  AppText.quizPreviewQuestionPicker:
+      LocalizedString(ru: 'Вопрос для просмотра', en: 'Question to preview'),
+  AppText.quizPreviewAudienceScreen:
+      LocalizedString(ru: 'Экран аудитории', en: 'Audience screen'),
+  AppText.quizPreviewParticipantScreen:
+      LocalizedString(ru: 'Экран участника', en: 'Participant screen'),
+  AppText.quizPreviewReadingState: LocalizedString(ru: 'Чтение', en: 'Reading'),
+  AppText.quizPreviewAnsweringState:
+      LocalizedString(ru: 'Ответ', en: 'Answering'),
+  AppText.quizPreviewResultsState:
+      LocalizedString(ru: 'Результат', en: 'Results'),
+  AppText.quizPreviewCloseButton:
+      LocalizedString(ru: 'Закрыть предпросмотр', en: 'Close preview'),
+  AppText.quizPreviewParticipantReadingMessage: LocalizedString(
+    ru: 'Во время чтения смотрите на экран аудитории.',
+    en: 'Look at the audience screen during reading.',
+  ),
+  AppText.quizPreviewQuestionHiddenMessage: LocalizedString(
+    ru: 'Вопрос показывается только на экране аудитории.',
+    en: 'Question is shown only on the audience screen.',
+  ),
+  AppText.quizPreviewNoAnswersNotice: LocalizedString(
+    ru: 'В предпросмотре ответы не выбираются и не отправляются.',
+    en: 'Answers cannot be selected or submitted in preview.',
+  ),
+  AppText.quizPreviewCorrectChoice:
+      LocalizedString(ru: 'Правильный ответ', en: 'Correct answer'),
   AppText.newDraftButton:
       LocalizedString(ru: 'Новый черновик', en: 'New draft'),
   AppText.refreshQuizzesButton:
